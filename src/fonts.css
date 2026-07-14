@@ -1,0 +1,14 @@
+@font-face {
+  font-family: "Vazirmatn";
+  src: url("./fonts/Vazirmatn-VariableFont_wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --font-vazirmatn: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
+  --font-geist-sans: "Vazirmatn", ui-sans-serif, system-ui, sans-serif;
+  --font-geist-mono: ui-monospace, "SFMono-Regular", "Menlo", "Consolas",
+    monospace;
+}

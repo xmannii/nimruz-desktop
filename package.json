@@ -1,0 +1,103 @@
+{
+  "name": "chatbot-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop (Electron) build of the Chatbot OSS UI",
+  "main": "dist-electron/main.js",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n vite,electron -c cyan,magenta \"vite\" \"npm:dev:electron\"",
+    "dev:electron": "node scripts/esbuild.mjs && wait-on tcp:127.0.0.1:5173 && cross-env ELECTRON_RENDERER_URL=http://localhost:5173 node scripts/run-electron.mjs",
+    "build:renderer": "vite build",
+    "build:electron": "node scripts/esbuild.mjs",
+    "build": "npm run build:renderer && npm run build:electron",
+    "start": "npm run build && node scripts/run-electron.mjs",
+    "dist": "npm run build && electron-builder",
+    "test": "tsx --test electron/**/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/react": "^4.0.23",
+    "@base-ui/react": "^1.6.0",
+    "@openrouter/ai-sdk-provider": "^3.0.0",
+    "@radix-ui/react-use-controllable-state": "^1.2.3",
+    "@shadcn/react": "^0.2.1",
+    "@streamdown/cjk": "^1.0.3",
+    "@streamdown/code": "^1.1.1",
+    "@streamdown/math": "^1.0.2",
+    "@streamdown/mermaid": "^1.0.2",
+    "ai": "^7.0.22",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "date-fns": "^4.4.0",
+    "embla-carousel-react": "^8.6.0",
+    "input-otp": "^1.4.2",
+    "katex": "^0.17.0",
+    "lucide-react": "^1.24.0",
+    "motion": "^12.42.2",
+    "nanoid": "^6.0.0",
+    "next-themes": "^0.4.6",
+    "react": "19.2.4",
+    "react-day-picker": "^10.0.1",
+    "react-dom": "19.2.4",
+    "react-resizable-panels": "^4.12.2",
+    "recharts": "3.8.0",
+    "shadcn": "^4.13.0",
+    "shiki": "^4.3.1",
+    "sonner": "^2.0.7",
+    "streamdown": "^2.5.0",
+    "tailwind-merge": "^3.6.0",
+    "tokenlens": "^1.3.1",
+    "tw-animate-css": "^1.4.0",
+    "use-stick-to-bottom": "^1.1.6",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.24.2",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.1",
+    "typescript": "^5",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "dev.chatbotoss.desktop",
+    "productName": "Chatbot OSS",
+    "asar": true,
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Utility"
+    }
+  }
+}
