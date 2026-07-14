@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { ChatRenameDialog } from "@/components/chat-rename-dialog";
-import { NimruzLogo } from "@/components/logo";
 import { ProjectDialog } from "@/components/project-dialog";
 import {
   AlertDialog,
@@ -43,7 +42,6 @@ import {
   SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
-  SidebarHeader,
   SidebarMenu,
   SidebarMenuAction,
   SidebarMenuButton,
@@ -273,18 +271,8 @@ export function AppSidebar({
       <Sidebar
         side="right"
         collapsible="icon"
-        className="border-l border-sidebar-border"
+        className="!top-[var(--app-header-height)] !bottom-0 !h-auto border-l border-sidebar-border"
       >
-        <SidebarHeader
-          dir="rtl"
-          className="h-14 flex-row items-center justify-start border-b border-sidebar-border px-3 py-0 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
-        >
-          <NimruzLogo className="size-7 shrink-0 text-sidebar-foreground" />
-          <span className="truncate text-sm font-semibold group-data-[collapsible=icon]:hidden">
-            نیمروز
-          </span>
-        </SidebarHeader>
-
         <SidebarContent
           dir="rtl"
           className="pt-3 group-data-[collapsible=icon]:pt-4"

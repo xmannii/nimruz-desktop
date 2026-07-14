@@ -4,12 +4,11 @@ import { NimruzLogo } from "@/components/logo";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { WindowState } from "@/lib/desktop-api";
+import { APP_NAME_FA } from "@/lib/branding";
 import { cn } from "@/lib/utils";
 import { MoonIcon, SunIcon, XIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState, type ReactNode } from "react";
-
-const APP_TITLE = "نیمروز";
 
 function MinimizeWindowIcon({ className }: { className?: string }) {
   return (
@@ -221,7 +220,7 @@ export function DesktopTitleBar() {
   return (
     <header
       dir="ltr"
-      className="flex h-14 shrink-0 items-stretch border-b border-sidebar-border bg-sidebar/90 backdrop-blur-md"
+      className="flex h-14 w-full shrink-0 items-stretch border-b border-sidebar-border bg-sidebar/90 backdrop-blur-md"
     >
       {isMac ? <MacWindowControls /> : null}
 
@@ -235,7 +234,7 @@ export function DesktopTitleBar() {
             aria-hidden
           />
           <span className="truncate text-sm font-medium tracking-tight text-sidebar-foreground">
-            {APP_TITLE}
+            {APP_NAME_FA}
           </span>
         </div>
 

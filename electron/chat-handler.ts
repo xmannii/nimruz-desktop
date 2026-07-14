@@ -4,6 +4,7 @@ import { memoryTools } from "@/lib/ai/memory-tools";
 import { sanitizeMemories } from "@/lib/settings/memories";
 import { buildSystemInstructions } from "@/lib/ai/system-prompt";
 import type { ChatUIMessage } from "@/lib/chat/message";
+import { APP_NAME } from "@/lib/branding";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
   convertToModelMessages,
@@ -39,7 +40,7 @@ export async function handleChatRequest(
 
   const openrouter = createOpenRouter({
     apiKey,
-    appName: "Chatbot OSS",
+    appName: APP_NAME,
   });
 
   const selectedModel =

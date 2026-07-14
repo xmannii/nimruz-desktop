@@ -9,6 +9,7 @@ import { useProjects, type ProjectInput } from "@/hooks/use-projects";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import type { LocalChat } from "@/lib/chat/storage";
 import type { ModelId } from "@/lib/models";
+import { APP_HEADER_HEIGHT } from "@/lib/branding";
 import { ensureLegacyMigration } from "@/lib/storage/migrate-legacy";
 import {
   DEFAULT_REASONING_EFFORT,
@@ -39,6 +40,7 @@ import {
   useRef,
   useState,
   type MutableRefObject,
+  type CSSProperties,
 } from "react";
 import { ChatComposer } from "./chat-composer";
 import { ChatHeader } from "./chat-header";
@@ -210,40 +212,49 @@ export function Chat({ initialChatId }: ChatProps) {
   }
 
   return (
-    <SidebarProvider defaultOpen={false} dir="ltr">
-      <SidebarInset dir="rtl">
-        <div className="flex h-dvh flex-col bg-background">
-          <ChatHeader />
+    <SidebarProvider
+      defaultOpen={false}
+      dir="ltr"
+      className="!min-h-0 h-dvh max-h-dvh flex-col overflow-hidden"
+      style={{ "--app-header-height": APP_HEADER_HEIGHT } as CSSProperties}
+    >
+      <ChatHeader />
 
-          <OpenRouterApiKeyAlert
-            refreshSignal={credentialRefreshSignal}
-            onConfigure={() => openSettings("connection")}
-          />
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <SidebarInset
+          dir="rtl"
+          className="min-h-0 w-0 min-w-0 flex-1 overflow-hidden"
+        >
+          <div className="flex h-full min-h-0 flex-col bg-background">
+            <OpenRouterApiKeyAlert
+              refreshSignal={credentialRefreshSignal}
+              onConfigure={() => openSettings("connection")}
+            />
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {isHydrated &&
-            areProjectsHydrated &&
-            areSettingsHydrated &&
-            activeChat ? (
-              <ChatSession
-                key={activeChat.id}
-                chat={activeChat}
-                onChatChange={updateChat}
-                onChatStarted={(id) => pushChatUrl(id)}
-                stopRef={stopCurrentChatRef}
-                personalization={personalization}
-                memories={memories}
-                onMemoriesChange={handleMemoriesChangeStable}
-              />
-            ) : (
-              <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-                در حال بارگذاری گفتگوها…
-              </div>
-            )}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              {isHydrated &&
+              areProjectsHydrated &&
+              areSettingsHydrated &&
+              activeChat ? (
+                <ChatSession
+                  key={activeChat.id}
+                  chat={activeChat}
+                  onChatChange={updateChat}
+                  onChatStarted={(id) => pushChatUrl(id)}
+                  stopRef={stopCurrentChatRef}
+                  personalization={personalization}
+                  memories={memories}
+                  onMemoriesChange={handleMemoriesChangeStable}
+                />
+              ) : (
+                <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+                  در حال بارگذاری گفتگوها…
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </SidebarInset>
-      <AppSidebar
+        </SidebarInset>
+        <AppSidebar
         chats={chats}
         projects={projects}
         activeChatId={activeChatId}
@@ -257,6 +268,7 @@ export function Chat({ initialChatId }: ChatProps) {
         onDeleteChat={handleDeleteChat}
         onOpenSettings={() => openSettings()}
       />
+      </div>
       {settingsOpen ? (
         <PersonalizationSettingsDialog
           open

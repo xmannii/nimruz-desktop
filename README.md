@@ -1,9 +1,9 @@
-# Chatbot OSS — Desktop
+# Nimruz — Desktop
 
-Electron desktop build of the Chatbot OSS UI. The React UI is copied from the
-web app and rendered by Vite; the `/api/chat` streaming route runs inside the
-Electron main process through an authenticated local HTTP server. Users
-configure their OpenRouter API key inside the app.
+Persian AI chat desktop app (Electron + Vite). The React UI is rendered by
+Vite; the `/api/chat` streaming route runs inside the Electron main process
+through an authenticated local HTTP server. Users configure their OpenRouter API
+key inside the app.
 
 ## Architecture
 
@@ -54,6 +54,7 @@ port UI changes manually when you want them in both.
 ## Local data
 
 Application data is stored in Electron's platform-specific `userData`
-directory as `nimruz.sqlite3`. Existing IndexedDB/localStorage data is imported
-once and retained as a rollback copy. Saved API keys are intentionally not
-portable between machines or operating-system users.
+directory (folder name **Nimruz**) as `nimruz.sqlite3`. Existing
+IndexedDB/localStorage data is imported once and retained as a rollback copy.
+Saved API keys are intentionally not portable between machines or
+operating-system users.

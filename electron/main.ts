@@ -8,8 +8,13 @@ import { registerIpcHandlers } from "./ipc";
 import { startServer } from "./server";
 import { AppDatabase } from "./storage/database";
 import { attachWindowStateEvents } from "./window-controls";
+import {
+  APP_NAME,
+  APP_NAME_FA,
+  DATABASE_FILE,
+} from "@/lib/branding";
 
-const APP_TITLE = "نیمروز";
+app.setName(APP_NAME);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -31,7 +36,7 @@ async function createWindow() {
     backgroundColor: "#181818",
     show: false,
     frame: false,
-    title: APP_TITLE,
+    title: APP_NAME_FA,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -65,7 +70,7 @@ async function createWindow() {
 
 app.whenReady().then(async () => {
   database = new AppDatabase(
-    path.join(app.getPath("userData"), "nimruz.sqlite3")
+    path.join(app.getPath("userData"), DATABASE_FILE)
   );
   const credentials = new CredentialService(database);
   const sessionToken = randomBytes(32).toString("base64url");

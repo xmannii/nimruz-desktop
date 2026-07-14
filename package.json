@@ -1,8 +1,8 @@
 {
-  "name": "chatbot-desktop",
+  "name": "nimruz-desktop",
   "version": "0.1.0",
   "private": true,
-  "description": "Desktop (Electron) build of the Chatbot OSS UI",
+  "description": "Nimruz — Persian desktop AI chat powered by OpenRouter",
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {
@@ -71,8 +71,8 @@
     "wait-on": "^8.0.1"
   },
   "build": {
-    "appId": "dev.chatbotoss.desktop",
-    "productName": "Chatbot OSS",
+    "appId": "dev.nimruz.desktop",
+    "productName": "Nimruz",
     "asar": true,
     "files": [
       "dist/**",
