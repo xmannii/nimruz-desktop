@@ -8,9 +8,10 @@ import {
 } from "@/lib/chat/storage";
 import {
   DEFAULT_MODEL,
-  getModelById,
+  DEFAULT_PROVIDER_ID,
   type ModelId,
 } from "@/lib/models";
+import type { ProviderModelRef } from "@/lib/models/catalog";
 import type { UIMessage } from "ai";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,13 +21,15 @@ const SAVE_DELAY = 250;
 function createEmptyChat(
   model: ModelId = DEFAULT_MODEL,
   id: string = nanoid(),
-  projectId: string | null = null
+  projectId: string | null = null,
+  providerId: string = DEFAULT_PROVIDER_ID
 ): LocalChat {
   const now = Date.now();
 
   return {
     id,
     title: "گفتگوی جدید",
+    providerId,
     model,
     messages: [],
     projectId,
@@ -57,7 +60,8 @@ function areMessagesEqual(left: UIMessage[], right: UIMessage[]): boolean {
 function normalizeChat(chat: LocalChat): LocalChat {
   return {
     ...chat,
-    model: getModelById(chat.model) ? chat.model : DEFAULT_MODEL,
+    providerId: chat.providerId || DEFAULT_PROVIDER_ID,
+    model: typeof chat.model === "string" && chat.model ? chat.model : DEFAULT_MODEL,
     messages: Array.isArray(chat.messages) ? chat.messages : [],
     projectId: typeof chat.projectId === "string" ? chat.projectId : null,
     titleIsCustom: Boolean(chat.titleIsCustom),
@@ -67,9 +71,13 @@ function normalizeChat(chat: LocalChat): LocalChat {
 export type ChatUpdate = {
   messages: UIMessage[];
   model: ModelId;
+  providerId?: string;
 };
 
-export function useChatHistory(initialChatId?: string) {
+export function useChatHistory(
+  initialChatId?: string,
+  defaultModelRef?: ProviderModelRef | null
+) {
   const [chats, setChats] = useState<LocalChat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
@@ -107,7 +115,9 @@ export function useChatHistory(initialChatId?: string) {
               DEFAULT_MODEL,
               initialChatId && /^[\w-]{1,128}$/.test(initialChatId)
                 ? initialChatId
-                : nanoid()
+                : nanoid(),
+              null,
+              DEFAULT_PROVIDER_ID
             );
         const initialChats = draftChat
           ? [draftChat, ...storedChats]
@@ -127,7 +137,9 @@ export function useChatHistory(initialChatId?: string) {
             DEFAULT_MODEL,
             initialChatId && /^[\w-]{1,128}$/.test(initialChatId)
               ? initialChatId
-              : nanoid()
+              : nanoid(),
+            null,
+            DEFAULT_PROVIDER_ID
           );
           setChats([fallbackChat]);
           setActiveChatId(fallbackChat.id);
@@ -185,9 +197,12 @@ export function useChatHistory(initialChatId?: string) {
   const createChat = useCallback((projectId: string | null = null) => {
     const currentChat = chats.find((chat) => chat.id === activeChatId);
     const chat = createEmptyChat(
-      currentChat?.model ?? DEFAULT_MODEL,
+      defaultModelRef?.modelId ?? currentChat?.model ?? DEFAULT_MODEL,
       nanoid(),
-      projectId
+      projectId,
+      defaultModelRef?.providerId ??
+        currentChat?.providerId ??
+        DEFAULT_PROVIDER_ID
     );
     const emptyChats = chats.filter((item) => item.messages.length === 0);
 
@@ -204,7 +219,7 @@ export function useChatHistory(initialChatId?: string) {
     }
 
     return chat.id;
-  }, [activeChatId, chats]);
+  }, [activeChatId, chats, defaultModelRef]);
 
   const removeProjectFromChats = useCallback((projectId: string) => {
     setChats((current) =>
@@ -214,10 +229,20 @@ export function useChatHistory(initialChatId?: string) {
     );
   }, []);
 
+  const getChatById = useCallback(
+    (id: string) => chats.find((chat) => chat.id === id) ?? null,
+    [chats]
+  );
+
   const selectChat = useCallback((id: string) => {
-    setChats((current) =>
-      current.filter((chat) => chat.messages.length > 0 || chat.id === id)
-    );
+    setChats((current) => {
+      const exists = current.some((chat) => chat.id === id);
+      if (!exists) return current;
+
+      return current.filter(
+        (chat) => chat.messages.length > 0 || chat.id === id
+      );
+    });
     setActiveChatId(id);
   }, []);
 
@@ -226,8 +251,11 @@ export function useChatHistory(initialChatId?: string) {
       const chat = current.find((item) => item.id === id);
       if (!chat) return current;
 
+      const nextProviderId = update.providerId ?? chat.providerId;
+
       if (
         chat.model === update.model &&
+        chat.providerId === nextProviderId &&
         areMessagesEqual(chat.messages, update.messages)
       ) {
         return current;
@@ -236,6 +264,7 @@ export function useChatHistory(initialChatId?: string) {
       const updatedChat: LocalChat = {
         ...chat,
         ...update,
+        providerId: nextProviderId,
         title: chat.titleIsCustom ? chat.title : getChatTitle(update.messages),
         updatedAt: Date.now(),
       };
@@ -294,6 +323,7 @@ export function useChatHistory(initialChatId?: string) {
     activeChat,
     activeChatId,
     isHydrated,
+    getChatById,
     createChat,
     selectChat,
     updateChat,

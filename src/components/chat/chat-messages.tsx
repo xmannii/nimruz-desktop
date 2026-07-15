@@ -23,6 +23,7 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import type { ChatStatus, UIMessage } from "ai";
+import { getChatErrorMessage } from "@/lib/chat/errors";
 import { memo, useEffect, useRef, type ReactNode } from "react";
 
 type ChatMessagesProps = {
@@ -146,8 +147,9 @@ export function ChatMessages({ messages, status, error }: ChatMessagesProps) {
         <p
           className="mx-auto w-full max-w-3xl px-3 pb-2 text-center text-sm text-destructive sm:px-6"
           role="alert"
+          dir="ltr"
         >
-          خطایی رخ داد. لطفاً دوباره تلاش کنید.
+          {getChatErrorMessage(error)}
         </p>
       ) : null}
     </>

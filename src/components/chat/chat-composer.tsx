@@ -3,6 +3,7 @@
 import { ChatContextUsage } from "@/components/chat/chat-context-usage";
 import { ModelPicker } from "@/components/chat/model-picker";
 import { ReasoningEffortSlider } from "@/components/chat/reasoning-effort-slider";
+import { useAppShell } from "@/components/app-shell-context";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,7 +14,7 @@ import {
 } from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { modelSupportsImages, modelSupportsReasoningEffort, type ModelId } from "@/lib/models";
+import type { ProviderModelRef } from "@/lib/models/catalog";
 import type { ReasoningEffort } from "@/lib/models/reasoning";
 import type { ChatStatus } from "ai";
 import { ArrowUpIcon, PlusIcon, SquareIcon } from "lucide-react";
@@ -31,8 +32,8 @@ import { shouldExpandComposer } from "./composer-utils";
 type ChatComposerProps = {
   text: string;
   onTextChange: (value: string) => void;
-  model: ModelId;
-  onModelChange: (model: ModelId) => void;
+  model: ProviderModelRef;
+  onModelChange: (model: ProviderModelRef) => void;
   reasoningEffort: ReasoningEffort;
   onReasoningEffortChange: (effort: ReasoningEffort) => void;
   status: ChatStatus;
@@ -55,13 +56,15 @@ export function ChatComposer({
   centered = false,
   messages = [],
 }: ChatComposerProps) {
+  const { resolveModel } = useAppShell();
   const [isExpanded, setIsExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const collapsedWidthRef = useRef<number | null>(null);
 
   const isBusy = status === "submitted" || status === "streaming";
-  const canAttach = modelSupportsImages(model);
-  const showReasoningEffort = modelSupportsReasoningEffort(model);
+  const modelConfig = resolveModel(model);
+  const canAttach = modelConfig?.supportsImages ?? false;
+  const showReasoningEffort = modelConfig?.supportsReasoningEffort ?? false;
 
   useEffect(() => {
     if (!text) setIsExpanded(false);
@@ -169,7 +172,7 @@ function ComposerFooter({
   showContext = false,
 }: {
   messages?: ChatUIMessage[];
-  model?: ModelId;
+  model?: ProviderModelRef;
   showContext?: boolean;
 }) {
   return (
@@ -180,7 +183,7 @@ function ComposerFooter({
       <span dir="rtl">چت‌بات متن‌باز نیمروز</span>
       {showContext && model ? (
         <div className="absolute right-0 flex items-center gap-1">
-          <ChatContextUsage messages={messages} model={model} />
+          <ChatContextUsage messages={messages} model={model.modelId} />
         </div>
       ) : null}
     </div>
@@ -197,8 +200,8 @@ type ComposerSharedProps = {
     onKeyDown: (e: KeyboardEvent<HTMLTextAreaElement>) => void;
     disabled: boolean;
   };
-  model: ModelId;
-  onModelChange: (model: ModelId) => void;
+  model: ProviderModelRef;
+  onModelChange: (model: ProviderModelRef) => void;
   reasoningEffort: ReasoningEffort;
   onReasoningEffortChange: (effort: ReasoningEffort) => void;
   showReasoningEffort: boolean;

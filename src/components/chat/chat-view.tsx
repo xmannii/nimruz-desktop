@@ -3,15 +3,13 @@
 import { useAppShell } from "@/components/app-shell-context";
 import { OpenRouterApiKeyAlert } from "@/components/openrouter-api-key-alert";
 import { ChatSession } from "@/components/chat/chat-session";
-import { useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 
 type ChatViewProps = {
   chatId?: string;
 };
 
 export function ChatView({ chatId }: ChatViewProps) {
-  const navigate = useNavigate();
   const {
     activeChat,
     activeChatId,
@@ -22,42 +20,46 @@ export function ChatView({ chatId }: ChatViewProps) {
     memories,
     credentialRefreshSignal,
     stopCurrentChatRef,
+    getChatById,
     selectChat,
     updateChat,
     handleMemoriesChange,
   } = useAppShell();
 
+  const resolvedChat = useMemo(() => {
+    if (!chatId) return activeChat;
+    // State moved ahead of the URL (createChat before navigate finishes).
+    if (activeChatId && chatId !== activeChatId && activeChat) {
+      return activeChat;
+    }
+    if (activeChat?.id === chatId) return activeChat;
+    return getChatById(chatId);
+  }, [activeChat, activeChatId, chatId, getChatById]);
+
   useEffect(() => {
     if (!chatId || !isHydrated) return;
-    if (chatId !== activeChatId) {
+    if (chatId === activeChatId) return;
+    if (getChatById(chatId)) {
       selectChat(chatId);
     }
-  }, [activeChatId, chatId, isHydrated, selectChat]);
+    // Only react to URL changes (browser back/forward). Do not depend on
+    // activeChatId — createChat updates state before navigate, and syncing
+    // back to the stale URL chat undoes the new draft.
+  }, [chatId, isHydrated]);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <OpenRouterApiKeyAlert
-        refreshSignal={credentialRefreshSignal}
-        onConfigure={() => {
-          void navigate({ to: "/settings/connection" });
-        }}
-      />
+      <OpenRouterApiKeyAlert refreshSignal={credentialRefreshSignal} />
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {isHydrated &&
         areProjectsHydrated &&
         areSettingsHydrated &&
-        activeChat ? (
+        resolvedChat ? (
           <ChatSession
-            key={activeChat.id}
-            chat={activeChat}
+            key={resolvedChat.id}
+            chat={resolvedChat}
             onChatChange={updateChat}
-            onChatStarted={(id) => {
-              void navigate({
-                to: "/chat/$chatId",
-                params: { chatId: id },
-              });
-            }}
             stopRef={stopCurrentChatRef}
             personalization={personalization}
             memories={memories}

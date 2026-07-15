@@ -116,9 +116,12 @@ export const MODELS = [
   },
 ] as const satisfies readonly ModelInfo[];
 
-export type ModelId = (typeof MODELS)[number]["id"];
+/** Built-in OpenRouter model ids; runtime catalog may include custom slugs. */
+export type BuiltinModelId = (typeof MODELS)[number]["id"];
+export type ModelId = string;
 
 export const DEFAULT_MODEL: ModelId = "deepseek/deepseek-v4-flash";
+export const DEFAULT_PROVIDER_ID = "openrouter";
 
 export const MODEL_GROUPS = [
   {

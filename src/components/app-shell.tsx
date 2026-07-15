@@ -9,6 +9,7 @@ import { ChatHeader } from "@/components/chat/chat-header";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAppSettings } from "@/hooks/use-app-settings";
 import { useChatHistory } from "@/hooks/use-chat-history";
+import { useModelCatalog } from "@/hooks/use-model-catalog";
 import { useProjects, type ProjectInput } from "@/hooks/use-projects";
 import { APP_HEADER_HEIGHT } from "@/lib/branding";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
@@ -31,17 +32,32 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   const isSettingsRoute = pathname.startsWith("/settings");
 
   const {
+    providers,
+    models,
+    catalog,
+    isHydrated: isCatalogHydrated,
+    defaultRef,
+    enabledGroups,
+    hasUsableModel,
+    resolveModel,
+    getProvider,
+    refresh: refreshCatalog,
+    setCatalog,
+  } = useModelCatalog();
+
+  const {
     chats,
     activeChat,
     activeChatId,
     isHydrated,
+    getChatById,
     createChat,
     selectChat,
     updateChat,
     renameChat,
     removeChat,
     removeProjectFromChats,
-  } = useChatHistory(initialChatId);
+  } = useChatHistory(initialChatId, defaultRef);
 
   const {
     projects,
@@ -73,11 +89,19 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       isHydrated,
       areProjectsHydrated,
       areSettingsHydrated,
+      isCatalogHydrated,
       personalization,
       memories,
       personalizationSaveState,
       credentialRefreshSignal,
+      providers,
+      models,
+      catalog,
+      defaultModelRef: defaultRef,
+      enabledModelGroups: enabledGroups,
+      hasUsableModel,
       stopCurrentChatRef,
+      getChatById,
       createChat,
       selectChat,
       updateChat,
@@ -92,6 +116,10 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       handleDeleteMemory,
       bumpCredentialRefresh: () =>
         setCredentialRefreshSignal((current) => current + 1),
+      refreshCatalog,
+      setCatalog,
+      resolveModel,
+      getProvider,
     }),
     [
       chats,
@@ -101,10 +129,18 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       isHydrated,
       areProjectsHydrated,
       areSettingsHydrated,
+      isCatalogHydrated,
       personalization,
       memories,
       personalizationSaveState,
       credentialRefreshSignal,
+      providers,
+      models,
+      catalog,
+      defaultRef,
+      enabledGroups,
+      hasUsableModel,
+      getChatById,
       createChat,
       selectChat,
       updateChat,
@@ -117,19 +153,23 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       updatePersonalization,
       handleMemoriesChange,
       handleDeleteMemory,
+      refreshCatalog,
+      setCatalog,
+      resolveModel,
+      getProvider,
     ]
   );
 
   function handleNewChat() {
     stopCurrentChatRef.current?.();
-    createChat();
-    void navigate({ to: "/" });
+    const id = createChat();
+    void navigate({ to: "/chat/$chatId", params: { chatId: id } });
   }
 
   function handleNewProjectChat(projectId: string) {
     stopCurrentChatRef.current?.();
-    createChat(projectId);
-    void navigate({ to: "/" });
+    const id = createChat(projectId);
+    void navigate({ to: "/chat/$chatId", params: { chatId: id } });
   }
 
   function handleSelectChat(id: string) {
@@ -173,7 +213,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   function handleOpenSettings() {
     stopCurrentChatRef.current?.();
-    void navigate({ to: "/settings" });
+    void navigate({ to: "/settings/models" });
   }
 
   return (

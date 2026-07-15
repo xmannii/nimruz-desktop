@@ -109,7 +109,10 @@ type StartServerOptions = {
   port?: number;
   rendererDir?: string;
   sessionToken: string;
-  getApiKey: () => string | null;
+  resolveChatModel: (
+    providerId?: string,
+    modelId?: string
+  ) => import("./chat-handler").ResolvedChatModel | null;
   allowedOrigins?: string[];
 };
 
@@ -140,7 +143,7 @@ export function startServer(
     port = 0,
     rendererDir,
     sessionToken,
-    getApiKey,
+    resolveChatModel,
     allowedOrigins = [],
   } = options;
   const originAllowlist = new Set(allowedOrigins);
@@ -187,7 +190,7 @@ export function startServer(
 
       try {
         const body = await readJsonBody(req);
-        const webResponse = await handleChatRequest(body, getApiKey());
+        const webResponse = await handleChatRequest(body, resolveChatModel);
         await pipeWebResponse(webResponse, res);
       } catch (error) {
         res.writeHead(500, { "Content-Type": "application/json" });

@@ -7,16 +7,17 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k -n vite,electron -c cyan,magenta \"vite\" \"npm:dev:electron\"",
-    "dev:electron": "node scripts/esbuild.mjs && wait-on tcp:127.0.0.1:5173 && cross-env ELECTRON_RENDERER_URL=http://localhost:5173 node scripts/run-electron.mjs",
+    "dev:electron": "concurrently -k -n esbuild,electron -c yellow,magenta \"node scripts/esbuild.mjs --watch\" \"wait-on tcp:127.0.0.1:5173 dist-electron/preload.cjs && cross-env ELECTRON_RENDERER_URL=http://localhost:5173 node scripts/run-electron.mjs\"",
     "build:renderer": "vite build",
     "build:electron": "node scripts/esbuild.mjs",
     "build": "npm run build:renderer && npm run build:electron",
     "start": "npm run build && node scripts/run-electron.mjs",
     "dist": "npm run build && electron-builder",
-    "test": "tsx --test electron/**/*.test.ts",
+    "test": "tsx --test electron/**/*.test.ts src/**/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.9",
     "@ai-sdk/react": "^4.0.23",
     "@base-ui/react": "^1.6.0",
     "@openrouter/ai-sdk-provider": "^3.0.0",
@@ -77,9 +78,11 @@
     "appId": "dev.nimruz.desktop",
     "productName": "Nimruz",
     "asar": true,
+    "icon": "assets/icon.png",
     "files": [
       "dist/**",
       "dist-electron/**",
+      "assets/**",
       "package.json"
     ],
     "directories": {

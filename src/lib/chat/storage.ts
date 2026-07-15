@@ -5,6 +5,7 @@ import type { UIMessage } from "ai";
 export type LocalChat = {
   id: string;
   title: string;
+  providerId: string;
   model: ModelId;
   messages: UIMessage[];
   projectId: string | null;

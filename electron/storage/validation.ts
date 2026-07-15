@@ -3,6 +3,14 @@ import type { LegacyDataSnapshot } from "@/lib/desktop-api";
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
 import { sanitizeMemories } from "@/lib/settings/memories";
 import { sanitizePersonalizationSettings } from "@/lib/settings/personalization";
+import { DEFAULT_PROVIDER_ID } from "@/lib/models";
+import { isValidModelSlug } from "@/lib/models/sanitize";
+import {
+  sanitizeModelConfig,
+  sanitizeProviderConfig,
+  normalizeBaseUrl,
+} from "@/lib/models/sanitize";
+import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
 
 const MAX_IPC_PAYLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -19,10 +27,19 @@ function isId(value: unknown): value is string {
 function parseChat(value: unknown): LocalChat | null {
   if (!value || typeof value !== "object") return null;
   const chat = value as Partial<LocalChat>;
+  const model = String(chat.model ?? "");
+  const providerId = isId(chat.providerId)
+    ? chat.providerId
+    : DEFAULT_PROVIDER_ID;
+
+  // Accept known builtin catalog models or any non-empty slug (custom providers).
+  const modelOk =
+    Boolean(getModelById(model)) || isValidModelSlug(model);
+
   if (
     !isId(chat.id) ||
     typeof chat.title !== "string" ||
-    !getModelById(String(chat.model)) ||
+    !modelOk ||
     !Array.isArray(chat.messages) ||
     !Number.isFinite(chat.createdAt) ||
     !Number.isFinite(chat.updatedAt)
@@ -32,7 +49,8 @@ function parseChat(value: unknown): LocalChat | null {
   return {
     id: chat.id,
     title: chat.title.slice(0, 500),
-    model: chat.model!,
+    providerId,
+    model,
     messages: chat.messages,
     projectId: isId(chat.projectId) ? chat.projectId : null,
     createdAt: Number(chat.createdAt),
@@ -92,3 +110,21 @@ export function validateLegacySnapshot(value: unknown): LegacyDataSnapshot {
     memories: sanitizeMemories(snapshot.memories),
   };
 }
+
+export function validateProviderPayload(
+  value: unknown,
+  existing?: ProviderConfig | null
+): ProviderConfig {
+  assertPayloadSize(value);
+  return sanitizeProviderConfig(value, { existing });
+}
+
+export function validateModelPayload(
+  value: unknown,
+  existing?: ModelConfig | null
+): ModelConfig {
+  assertPayloadSize(value);
+  return sanitizeModelConfig(value, { existing });
+}
+
+export { normalizeBaseUrl };

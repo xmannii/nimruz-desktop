@@ -7,6 +7,7 @@ import {
   ContextContentHeader,
   ContextTrigger,
 } from "@/components/ai-elements/context";
+import { useAppShell } from "@/components/app-shell-context";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import { getModelById, type ModelId } from "@/lib/models";
 import {
@@ -58,7 +59,24 @@ export const ChatContextUsage = memo(function ChatContextUsage({
   model,
   className,
 }: ChatContextUsageProps) {
-  const modelInfo = getModelById(model);
+  const { models } = useAppShell();
+  const catalogModel = models.find((entry) => entry.modelId === model);
+  const builtin = getModelById(model);
+  const modelInfo = catalogModel
+    ? {
+        id: catalogModel.modelId,
+        name: catalogModel.name,
+        fullName: catalogModel.fullName,
+        provider: "openai" as const,
+        description: catalogModel.description,
+        contextLength: catalogModel.contextLength || 128_000,
+        maxOutput: catalogModel.maxOutput,
+        inputPricePerM: catalogModel.inputPricePerM,
+        outputPricePerM: catalogModel.outputPricePerM,
+        supportsImages: catalogModel.supportsImages,
+        supportsReasoningEffort: catalogModel.supportsReasoningEffort,
+      }
+    : builtin;
   const usage = aggregateUsageFromMessages(messages);
   const usedTokens = getContextUsedTokens(messages);
   const maxTokens = modelInfo?.contextLength ?? 128_000;

@@ -13,8 +13,8 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
+import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppSettingsMemoriesRouteImport } from './routes/_app.settings.memories'
-import { Route as AppSettingsConnectionRouteImport } from './routes/_app.settings.connection'
 import { Route as AppSettingsAppearanceRouteImport } from './routes/_app.settings.appearance'
 import { Route as AppChatChatIdRouteImport } from './routes/_app.chat.$chatId'
 
@@ -37,14 +37,14 @@ const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsModelsRoute = AppSettingsModelsRouteImport.update({
+  id: '/models',
+  path: '/models',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsMemoriesRoute = AppSettingsMemoriesRouteImport.update({
   id: '/memories',
   path: '/memories',
-  getParentRoute: () => AppSettingsRoute,
-} as any)
-const AppSettingsConnectionRoute = AppSettingsConnectionRouteImport.update({
-  id: '/connection',
-  path: '/connection',
   getParentRoute: () => AppSettingsRoute,
 } as any)
 const AppSettingsAppearanceRoute = AppSettingsAppearanceRouteImport.update({
@@ -63,16 +63,16 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AppSettingsRouteWithChildren
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
-  '/settings/connection': typeof AppSettingsConnectionRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
+  '/settings/models': typeof AppSettingsModelsRoute
   '/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
-  '/settings/connection': typeof AppSettingsConnectionRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
+  '/settings/models': typeof AppSettingsModelsRoute
   '/settings': typeof AppSettingsIndexRoute
 }
 export interface FileRoutesById {
@@ -82,8 +82,8 @@ export interface FileRoutesById {
   '/_app/': typeof AppIndexRoute
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
   '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
-  '/_app/settings/connection': typeof AppSettingsConnectionRoute
   '/_app/settings/memories': typeof AppSettingsMemoriesRoute
+  '/_app/settings/models': typeof AppSettingsModelsRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
 }
 export interface FileRouteTypes {
@@ -93,16 +93,16 @@ export interface FileRouteTypes {
     | '/settings'
     | '/chat/$chatId'
     | '/settings/appearance'
-    | '/settings/connection'
     | '/settings/memories'
+    | '/settings/models'
     | '/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/chat/$chatId'
     | '/settings/appearance'
-    | '/settings/connection'
     | '/settings/memories'
+    | '/settings/models'
     | '/settings'
   id:
     | '__root__'
@@ -111,8 +111,8 @@ export interface FileRouteTypes {
     | '/_app/'
     | '/_app/chat/$chatId'
     | '/_app/settings/appearance'
-    | '/_app/settings/connection'
     | '/_app/settings/memories'
+    | '/_app/settings/models'
     | '/_app/settings/'
   fileRoutesById: FileRoutesById
 }
@@ -150,18 +150,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsIndexRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/models': {
+      id: '/_app/settings/models'
+      path: '/models'
+      fullPath: '/settings/models'
+      preLoaderRoute: typeof AppSettingsModelsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/settings/memories': {
       id: '/_app/settings/memories'
       path: '/memories'
       fullPath: '/settings/memories'
       preLoaderRoute: typeof AppSettingsMemoriesRouteImport
-      parentRoute: typeof AppSettingsRoute
-    }
-    '/_app/settings/connection': {
-      id: '/_app/settings/connection'
-      path: '/connection'
-      fullPath: '/settings/connection'
-      preLoaderRoute: typeof AppSettingsConnectionRouteImport
       parentRoute: typeof AppSettingsRoute
     }
     '/_app/settings/appearance': {
@@ -183,15 +183,15 @@ declare module '@tanstack/react-router' {
 
 interface AppSettingsRouteChildren {
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
-  AppSettingsConnectionRoute: typeof AppSettingsConnectionRoute
   AppSettingsMemoriesRoute: typeof AppSettingsMemoriesRoute
+  AppSettingsModelsRoute: typeof AppSettingsModelsRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
 const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
-  AppSettingsConnectionRoute: AppSettingsConnectionRoute,
   AppSettingsMemoriesRoute: AppSettingsMemoriesRoute,
+  AppSettingsModelsRoute: AppSettingsModelsRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 

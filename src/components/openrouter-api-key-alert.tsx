@@ -1,5 +1,6 @@
 "use client";
 
+import { useAppShell } from "@/components/app-shell-context";
 import {
   Alert,
   AlertAction,
@@ -7,36 +8,66 @@ import {
   AlertTitle,
 } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { useCredentialStatus } from "@/hooks/use-credential-status";
+import { OPENROUTER_PROVIDER_ID } from "@/lib/models/catalog";
+import { useNavigate } from "@tanstack/react-router";
 import { KeyRoundIcon } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
-type OpenRouterApiKeyAlertProps = {
-  onConfigure: () => void;
+type ProviderSetupAlertProps = {
   refreshSignal?: number;
 };
 
-export function OpenRouterApiKeyAlert({
-  onConfigure,
-  refreshSignal = 0,
-}: OpenRouterApiKeyAlertProps) {
-  const { status, isLoading, needsApiKey, refresh } = useCredentialStatus();
+export function ProviderSetupAlert({ refreshSignal = 0 }: ProviderSetupAlertProps) {
+  const navigate = useNavigate();
+  const { hasUsableModel, providers, isCatalogHydrated } = useAppShell();
+  const [openrouterConfigured, setOpenrouterConfigured] = useState(true);
+  const [secure, setSecure] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh, refreshSignal]);
+    let cancelled = false;
+    void window.desktop.credentials
+      .getStatus(OPENROUTER_PROVIDER_ID)
+      .then((status) => {
+        if (cancelled) return;
+        setOpenrouterConfigured(status.configured);
+        setSecure(status.secure);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setOpenrouterConfigured(false);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshSignal]);
 
-  if (isLoading || !needsApiKey || !status) {
-    return null;
-  }
+  if (isLoading || !isCatalogHydrated) return null;
 
-  const title = !status.secure
+  const openrouter = providers.find(
+    (provider) => provider.id === OPENROUTER_PROVIDER_ID
+  );
+  const needsOpenRouterKey =
+    Boolean(openrouter?.enabled) &&
+    openrouter?.authRequired &&
+    (!openrouterConfigured || !secure);
+
+  if (hasUsableModel && !needsOpenRouterKey) return null;
+
+  const title = !secure
     ? "رمزنگاری امن در دسترس نیست"
-    : "کلید OpenRouter تنظیم نشده است";
+    : !hasUsableModel
+      ? "مدل فعالی تنظیم نشده است"
+      : "کلید OpenRouter تنظیم نشده است";
 
-  const description = !status.secure
-    ? "برای ذخیره کلید API روی این سیستم، رمزنگاری امن (مثل libsecret) لازم است. تا آن زمان امکان گفتگو با مدل‌ها وجود ندارد."
-    : "برای شروع گفتگو، کلید API خود را از OpenRouter در تنظیمات وارد کنید.";
+  const description = !secure
+    ? "برای ذخیره کلید API روی این سیستم، رمزنگاری امن (مثل libsecret) لازم است."
+    : !hasUsableModel
+      ? "یک ارائه‌دهنده و مدل را در تنظیمات فعال کنید، یا کلید OpenRouter را وارد کنید."
+      : "برای استفاده از OpenRouter، کلید API را در تنظیمات مدل‌ها وارد کنید.";
 
   return (
     <div className="shrink-0 border-b border-border px-3 py-3 sm:px-6">
@@ -48,16 +79,18 @@ export function OpenRouterApiKeyAlert({
         <KeyRoundIcon />
         <AlertTitle>{title}</AlertTitle>
         <AlertDescription>{description}</AlertDescription>
-        {status.secure ? (
+        {secure ? (
           <AlertAction>
             <Button
               type="button"
               size="sm"
               variant="outline"
               className="border-amber-500/50 bg-background/80"
-              onClick={onConfigure}
+              onClick={() => {
+                void navigate({ to: "/settings/models" });
+              }}
             >
-              افزودن کلید
+              تنظیم مدل‌ها
             </Button>
           </AlertAction>
         ) : null}
@@ -65,3 +98,6 @@ export function OpenRouterApiKeyAlert({
     </div>
   );
 }
+
+/** @deprecated Prefer ProviderSetupAlert */
+export const OpenRouterApiKeyAlert = ProviderSetupAlert;

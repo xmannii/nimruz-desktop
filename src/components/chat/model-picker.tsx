@@ -1,5 +1,6 @@
 "use client";
 
+import { useAppShell } from "@/components/app-shell-context";
 import { Anthropic, DeepSeek, OpenAI } from "@/components/provider-logos";
 import { Button } from "@/components/ui/button";
 import {
@@ -8,62 +9,63 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import type { ModelConfig, ProviderModelRef } from "@/lib/models/catalog";
+import { formatModelPrice, formatTokenCount } from "@/lib/models";
 import { cn } from "@/lib/utils";
-import {
-  formatModelPrice,
-  formatTokenCount,
-  getModelById,
-  MODEL_GROUPS,
-  type ModelId,
-  type ProviderId,
-} from "@/lib/models";
-import { CheckIcon, ChevronDownIcon } from "lucide-react";
-import type { ComponentType, SVGProps } from "react";
-import { useState } from "react";
+import { Link } from "@tanstack/react-router";
+import { CheckIcon, ChevronDownIcon, Settings2Icon } from "lucide-react";
+import { useMemo, useState } from "react";
 
 type ModelPickerProps = {
-  value: ModelId;
-  onValueChange: (value: ModelId) => void;
+  value: ProviderModelRef;
+  onValueChange: (value: ProviderModelRef) => void;
   disabled?: boolean;
   compact?: boolean;
 };
 
-const providerLogos: Record<
-  ProviderId,
-  ComponentType<SVGProps<SVGSVGElement>>
-> = {
-  deepseek: DeepSeek,
-  anthropic: Anthropic,
-  openai: OpenAI,
-};
-
-const providerLogoStyles: Record<ProviderId, string> = {
-  deepseek: "bg-[#4D6BFE]/10",
-  anthropic: "bg-[#D97757]",
-  openai: "bg-[#111]",
-};
-
-function ProviderIcon({
-  provider,
+function ProviderAvatar({
+  name,
   className,
 }: {
-  provider: ProviderId;
+  name: string;
   className?: string;
 }) {
-  const Logo = providerLogos[provider];
-
+  const lower = name.toLowerCase();
+  if (lower.includes("deepseek")) {
+    return (
+      <span className={cn("flex size-7 items-center justify-center rounded-md bg-[#4D6BFE]/10", className)}>
+        <DeepSeek className="size-4" />
+      </span>
+    );
+  }
+  if (lower.includes("anthropic") || lower.includes("claude")) {
+    return (
+      <span className={cn("flex size-7 items-center justify-center rounded-md bg-[#D97757]", className)}>
+        <Anthropic className="size-4" />
+      </span>
+    );
+  }
+  if (lower.includes("openai") || lower.includes("gpt")) {
+    return (
+      <span className={cn("flex size-7 items-center justify-center rounded-md bg-[#111]", className)}>
+        <OpenAI className="size-4" />
+      </span>
+    );
+  }
   return (
     <span
       className={cn(
-        "flex size-7 shrink-0 items-center justify-center rounded-md",
-        providerLogoStyles[provider],
+        "flex size-7 items-center justify-center rounded-md bg-muted text-[10px] font-medium uppercase text-muted-foreground",
         className
       )}
-      aria-hidden
     >
-      <Logo className="size-4" />
+      {name.slice(0, 2)}
     </span>
   );
+}
+
+function modelKey(model: Pick<ModelConfig, "providerId" | "modelId">) {
+  return `${model.providerId}::${model.modelId}`;
 }
 
 export function ModelPicker({
@@ -73,7 +75,10 @@ export function ModelPicker({
   compact = false,
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
-  const selected = getModelById(value);
+  const { enabledModelGroups, resolveModel } = useAppShell();
+  const selected = resolveModel(value);
+
+  const groups = useMemo(() => enabledModelGroups, [enabledModelGroups]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -90,8 +95,8 @@ export function ModelPicker({
         aria-label={selected ? `مدل: ${selected.fullName}` : "انتخاب مدل"}
       >
         {selected ? (
-          <ProviderIcon
-            provider={selected.provider}
+          <ProviderAvatar
+            name={selected.fullName}
             className="size-5 shrink-0 rounded-sm [&_svg]:size-3"
           />
         ) : null}
@@ -123,57 +128,105 @@ export function ModelPicker({
         </div>
 
         <ScrollArea className="h-64" dir="ltr">
-          <div className="space-y-1 p-1.5" dir="ltr">
-            {MODEL_GROUPS.map((group) => (
-              <section key={group.provider}>
-                <div className="px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  {group.label}
-                </div>
+          <div className="flex flex-col gap-1 p-1.5" dir="ltr">
+            {groups.length === 0 ? (
+              <div className="px-3 py-8 text-center text-xs text-muted-foreground" dir="rtl">
+                مدلی فعال نیست. از تنظیمات مدل‌ها یکی را فعال کنید.
+              </div>
+            ) : (
+              groups.map((group) => (
+                <section key={group.provider.id}>
+                  <div className="px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {group.provider.name}
+                  </div>
+                  {group.models.map((model) => {
+                    const isSelected =
+                      modelKey(model) === modelKey(value);
 
-                {group.models.map((model) => {
-                  const isSelected = model.id === value;
-
-                  return (
-                    <Button
-                      key={model.id}
-                      type="button"
-                      variant="ghost"
-                      className={cn(
-                        "mb-0.5 h-auto w-full justify-start gap-2.5 rounded-lg px-2 py-2 text-left whitespace-normal",
-                        isSelected && "bg-muted"
-                      )}
-                      onClick={() => {
-                        onValueChange(model.id);
-                        setOpen(false);
-                      }}
-                    >
-                      <ProviderIcon provider={model.provider} />
-
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center justify-between gap-2">
-                          <span className="truncate text-xs font-medium">
-                            {model.fullName}
+                    return (
+                      <Button
+                        key={model.id}
+                        type="button"
+                        variant="ghost"
+                        className={cn(
+                          "mb-0.5 h-auto w-full justify-start gap-2.5 rounded-lg px-2 py-2 text-left whitespace-normal",
+                          isSelected && "bg-muted"
+                        )}
+                        onClick={() => {
+                          onValueChange({
+                            providerId: model.providerId,
+                            modelId: model.modelId,
+                          });
+                          setOpen(false);
+                        }}
+                      >
+                        <ProviderAvatar name={model.fullName} />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="truncate text-xs font-medium">
+                              {model.fullName}
+                            </span>
+                            {isSelected ? (
+                              <CheckIcon className="size-3.5 shrink-0 text-primary" />
+                            ) : null}
                           </span>
-                          {isSelected ? (
-                            <CheckIcon className="size-3.5 shrink-0 text-primary" />
-                          ) : null}
+                          <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                            {model.contextLength > 0 ? (
+                              <>
+                                <span>
+                                  {formatTokenCount(model.contextLength)} ctx
+                                </span>
+                                <span aria-hidden>·</span>
+                              </>
+                            ) : null}
+                            {model.maxOutput > 0 ? (
+                              <>
+                                <span>
+                                  {formatTokenCount(model.maxOutput)} out
+                                </span>
+                                <span aria-hidden>·</span>
+                              </>
+                            ) : null}
+                            <span>
+                              {formatModelPrice({
+                                id: model.modelId,
+                                name: model.name,
+                                fullName: model.fullName,
+                                provider: "openai",
+                                description: model.description,
+                                contextLength: model.contextLength,
+                                maxOutput: model.maxOutput,
+                                inputPricePerM: model.inputPricePerM,
+                                outputPricePerM: model.outputPricePerM,
+                                supportsImages: model.supportsImages,
+                                supportsReasoningEffort:
+                                  model.supportsReasoningEffort,
+                              })}
+                            </span>
+                          </span>
                         </span>
-
-                        <span className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                          <span>{formatTokenCount(model.contextLength)} ctx</span>
-                          <span aria-hidden>·</span>
-                          <span>{formatTokenCount(model.maxOutput)} out</span>
-                          <span aria-hidden>·</span>
-                          <span>{formatModelPrice(model)}</span>
-                        </span>
-                      </span>
-                    </Button>
-                  );
-                })}
-              </section>
-            ))}
+                      </Button>
+                    );
+                  })}
+                </section>
+              ))
+            )}
           </div>
         </ScrollArea>
+
+        <div className="border-t border-border/60 p-1.5" dir="rtl">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start"
+            render={<Link to="/settings/models" />}
+            onClick={() => setOpen(false)}
+          >
+            <Settings2Icon data-icon="inline-start" />
+            مدیریت مدل‌ها
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   );

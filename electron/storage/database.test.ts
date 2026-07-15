@@ -6,6 +6,7 @@ import test from "node:test";
 import type { LegacyDataSnapshot } from "@/lib/desktop-api";
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
 import { DEFAULT_PERSONALIZATION_SETTINGS } from "@/lib/settings/personalization";
+import { groupEnabledModels } from "@/lib/models/catalog";
 import {
   validateChatsPayload,
   validateProjectPayload,
@@ -36,6 +37,7 @@ const project: LocalProject = {
 const chat: LocalChat = {
   id: "chat-1",
   title: "Hello",
+  providerId: "openrouter",
   model: "deepseek/deepseek-v4-flash",
   messages: [
     {
@@ -115,4 +117,80 @@ test("rejects malformed IPC storage payloads", () => {
   assert.throws(() => validateProjectPayload({ id: "invalid/id" }));
   assert.equal(validateChatsPayload([chat]).length, 1);
   assert.equal(validateProjectPayload(project).id, project.id);
+});
+
+test("seeds OpenRouter catalog and supports custom providers", async () => {
+  await withDatabase((database) => {
+    const catalog = database.loadCatalog();
+    assert.ok(catalog.providers.some((provider) => provider.id === "openrouter"));
+    assert.ok(catalog.models.length >= 7);
+    assert.equal(database.loadChats()[0]?.providerId ?? "openrouter", "openrouter");
+
+    const provider = database.saveProvider({
+      id: "lmstudio",
+      name: "LM Studio",
+      kind: "openai-compatible",
+      baseUrl: "http://localhost:1234/v1",
+      enabled: true,
+      includeUsage: true,
+      authRequired: false,
+    });
+    assert.equal(provider.baseUrl, "http://localhost:1234/v1");
+
+    const model = database.saveModel({
+      id: "lmstudio-llama",
+      providerId: "lmstudio",
+      modelId: "llama-3.2-3b",
+      name: "Llama",
+      fullName: "Llama 3.2 3B",
+      enabled: true,
+      isDefault: true,
+      source: "manual",
+      supportsTools: true,
+    });
+    assert.equal(model.isDefault, true);
+    assert.equal(database.listModels("lmstudio").length, 1);
+
+    const resolved = database.resolveChatModel("lmstudio", "llama-3.2-3b");
+    assert.equal(resolved?.provider.id, "lmstudio");
+    assert.equal(resolved?.model.modelId, "llama-3.2-3b");
+
+    database.deleteModel(model.id);
+    assert.equal(database.listModels("lmstudio").length, 0);
+
+    database.deleteProvider("lmstudio");
+    assert.equal(database.getProvider("lmstudio"), null);
+
+    assert.throws(() => database.deleteProvider("openrouter"));
+  });
+});
+
+test("disabling OpenRouter removes its models from picker groups", async () => {
+  await withDatabase((database) => {
+    database.saveProvider({
+      id: "openrouter",
+      name: "OpenRouter",
+      kind: "openrouter",
+      baseUrl: "https://openrouter.ai/api/v1",
+      enabled: false,
+    });
+
+    const catalog = database.loadCatalog();
+    const groups = groupEnabledModels(catalog.models, catalog.providers);
+    assert.equal(groups.length, 0);
+    assert.equal(database.getProvider("openrouter")?.enabled, false);
+  });
+});
+
+test("normalizes private http base URLs and rejects public http", async () => {
+  await withDatabase((database) => {
+    assert.throws(() =>
+      database.saveProvider({
+        id: "bad",
+        name: "Bad",
+        kind: "openai-compatible",
+        baseUrl: "http://example.com/v1",
+      })
+    );
+  });
 });

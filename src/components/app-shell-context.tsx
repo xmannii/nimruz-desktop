@@ -3,6 +3,12 @@
 import type { ChatUpdate } from "@/hooks/use-chat-history";
 import type { ProjectInput } from "@/hooks/use-projects";
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
+import type {
+  ModelCatalogSnapshot,
+  ModelConfig,
+  ProviderConfig,
+  ProviderModelRef,
+} from "@/lib/models/catalog";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
 import type { MemoryEntry } from "@/lib/settings/memories";
 import {
@@ -20,11 +26,22 @@ export type AppShellContextValue = {
   isHydrated: boolean;
   areProjectsHydrated: boolean;
   areSettingsHydrated: boolean;
+  isCatalogHydrated: boolean;
   personalization: PersonalizationSettings;
   memories: MemoryEntry[];
   personalizationSaveState: "idle" | "saving" | "saved" | "error";
   credentialRefreshSignal: number;
+  providers: ProviderConfig[];
+  models: ModelConfig[];
+  catalog: ModelCatalogSnapshot;
+  defaultModelRef: ProviderModelRef | null;
+  enabledModelGroups: Array<{
+    provider: ProviderConfig;
+    models: ModelConfig[];
+  }>;
+  hasUsableModel: boolean;
   stopCurrentChatRef: MutableRefObject<(() => void) | null>;
+  getChatById: (id: string) => LocalChat | null;
   createChat: (projectId?: string | null) => string;
   selectChat: (id: string) => void;
   updateChat: (id: string, update: ChatUpdate) => void;
@@ -38,6 +55,10 @@ export type AppShellContextValue = {
   handleMemoriesChange: (memories: MemoryEntry[]) => void;
   handleDeleteMemory: (id: string) => void;
   bumpCredentialRefresh: () => void;
+  refreshCatalog: () => Promise<ModelCatalogSnapshot>;
+  setCatalog: (catalog: ModelCatalogSnapshot) => void;
+  resolveModel: (ref: ProviderModelRef | null | undefined) => ModelConfig | undefined;
+  getProvider: (id: string) => ProviderConfig | undefined;
 };
 
 const AppShellContext = createContext<AppShellContextValue | null>(null);

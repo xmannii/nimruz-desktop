@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BrainIcon,
-  KeyRoundIcon,
+  CpuIcon,
   PaletteIcon,
   UserRoundIcon,
   type LucideIcon,
@@ -15,7 +15,7 @@ const SETTINGS_NAV: Array<{
   to:
     | "/settings"
     | "/settings/memories"
-    | "/settings/connection"
+    | "/settings/models"
     | "/settings/appearance";
   label: string;
   icon: LucideIcon;
@@ -30,17 +30,17 @@ const SETTINGS_NAV: Array<{
       pathname === "/settings" || pathname === "/settings/",
   },
   {
+    to: "/settings/models",
+    label: "مدل‌ها",
+    icon: CpuIcon,
+    match: (pathname) => pathname.startsWith("/settings/models"),
+  },
+  {
     to: "/settings/memories",
     label: "خاطره‌ها",
     icon: BrainIcon,
     match: (pathname) => pathname.startsWith("/settings/memories"),
     badgeKey: "memories",
-  },
-  {
-    to: "/settings/connection",
-    label: "اتصال",
-    icon: KeyRoundIcon,
-    match: (pathname) => pathname.startsWith("/settings/connection"),
   },
   {
     to: "/settings/appearance",

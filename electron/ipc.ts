@@ -1,7 +1,12 @@
 import { ipcMain, type IpcMainInvokeEvent } from "electron";
+import { nanoid } from "nanoid";
 import type { LegacyImportResult } from "@/lib/desktop-api";
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import {
+  OPENROUTER_PROVIDER_ID,
+  PROVIDER_LIMITS,
+} from "@/lib/models/catalog";
 import { CredentialService } from "./credentials";
 import { AppDatabase } from "./storage/database";
 import { registerWindowControlHandlers } from "./window-controls";
@@ -41,7 +46,20 @@ export function registerIpcHandlers(options: {
 
   handle("auth:get-session-token", () => sessionToken);
 
-  handle("credentials:status", () => credentials.getStatus());
+  handle("credentials:status", (providerId?: string) =>
+    credentials.getStatus(providerId ?? OPENROUTER_PROVIDER_ID)
+  );
+  handle("credentials:set-key", (providerId: string, key: string) =>
+    credentials.setKey(providerId, key)
+  );
+  handle("credentials:clear-key", (providerId: string) =>
+    credentials.clearKey(providerId)
+  );
+  handle(
+    "credentials:test-provider",
+    (options: { providerId?: string; baseUrl?: string; apiKey?: string }) =>
+      credentials.testProvider(options)
+  );
   handle("credentials:set-openrouter", (key: string) =>
     credentials.setOpenRouterKey(key)
   );
@@ -50,6 +68,121 @@ export function registerIpcHandlers(options: {
   );
   handle("credentials:test-openrouter", (key?: string) =>
     credentials.testOpenRouterKey(key)
+  );
+
+  handle("providers:list-catalog", () => database.loadCatalog());
+  handle("providers:save-provider", (value: unknown) =>
+    database.saveProvider(value)
+  );
+  handle("providers:delete-provider", (id: string) =>
+    database.deleteProvider(id)
+  );
+  handle("providers:save-model", (value: unknown) => database.saveModel(value));
+  handle("providers:delete-model", (id: string) => database.deleteModel(id));
+  handle("providers:delete-provider-models", (providerId: string) =>
+    database.deleteProviderModels(providerId)
+  );
+  handle("providers:set-default-model", (id: string) =>
+    database.setDefaultModel(id)
+  );
+  handle(
+    "providers:discover-models",
+    async (options: {
+      providerId: string;
+      baseUrl?: string;
+      apiKey?: string;
+      import?: boolean;
+    }) => {
+      const provider = database.getProvider(options.providerId);
+      if (!provider) {
+        return {
+          ok: false,
+          message: "ارائه‌دهنده یافت نشد.",
+          models: [],
+          added: 0,
+          updated: 0,
+        };
+      }
+
+      if (provider.isBuiltin) {
+        return {
+          ok: false,
+          message:
+            "دریافت گروهی مدل برای OpenRouter پشتیبانی نمی‌شود. مدل‌های پیش‌فرض آماده‌اند؛ برای مدل دیگر شناسه را دستی اضافه کنید.",
+          models: [],
+          added: 0,
+          updated: 0,
+        };
+      }
+
+      const discovery = await credentials.discoverModels(options);
+      if (!discovery.ok || !options.import) {
+        return discovery;
+      }
+
+      let added = 0;
+      let updated = 0;
+      let skipped = 0;
+      const existing = database.listModels(options.providerId);
+      const remainingSlots = Math.max(
+        0,
+        PROVIDER_LIMITS.maxModelsPerProvider - existing.length
+      );
+
+      for (const item of discovery.models) {
+        const current = existing.find((model) => model.modelId === item.modelId);
+        if (current) {
+          database.saveModel({
+            ...current,
+            name: current.name || item.name || current.modelId,
+            fullName: current.fullName || item.name || current.modelId,
+            source: current.source === "builtin" ? "builtin" : "discovered",
+          });
+          updated += 1;
+          continue;
+        }
+
+        if (added >= remainingSlots) {
+          skipped += 1;
+          continue;
+        }
+
+        const shortName =
+          item.name || item.modelId.split("/").at(-1) || item.modelId;
+        database.saveModel({
+          id: nanoid(),
+          providerId: options.providerId,
+          modelId: item.modelId,
+          name: shortName,
+          fullName: item.name || shortName,
+          description: "",
+          enabled: true,
+          isDefault: false,
+          source: "discovered",
+          supportsImages: false,
+          supportsTools: true,
+          supportsReasoningEffort: false,
+          contextLength: 0,
+          maxOutput: 0,
+          inputPricePerM: 0,
+          outputPricePerM: 0,
+        });
+        added += 1;
+      }
+
+      const limitNote =
+        skipped > 0
+          ? ` ${skipped.toLocaleString("fa-IR")} مدل به‌خاطر سقف ۲۰۰ مدل وارد نشد.`
+          : "";
+
+      return {
+        ...discovery,
+        added,
+        updated,
+        message: `${added.toLocaleString("fa-IR")} مدل جدید و ${updated.toLocaleString("fa-IR")} مدل به‌روز شد.${limitNote}`,
+        catalog: database.loadCatalog(),
+      };
+    }
   );
 
   handle("storage:load-chats", () => database.loadChats());

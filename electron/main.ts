@@ -1,5 +1,6 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, nativeImage, shell } from "electron";
 import { randomBytes } from "node:crypto";
+import { existsSync } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -22,12 +23,31 @@ const DEV_API_PORT = 43117;
 const RENDERER_DEV_URL = process.env.ELECTRON_RENDERER_URL;
 const isDev = Boolean(RENDERER_DEV_URL);
 
+function resolveAppIcon(): Electron.NativeImage | undefined {
+  const candidates = [
+    path.join(__dirname, "../assets/icon.png"),
+    path.join(app.getAppPath(), "assets/icon.png"),
+  ];
+
+  for (const candidate of candidates) {
+    const absolutePath = path.resolve(candidate);
+    if (!existsSync(absolutePath)) continue;
+
+    const image = nativeImage.createFromPath(absolutePath);
+    if (!image.isEmpty()) return image;
+  }
+
+  return undefined;
+}
+
 let mainWindow: BrowserWindow | null = null;
 let localServer: http.Server | null = null;
 let database: AppDatabase | null = null;
 let rendererUrl = "";
 
 async function createWindow() {
+  const appIcon = resolveAppIcon();
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
@@ -37,6 +57,7 @@ async function createWindow() {
     show: false,
     frame: false,
     title: APP_NAME_FA,
+    icon: appIcon,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -44,6 +65,10 @@ async function createWindow() {
       sandbox: true,
     },
   });
+
+  if (appIcon) {
+    mainWindow.setIcon(appIcon);
+  }
 
   mainWindow.once("ready-to-show", () => mainWindow?.show());
 
@@ -86,7 +111,15 @@ app.whenReady().then(async () => {
     const result = await startServer({
       port: DEV_API_PORT,
       sessionToken,
-      getApiKey: () => credentials.getOpenRouterKey(),
+      resolveChatModel: (providerId, modelId) => {
+        const resolved = database?.resolveChatModel(providerId, modelId);
+        if (!resolved) return null;
+        const auth = credentials.resolveProviderAuth(resolved.provider);
+        return {
+          ...resolved,
+          apiKey: auth.apiKey,
+        };
+      },
       allowedOrigins: [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -99,7 +132,15 @@ app.whenReady().then(async () => {
     const result = await startServer({
       rendererDir,
       sessionToken,
-      getApiKey: () => credentials.getOpenRouterKey(),
+      resolveChatModel: (providerId, modelId) => {
+        const resolved = database?.resolveChatModel(providerId, modelId);
+        if (!resolved) return null;
+        const auth = credentials.resolveProviderAuth(resolved.provider);
+        return {
+          ...resolved,
+          apiKey: auth.apiKey,
+        };
+      },
     });
     localServer = result.server;
     rendererUrl = `http://127.0.0.1:${result.port}/`;

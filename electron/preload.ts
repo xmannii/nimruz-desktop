@@ -22,13 +22,34 @@ const desktopApi: DesktopAPI = {
     },
   },
   credentials: {
-    getStatus: () => ipcRenderer.invoke("credentials:status"),
+    getStatus: (providerId) =>
+      ipcRenderer.invoke("credentials:status", providerId),
+    setKey: (providerId, key) =>
+      ipcRenderer.invoke("credentials:set-key", providerId, key),
+    clearKey: (providerId) =>
+      ipcRenderer.invoke("credentials:clear-key", providerId),
+    testProvider: (options) =>
+      ipcRenderer.invoke("credentials:test-provider", options),
     setOpenRouterKey: (key) =>
       ipcRenderer.invoke("credentials:set-openrouter", key),
     clearOpenRouterKey: () =>
       ipcRenderer.invoke("credentials:clear-openrouter"),
     testOpenRouterKey: (key) =>
       ipcRenderer.invoke("credentials:test-openrouter", key),
+  },
+  providers: {
+    listCatalog: () => ipcRenderer.invoke("providers:list-catalog"),
+    saveProvider: (provider) =>
+      ipcRenderer.invoke("providers:save-provider", provider),
+    deleteProvider: (id) => ipcRenderer.invoke("providers:delete-provider", id),
+    saveModel: (model) => ipcRenderer.invoke("providers:save-model", model),
+    deleteModel: (id) => ipcRenderer.invoke("providers:delete-model", id),
+    deleteProviderModels: (providerId) =>
+      ipcRenderer.invoke("providers:delete-provider-models", providerId),
+    setDefaultModel: (id) =>
+      ipcRenderer.invoke("providers:set-default-model", id),
+    discoverModels: (options) =>
+      ipcRenderer.invoke("providers:discover-models", options),
   },
   storage: {
     loadChats: () => ipcRenderer.invoke("storage:load-chats"),

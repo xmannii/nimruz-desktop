@@ -1,9 +1,11 @@
 "use client";
 
 import type { ChatUpdate } from "@/hooks/use-chat-history";
+import { useAppShell } from "@/components/app-shell-context";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import type { LocalChat } from "@/lib/chat/storage";
-import type { ModelId } from "@/lib/models";
+import { DEFAULT_PROVIDER_ID, type ModelId } from "@/lib/models";
+import type { ProviderModelRef } from "@/lib/models/catalog";
 import {
   DEFAULT_REASONING_EFFORT,
   type ReasoningEffort,
@@ -29,6 +31,8 @@ import {
 } from "react";
 import { ChatComposer } from "./chat-composer";
 import { ChatMessages } from "./chat-messages";
+import { getChatErrorMessage } from "@/lib/chat/errors";
+import { toast } from "sonner";
 
 const CHAT_UPDATE_THROTTLE_MS = 50;
 let sessionTokenPromise: Promise<string> | undefined;
@@ -41,7 +45,6 @@ function getSessionToken() {
 type ChatSessionProps = {
   chat: LocalChat;
   onChatChange: (id: string, update: ChatUpdate) => void;
-  onChatStarted: (id: string) => void;
   stopRef: MutableRefObject<(() => void) | null>;
   personalization: PersonalizationSettings;
   memories: MemoryEntry[];
@@ -51,17 +54,46 @@ type ChatSessionProps = {
 export function ChatSession({
   chat,
   onChatChange,
-  onChatStarted,
   stopRef,
   personalization,
   memories,
   onMemoriesChange,
 }: ChatSessionProps) {
+  const { enabledModelGroups, defaultModelRef, resolveModel } = useAppShell();
   const [text, setText] = useState("");
-  const [model, setModel] = useState<ModelId>(chat.model);
+  const [modelRef, setModelRef] = useState<ProviderModelRef>({
+    providerId: chat.providerId || DEFAULT_PROVIDER_ID,
+    modelId: chat.model,
+  });
   const [reasoningEffort, setReasoningEffort] =
     useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT);
   const hasMounted = useRef(false);
+  useEffect(() => {
+    setModelRef({
+      providerId: chat.providerId || DEFAULT_PROVIDER_ID,
+      modelId: chat.model,
+    });
+  }, [chat.id, chat.model, chat.providerId]);
+
+  useEffect(() => {
+    if (!resolveModel(modelRef)) {
+      const fallback =
+        enabledModelGroups.flatMap((group) => group.models)[0] ?? defaultModelRef;
+      if (
+        fallback &&
+        (fallback.providerId !== modelRef.providerId ||
+          fallback.modelId !== modelRef.modelId)
+      ) {
+        setModelRef(fallback);
+      }
+    }
+  }, [
+    defaultModelRef,
+    enabledModelGroups,
+    modelRef,
+    resolveModel,
+  ]);
+
   const transport = useMemo(
     () =>
       new DefaultChatTransport<ChatUIMessage>({
@@ -73,6 +105,10 @@ export function ChatSession({
     []
   );
 
+  const handleChatError = useCallback((chatError: Error) => {
+    toast.error(getChatErrorMessage(chatError));
+  }, []);
+
   const { messages, sendMessage, status, stop, error, addToolOutput } =
     useChat<ChatUIMessage>({
       id: chat.id,
@@ -80,10 +116,17 @@ export function ChatSession({
       transport,
       throttle: CHAT_UPDATE_THROTTLE_MS,
       sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+      onError: handleChatError,
       onToolCall: ({ toolCall }) => {
         if (toolCall.dynamic) return;
 
-        const requestBody = { model, reasoningEffort, personalization, memories };
+        const requestBody = {
+          providerId: modelRef.providerId,
+          model: modelRef.modelId,
+          reasoningEffort,
+          personalization,
+          memories,
+        };
 
         if (toolCall.toolName === "save_memory") {
           const input = toolCall.input as {
@@ -163,11 +206,15 @@ export function ChatSession({
 
     if (status === "submitted" || status === "streaming") return;
 
-    onChatChange(chat.id, { messages, model });
-  }, [chat.id, messages, model, onChatChange, status]);
+    onChatChange(chat.id, {
+      messages,
+      model: modelRef.modelId as ModelId,
+      providerId: modelRef.providerId,
+    });
+  }, [chat.id, messages, modelRef, onChatChange, status]);
 
-  const handleModelChange = useCallback((nextModel: ModelId) => {
-    setModel(nextModel);
+  const handleModelChange = useCallback((next: ProviderModelRef) => {
+    setModelRef(next);
   }, []);
 
   const handleReasoningEffortChange = useCallback(
@@ -186,14 +233,16 @@ export function ChatSession({
     const trimmed = text.trim();
     if (!trimmed || isBusy) return;
 
-    if (chat.messages.length === 0) {
-      onChatStarted(chat.id);
-    }
-
     void sendMessage(
       { text: trimmed },
       {
-        body: { model, reasoningEffort, personalization, memories },
+        body: {
+          providerId: modelRef.providerId,
+          model: modelRef.modelId,
+          reasoningEffort,
+          personalization,
+          memories,
+        },
       }
     );
     setText("");
@@ -205,7 +254,7 @@ export function ChatSession({
     <ChatComposer
       text={text}
       onTextChange={setText}
-      model={model}
+      model={modelRef}
       onModelChange={handleModelChange}
       reasoningEffort={reasoningEffort}
       onReasoningEffortChange={handleReasoningEffortChange}
