@@ -108,9 +108,15 @@
     },
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "assets/icon.png",
       "target": [
         "dmg"
       ]
+    },
+    "dmg": {
+      "icon": "assets/icon.png",
+      "iconSize": 128,
+      "title": "Nimruz"
     },
     "win": {
       "target": [
