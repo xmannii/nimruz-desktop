@@ -59,7 +59,14 @@ export function ChatSession({
   memories,
   onMemoriesChange,
 }: ChatSessionProps) {
-  const { enabledModelGroups, defaultModelRef, resolveModel } = useAppShell();
+  const {
+    catalog,
+    enabledModelGroups,
+    defaultModelRef,
+    resolveModel,
+    refreshCatalog,
+    setCatalog,
+  } = useAppShell();
   const [text, setText] = useState("");
   const [modelRef, setModelRef] = useState<ProviderModelRef>({
     providerId: chat.providerId || DEFAULT_PROVIDER_ID,
@@ -213,9 +220,32 @@ export function ChatSession({
     });
   }, [chat.id, messages, modelRef, onChatChange, status]);
 
-  const handleModelChange = useCallback((next: ProviderModelRef) => {
-    setModelRef(next);
-  }, []);
+  const handleModelChange = useCallback(
+    (next: ProviderModelRef) => {
+      setModelRef(next);
+
+      const model = resolveModel(next);
+      if (!model || model.isDefault) return;
+
+      // Remember the last picker choice as the preferred model for new chats.
+      setCatalog({
+        ...catalog,
+        models: catalog.models.map((item) => ({
+          ...item,
+          isDefault: item.id === model.id,
+        })),
+      });
+
+      void window.desktop.providers
+        .setDefaultModel(model.id)
+        .then(() => refreshCatalog())
+        .catch((error) => {
+          console.error("Failed to persist last selected model:", error);
+          void refreshCatalog();
+        });
+    },
+    [catalog, refreshCatalog, resolveModel, setCatalog]
+  );
 
   const handleReasoningEffortChange = useCallback(
     (nextEffort: ReasoningEffort) => {

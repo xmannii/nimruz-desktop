@@ -184,6 +184,33 @@ export function useChatHistory(
     return () => window.removeEventListener("pagehide", flushChats);
   }, []);
 
+  useEffect(() => {
+    if (!isHydrated || !defaultModelRef) return;
+
+    setChats((current) => {
+      let changed = false;
+      const next = current.map((chat) => {
+        if (chat.messages.length > 0) return chat;
+        if (
+          chat.model === defaultModelRef.modelId &&
+          (chat.providerId || DEFAULT_PROVIDER_ID) === defaultModelRef.providerId
+        ) {
+          return chat;
+        }
+
+        changed = true;
+        return {
+          ...chat,
+          model: defaultModelRef.modelId as ModelId,
+          providerId: defaultModelRef.providerId,
+          updatedAt: Date.now(),
+        };
+      });
+
+      return changed ? next : current;
+    });
+  }, [defaultModelRef, isHydrated]);
+
   const activeChat = useMemo(
     () => chats.find((chat) => chat.id === activeChatId) ?? null,
     [activeChatId, chats]

@@ -151,6 +151,17 @@
     unicode-bidi: isolate;
     text-align: left;
   }
+
+  /* Keep math LTR inside RTL Persian chat */
+  :where(.streamdown) .katex,
+  :where(.streamdown) .katex-display {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
+
+  :where(.streamdown) .katex-display {
+    text-align: center;
+  }
 }
 
 @layer utilities {
