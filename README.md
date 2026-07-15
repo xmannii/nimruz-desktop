@@ -1,8 +1,22 @@
+![Nimruz banner](public/banner.png)
+
 # Nimruz Desktop
 
 **نیمروز** — an open-source Persian AI chat desktop app built with Electron, React, and the [Vercel AI SDK](https://github.com/vercel/ai).
 
+> **Experimental software** — Nimruz is early-stage and may contain bugs or rough edges. Please test it, expect occasional issues, and [report problems on GitHub](https://github.com/xmannii/nimruz-desktop/issues) so we can fix them.
+
 Nimruz connects to [OpenRouter](https://openrouter.ai/) (and custom OpenAI-compatible providers) so you can chat with many models from one native app. Chats, projects, memories, and personalization settings are stored locally on your machine.
+
+## Download
+
+Pre-built installers are on the [Releases](https://github.com/xmannii/nimruz-desktop/releases) page.
+
+- [Nimruz 0.1.0 for macOS (Apple Silicon)](https://github.com/xmannii/nimruz-desktop/releases/download/v0.1.0/Nimruz-0.1.0-arm64.dmg)
+
+**Windows** — a pre-built installer is coming soon.
+
+**Other platforms** — you can build Windows (NSIS), Linux (AppImage), and macOS installers yourself on the target OS with `pnpm dist` (see [Build a distributable](#build-a-distributable) below).
 
 ## Features
 
