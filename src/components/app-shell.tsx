@@ -6,8 +6,10 @@ import {
   type AppShellContextValue,
 } from "@/components/app-shell-context";
 import { ChatHeader } from "@/components/chat/chat-header";
+import { UpdateAvailableAlert } from "@/components/update-available-alert";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAppSettings } from "@/hooks/use-app-settings";
+import { useAppUpdate } from "@/hooks/use-app-update";
 import { useChatHistory } from "@/hooks/use-chat-history";
 import { useModelCatalog } from "@/hooks/use-model-catalog";
 import { useProjects, type ProjectInput } from "@/hooks/use-projects";
@@ -79,6 +81,11 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   const stopCurrentChatRef = useRef<(() => void) | null>(null);
   const [credentialRefreshSignal, setCredentialRefreshSignal] = useState(0);
+  const {
+    available: availableUpdate,
+    dismiss: dismissUpdate,
+    openDownload: openUpdateDownload,
+  } = useAppUpdate();
 
   const shellValue = useMemo<AppShellContextValue>(
     () => ({
@@ -225,6 +232,14 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
         style={{ "--app-header-height": APP_HEADER_HEIGHT } as CSSProperties}
       >
         <ChatHeader />
+
+        {availableUpdate ? (
+          <UpdateAvailableAlert
+            update={availableUpdate}
+            onDownload={() => void openUpdateDownload()}
+            onDismiss={dismissUpdate}
+          />
+        ) : null}
 
         <div className="flex min-h-0 flex-1 overflow-hidden">
           <SidebarInset

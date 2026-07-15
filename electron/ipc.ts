@@ -15,6 +15,11 @@ import {
   validateLegacySnapshot,
   validateProjectPayload,
 } from "./storage/validation";
+import {
+  checkForAppUpdate,
+  getAppVersion,
+  openExternalUrl,
+} from "./updates";
 
 function assertTrustedSender(event: IpcMainInvokeEvent) {
   const url = event.senderFrame?.url ?? "";
@@ -217,6 +222,10 @@ export function registerIpcHandlers(options: {
     (value: unknown): LegacyImportResult =>
       database.importLegacyData(validateLegacySnapshot(value))
   );
+
+  handle("updates:get-version", () => getAppVersion());
+  handle("updates:check", () => checkForAppUpdate());
+  handle("updates:open-url", (url: string) => openExternalUrl(url));
 
   registerWindowControlHandlers(getMainWindow);
 }

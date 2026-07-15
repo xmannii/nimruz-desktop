@@ -8,6 +8,7 @@ import type {
 } from "@/lib/models/catalog";
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import type { UpdateCheckResult } from "@/lib/updates";
 
 export type CredentialStatus = {
   configured: boolean;
@@ -99,5 +100,10 @@ export type DesktopAPI = {
     importLegacyData: (
       snapshot: LegacyDataSnapshot
     ) => Promise<LegacyImportResult>;
+  };
+  updates: {
+    getVersion: () => Promise<string>;
+    check: () => Promise<UpdateCheckResult>;
+    openUrl: (url: string) => Promise<boolean>;
   };
 };

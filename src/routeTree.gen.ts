@@ -16,6 +16,7 @@ import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.ind
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppSettingsMemoriesRouteImport } from './routes/_app.settings.memories'
 import { Route as AppSettingsAppearanceRouteImport } from './routes/_app.settings.appearance'
+import { Route as AppSettingsAboutRouteImport } from './routes/_app.settings.about'
 import { Route as AppChatChatIdRouteImport } from './routes/_app.chat.$chatId'
 
 const AppRoute = AppRouteImport.update({
@@ -52,6 +53,11 @@ const AppSettingsAppearanceRoute = AppSettingsAppearanceRouteImport.update({
   path: '/appearance',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsAboutRoute = AppSettingsAboutRouteImport.update({
+  id: '/about',
+  path: '/about',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppChatChatIdRoute = AppChatChatIdRouteImport.update({
   id: '/chat/$chatId',
   path: '/chat/$chatId',
@@ -62,6 +68,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/settings': typeof AppSettingsRouteWithChildren
   '/chat/$chatId': typeof AppChatChatIdRoute
+  '/settings/about': typeof AppSettingsAboutRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
@@ -70,6 +77,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
+  '/settings/about': typeof AppSettingsAboutRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
@@ -81,6 +89,7 @@ export interface FileRoutesById {
   '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/': typeof AppIndexRoute
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
+  '/_app/settings/about': typeof AppSettingsAboutRoute
   '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
   '/_app/settings/memories': typeof AppSettingsMemoriesRoute
   '/_app/settings/models': typeof AppSettingsModelsRoute
@@ -92,6 +101,7 @@ export interface FileRouteTypes {
     | '/'
     | '/settings'
     | '/chat/$chatId'
+    | '/settings/about'
     | '/settings/appearance'
     | '/settings/memories'
     | '/settings/models'
@@ -100,6 +110,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/chat/$chatId'
+    | '/settings/about'
     | '/settings/appearance'
     | '/settings/memories'
     | '/settings/models'
@@ -110,6 +121,7 @@ export interface FileRouteTypes {
     | '/_app/settings'
     | '/_app/'
     | '/_app/chat/$chatId'
+    | '/_app/settings/about'
     | '/_app/settings/appearance'
     | '/_app/settings/memories'
     | '/_app/settings/models'
@@ -171,6 +183,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsAppearanceRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/about': {
+      id: '/_app/settings/about'
+      path: '/about'
+      fullPath: '/settings/about'
+      preLoaderRoute: typeof AppSettingsAboutRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/chat/$chatId': {
       id: '/_app/chat/$chatId'
       path: '/chat/$chatId'
@@ -182,6 +201,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppSettingsRouteChildren {
+  AppSettingsAboutRoute: typeof AppSettingsAboutRoute
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsMemoriesRoute: typeof AppSettingsMemoriesRoute
   AppSettingsModelsRoute: typeof AppSettingsModelsRoute
@@ -189,6 +209,7 @@ interface AppSettingsRouteChildren {
 }
 
 const AppSettingsRouteChildren: AppSettingsRouteChildren = {
+  AppSettingsAboutRoute: AppSettingsAboutRoute,
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
   AppSettingsMemoriesRoute: AppSettingsMemoriesRoute,
   AppSettingsModelsRoute: AppSettingsModelsRoute,

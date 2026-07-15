@@ -69,6 +69,11 @@ const desktopApi: DesktopAPI = {
     importLegacyData: (snapshot) =>
       ipcRenderer.invoke("storage:import-legacy", snapshot),
   },
+  updates: {
+    getVersion: () => ipcRenderer.invoke("updates:get-version"),
+    check: () => ipcRenderer.invoke("updates:check"),
+    openUrl: (url) => ipcRenderer.invoke("updates:open-url", url),
+  },
 };
 
 contextBridge.exposeInMainWorld("desktop", desktopApi);

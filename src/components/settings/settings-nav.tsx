@@ -6,6 +6,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BrainIcon,
   CpuIcon,
+  InfoIcon,
   PaletteIcon,
   UserRoundIcon,
   type LucideIcon,
@@ -16,7 +17,8 @@ const SETTINGS_NAV: Array<{
     | "/settings"
     | "/settings/memories"
     | "/settings/models"
-    | "/settings/appearance";
+    | "/settings/appearance"
+    | "/settings/about";
   label: string;
   icon: LucideIcon;
   match: (pathname: string) => boolean;
@@ -47,6 +49,12 @@ const SETTINGS_NAV: Array<{
     label: "ظاهر",
     icon: PaletteIcon,
     match: (pathname) => pathname.startsWith("/settings/appearance"),
+  },
+  {
+    to: "/settings/about",
+    label: "درباره",
+    icon: InfoIcon,
+    match: (pathname) => pathname.startsWith("/settings/about"),
   },
 ];
 
