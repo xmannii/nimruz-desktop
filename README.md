@@ -18,6 +18,23 @@ Pre-built installers are on the [Releases](https://github.com/xmannii/nimruz-des
 
 **Other platforms** — you can build Windows (NSIS), Linux (AppImage), and macOS installers yourself on the target OS with `pnpm dist` (see [Build a distributable](#build-a-distributable) below).
 
+### macOS install
+
+1. Open the DMG and drag **Nimruz** to **Applications**.
+2. Open Nimruz using one of the methods below.
+
+macOS builds are not code-signed or notarized yet, so Gatekeeper may block the app. The **“Nimruz is damaged and can’t be opened”** message is misleading — the app is fine; macOS is rejecting an unsigned download.
+
+**Recommended:** Right-click **Nimruz** in Applications → **Open** → **Open** again. You only need to do this once.
+
+**Alternative:** Remove the download quarantine flag, then open normally:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Nimruz.app
+```
+
+**If macOS already blocked the app:** Open **System Settings → Privacy & Security** and click **Open Anyway** next to the Nimruz entry.
+
 ## Features
 
 - **Streaming chat** with markdown, code blocks, math, Mermaid diagrams, and CJK support
