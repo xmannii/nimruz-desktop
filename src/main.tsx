@@ -1,5 +1,6 @@
+import { router } from "./router";
+import { RouterProvider } from "@tanstack/react-router";
 import { createRoot } from "react-dom/client";
-import App from "./App";
 import "./fonts.css";
 import "./globals.css";
 
@@ -9,4 +10,4 @@ if (!container) {
   throw new Error("Root container #root was not found in the document.");
 }
 
-createRoot(container).render(<App />);
+createRoot(container).render(<RouterProvider router={router} />);

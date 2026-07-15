@@ -1,19 +1,22 @@
-import { Chat } from "@/components/chat";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DirectionProvider } from "@/components/ui/direction";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { Outlet, createRootRoute } from "@tanstack/react-router";
+import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 
-function getInitialChatId(): string | undefined {
-  const match = window.location.pathname.match(/\/chat\/([^/?#]+)/);
-  return match ? decodeURIComponent(match[1]) : undefined;
-}
+export const Route = createRootRoute({
+  component: RootLayout,
+});
 
-export default function App() {
+function RootLayout() {
   return (
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
       <DirectionProvider direction="rtl">
         <TooltipProvider>
-          <Chat initialChatId={getInitialChatId()} />
+          <Outlet />
+          {import.meta.env.DEV ? (
+            <TanStackRouterDevtools position="bottom-left" />
+          ) : null}
         </TooltipProvider>
       </DirectionProvider>
     </ThemeProvider>

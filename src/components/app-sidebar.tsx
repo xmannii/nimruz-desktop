@@ -79,6 +79,7 @@ type AppSidebarProps = {
   onRenameChat: (id: string, title: string) => void;
   onDeleteChat: (id: string) => void;
   onOpenSettings: () => void;
+  settingsActive?: boolean;
 };
 
 type ChatSectionKey = "today" | "yesterday" | "week" | "older";
@@ -185,6 +186,7 @@ export function AppSidebar({
   onRenameChat,
   onDeleteChat,
   onOpenSettings,
+  settingsActive = false,
 }: AppSidebarProps) {
   const { isMobile, setOpenMobile, state } = useSidebar();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -491,6 +493,7 @@ export function AppSidebar({
             <SidebarMenuItem>
               <SidebarMenuButton
                 tooltip={{ children: "تنظیمات", side: "left" }}
+                isActive={settingsActive}
                 onClick={() => onOpenSettings()}
               >
                 <CogIcon />

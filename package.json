@@ -26,6 +26,7 @@
     "@streamdown/code": "^1.1.1",
     "@streamdown/math": "^1.0.2",
     "@streamdown/mermaid": "^1.0.2",
+    "@tanstack/react-router": "^1.170.18",
     "ai": "^7.0.22",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -55,6 +56,8 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4",
+    "@tanstack/react-router-devtools": "^1.167.0",
+    "@tanstack/router-plugin": "^1.168.20",
     "@types/node": "^24.13.3",
     "@types/react": "^19",
     "@types/react-dom": "^19",
