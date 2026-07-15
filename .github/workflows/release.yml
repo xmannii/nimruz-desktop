@@ -90,7 +90,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build installer
-        run: pnpm dist
+        run: pnpm build && pnpm exec electron-builder --publish never
         env:
           # Unsigned builds for now (no Apple/Windows certs configured)
           CSC_IDENTITY_AUTO_DISCOVERY: false

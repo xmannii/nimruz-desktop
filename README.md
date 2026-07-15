@@ -83,10 +83,10 @@ Installers are written to `release/` (DMG / NSIS / AppImage depending on your pl
 Bump the version in `package.json`, commit, and push to `main`. GitHub Actions builds Windows + macOS installers and publishes them to [Releases](https://github.com/xmannii/nimruz-desktop/releases).
 
 ```bash
-# 1. Change "version" in package.json (e.g. 0.1.1 → 0.1.2)
+# 1. Change "version" in package.json (e.g. 0.1.2 → 0.1.3)
 # 2. Commit and push:
 git add package.json
-git commit -m "Bump version to 0.1.2"
+git commit -m "Bump version to 0.1.3"
 git push origin main
 ```
 
