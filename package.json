@@ -1,8 +1,26 @@
 {
   "name": "nimruz-desktop",
   "version": "0.1.0",
-  "private": true,
   "description": "Nimruz — Persian desktop AI chat powered by OpenRouter",
+  "license": "MIT",
+  "author": "Mani",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xmannii/nimruz-desktop.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xmannii/nimruz-desktop/issues"
+  },
+  "homepage": "https://github.com/xmannii/nimruz-desktop#readme",
+  "keywords": [
+    "electron",
+    "ai",
+    "chatbot",
+    "openrouter",
+    "persian",
+    "desktop",
+    "open-source"
+  ],
   "main": "dist-electron/main.js",
   "type": "module",
   "scripts": {

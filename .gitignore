@@ -1,7 +1,68 @@
-node_modules
-dist
-dist-electron
-release
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+dist-electron/
+release/
+out/
+
+# Environment & secrets
 .env
+.env.*
+!.env.example
+
+# Logs
 *.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Test & coverage
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# Caches
+.cache/
+.vite/
+.turbo/
+.eslintcache
+
+# Electron / electron-builder artifacts
+*.dmg
+*.exe
+*.AppImage
+*.deb
+*.rpm
+*.snap
+*.blockmap
+
+# OS files
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editor & IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Local overrides
+*.local
