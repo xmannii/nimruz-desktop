@@ -102,3 +102,27 @@ export function createMission(value: unknown): Mission {
 export function isMissionStatus(value: unknown): value is MissionStatus {
   return typeof value === "string" && (MISSION_STATUSES as readonly string[]).includes(value);
 }
+
+export function planMission(mission: Pick<Mission, "id" | "goal" | "workspacePath">): MissionStep[] {
+  const context = mission.workspacePath ? ` در workspace مشخص‌شده (${mission.workspacePath})` : "";
+  const now = Date.now();
+  const titles = [
+    ["تعریف معیار موفقیت", "هدف و خروجی قابل تحویل مأموریت را دقیق و قابل بررسی کن."],
+    ["بررسی ورودی‌ها", `فایل‌ها، داده‌ها و محدودیت‌های مرتبط${context} را شناسایی و بررسی کن.`],
+    ["انجام کار اصلی", "کار اصلی را بر اساس یافته‌ها انجام بده و تغییرهای لازم را ثبت کن."],
+    ["اعتبارسنجی نتیجه", "خروجی را با هدف اولیه مقایسه کن و خطاها یا موارد ناقص را برطرف کن."],
+    ["آماده‌سازی گزارش", "خلاصه نتیجه، فایل‌های خروجی و اقدام‌های بعدی را آماده کن."],
+  ] as const;
+  return titles.map(([title, description], position) => ({
+    id: `${mission.id}-planned-${position}-${now}`,
+    missionId: mission.id,
+    position,
+    title,
+    description,
+    status: "pending",
+    dependsOn: position === 0 ? [] : [`${mission.id}-planned-${position - 1}-${now}`],
+    error: null,
+    startedAt: null,
+    completedAt: null,
+  }));
+}

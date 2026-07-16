@@ -666,6 +666,19 @@ export class AppDatabase {
     return this.loadMissions().find((mission) => mission.id === id) ?? null;
   }
 
+  replaceMissionSteps(id: string, steps: Mission["steps"]): Mission | null {
+    this.transaction(() => {
+      this.database.prepare("DELETE FROM mission_steps WHERE mission_id = ?").run(id);
+      const statement = this.database.prepare(
+        `INSERT INTO mission_steps (id, mission_id, position, title, description, status, depends_on_json, error, started_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const step of steps) statement.run(step.id, id, step.position, step.title, step.description, step.status, JSON.stringify(step.dependsOn), step.error, step.startedAt, step.completedAt);
+      this.database.prepare("UPDATE missions SET status = 'planning', updated_at = ? WHERE id = ?").run(Date.now(), id);
+    });
+    return this.loadMissions().find((mission) => mission.id === id) ?? null;
+  }
+
   deleteMission(id: string): void {
     this.database.prepare("DELETE FROM missions WHERE id = ?").run(id);
   }

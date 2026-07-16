@@ -9,7 +9,7 @@ import type {
   SkillsPreferences,
 } from "@/lib/skills/index";
 import { normalizeSkillName, sanitizeSkillsPreferences } from "@/lib/skills/index";
-import { createMission, isMissionStatus, type Mission } from "@/lib/missions/types";
+import { createMission, isMissionStatus, planMission, type Mission } from "@/lib/missions/types";
 import {
   OPENROUTER_PROVIDER_ID,
   PROVIDER_LIMITS,
@@ -237,6 +237,17 @@ export function registerIpcHandlers(options: {
   handle("missions:set-status", (id: string, status: string): Mission[] => {
     if (!isMissionStatus(status)) throw new Error("Invalid mission status.");
     if (!database.updateMissionStatus(id, status)) throw new Error("Mission not found.");
+    return database.loadMissions();
+  });
+  handle("missions:plan", (id: string): Mission[] => {
+    const mission = database.loadMissions().find((item) => item.id === id);
+    if (!mission) throw new Error("Mission not found.");
+    const planned = database.replaceMissionSteps(id, planMission(mission));
+    if (!planned) throw new Error("Mission not found.");
+    return database.loadMissions();
+  });
+  handle("missions:confirm-plan", (id: string): Mission[] => {
+    if (!database.updateMissionStatus(id, "waiting_for_confirmation")) throw new Error("Mission not found.");
     return database.loadMissions();
   });
   handle("missions:delete", (id: string): Mission[] => {
