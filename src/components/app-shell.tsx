@@ -6,6 +6,7 @@ import {
   type AppShellContextValue,
 } from "@/components/app-shell-context";
 import { ChatHeader } from "@/components/chat/chat-header";
+import { OnboardingDialog } from "@/components/onboarding-dialog";
 import { UpdateAvailableAlert } from "@/components/update-available-alert";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAppSettings } from "@/hooks/use-app-settings";
@@ -15,10 +16,12 @@ import { useTypingChatTitles } from "@/hooks/use-typing-chat-title";
 import { useModelCatalog } from "@/hooks/use-model-catalog";
 import { useWorkspaces, type WorkspaceInput } from "@/hooks/use-workspaces";
 import { APP_HEADER_HEIGHT } from "@/lib/branding";
+import { hasCompletedOnboarding } from "@/lib/onboarding";
 import { HOME_WORKSPACE_ID, isHomeWorkspace } from "@/lib/workspace";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -110,11 +113,23 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   const stopCurrentChatRef = useRef<(() => void) | null>(null);
   const [credentialRefreshSignal, setCredentialRefreshSignal] = useState(0);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
   const {
     available: availableUpdate,
     dismiss: dismissUpdate,
     openDownload: openUpdateDownload,
   } = useAppUpdate();
+
+  useEffect(() => {
+    if (!areSettingsHydrated || !isCatalogHydrated) return;
+    if (!hasCompletedOnboarding()) {
+      setOnboardingOpen(true);
+    }
+  }, [areSettingsHydrated, isCatalogHydrated]);
+
+  const openOnboarding = useCallback(() => {
+    setOnboardingOpen(true);
+  }, []);
 
   const shellValue = useMemo<AppShellContextValue>(
     () => ({
@@ -169,6 +184,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       handleExpertsChange,
       bumpCredentialRefresh: () =>
         setCredentialRefreshSignal((current) => current + 1),
+      openOnboarding,
       refreshCatalog,
       setCatalog,
       resolveModel,
@@ -229,6 +245,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       handleMemoriesChange,
       handleDeleteMemory,
       handleExpertsChange,
+      openOnboarding,
       refreshCatalog,
       setCatalog,
       resolveModel,
@@ -352,6 +369,15 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
             update={availableUpdate}
             onDownload={() => void openUpdateDownload()}
             onDismiss={dismissUpdate}
+          />
+        ) : null}
+
+        {onboardingOpen ? (
+          <OnboardingDialog
+            open
+            onOpenChange={setOnboardingOpen}
+            needsModelSetup={!hasUsableModel}
+            onFinishSetup={handleOpenSettings}
           />
         ) : null}
 

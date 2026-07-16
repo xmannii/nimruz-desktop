@@ -1,10 +1,11 @@
 "use client";
 
+import { useAppShell } from "@/components/app-shell-context";
 import { SettingsSection } from "@/components/settings/settings-section";
 import { Button } from "@/components/ui/button";
 import { APP_NAME_FA, GITHUB_RELEASES_URL } from "@/lib/branding";
 import type { UpdateCheckResult } from "@/lib/updates";
-import { ExternalLinkIcon, InfoIcon, RefreshCwIcon } from "lucide-react";
+import { BookOpenIcon, ExternalLinkIcon, InfoIcon, RefreshCwIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -13,6 +14,7 @@ async function runUpdateCheck(): Promise<UpdateCheckResult> {
 }
 
 export function AboutSettingsSection() {
+  const { openOnboarding } = useAppShell();
   const [version, setVersion] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
@@ -92,12 +94,22 @@ export function AboutSettingsSection() {
           </Button>
         </div>
 
-        <div className="mt-4 border-t border-border/60 pt-4">
+        <div className="mt-4 flex flex-col gap-2 border-t border-border/60 pt-4">
           <Button
             type="button"
             variant="ghost"
             size="sm"
-            className="h-auto gap-1.5 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+            className="h-auto justify-start gap-1.5 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+            onClick={openOnboarding}
+          >
+            <BookOpenIcon className="size-3.5" />
+            نمایش مجدد راهنمای شروع
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto justify-start gap-1.5 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
             onClick={() => {
               void window.desktop.updates.openUrl(GITHUB_RELEASES_URL);
             }}

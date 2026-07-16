@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { onReveal } from "@/lib/workspace";
-import { PanelRightOpenIcon } from "lucide-react";
+import { PanelLeftOpenIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -282,14 +282,14 @@ export function ChatView({ chatId, workspaceId }: ChatViewProps) {
                         type="button"
                         variant="secondary"
                         className={cn(
-                          "h-24 w-7 rounded-none rounded-e-xl border border-s-0 border-border/70",
+                          "h-24 w-7 rounded-none rounded-r-xl border border-l-0 border-border/70",
                           "bg-sidebar px-0 text-muted-foreground shadow-sm",
                           "hover:bg-sidebar-accent hover:text-sidebar-foreground"
                         )}
                         aria-label="باز کردن پنل فضای کاری"
                         onClick={expandPanel}
                       >
-                        <PanelRightOpenIcon />
+                        <PanelLeftOpenIcon />
                       </Button>
                     }
                   />

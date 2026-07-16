@@ -83,6 +83,7 @@ export type AppShellContextValue = {
   handleDeleteMemory: (id: string) => void;
   handleExpertsChange: (experts: Expert[]) => void;
   bumpCredentialRefresh: () => void;
+  openOnboarding: () => void;
   refreshCatalog: () => Promise<ModelCatalogSnapshot>;
   setCatalog: (catalog: ModelCatalogSnapshot) => void;
   resolveModel: (ref: ProviderModelRef | null | undefined) => ModelConfig | undefined;

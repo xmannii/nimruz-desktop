@@ -31,7 +31,7 @@ import {
   FileTextIcon,
   FolderIcon,
   ListTodoIcon,
-  PanelRightCloseIcon,
+  PanelLeftCloseIcon,
   SettingsIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState, type ComponentType } from "react";
@@ -208,7 +208,7 @@ export function WorkspacePanel({
                         aria-label="بستن پنل فضای کاری"
                         onClick={onCollapse}
                       >
-                        <PanelRightCloseIcon />
+                        <PanelLeftCloseIcon />
                       </Button>
                     }
                   />
