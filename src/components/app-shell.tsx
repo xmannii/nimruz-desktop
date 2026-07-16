@@ -13,8 +13,9 @@ import { useAppUpdate } from "@/hooks/use-app-update";
 import { useChatHistory } from "@/hooks/use-chat-history";
 import { useTypingChatTitles } from "@/hooks/use-typing-chat-title";
 import { useModelCatalog } from "@/hooks/use-model-catalog";
-import { useProjects, type ProjectInput } from "@/hooks/use-projects";
+import { useWorkspaces, type WorkspaceInput } from "@/hooks/use-workspaces";
 import { APP_HEADER_HEIGHT } from "@/lib/branding";
+import { HOME_WORKSPACE_ID, isHomeWorkspace } from "@/lib/workspace";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   useCallback,
@@ -63,7 +64,8 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     setChatPinned,
     removeChat,
     removeAllChats,
-    removeProjectFromChats,
+    removeWorkspaceFromChats,
+    setChatWorkspaceId,
   } = useChatHistory(initialChatId, defaultRef);
 
   const { typingTitles, animateChatTitle } = useTypingChatTitles();
@@ -78,12 +80,21 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   );
 
   const {
-    projects,
-    isHydrated: areProjectsHydrated,
-    createProject,
-    updateProject,
-    removeProject,
-  } = useProjects();
+    workspaces,
+    activeWorkspace,
+    activeWorkspaceId,
+    workspaceRoots,
+    isHydrated: areWorkspacesHydrated,
+    setActiveWorkspaceId,
+    createWorkspace,
+    updateWorkspace,
+    updateWorkspaceTrust,
+    removeWorkspace,
+    addLinkedRoot,
+    setPrimaryRoot,
+    chooseWorkingFolder,
+    removeRoot,
+  } = useWorkspaces();
 
   const {
     personalization,
@@ -108,11 +119,14 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   const shellValue = useMemo<AppShellContextValue>(
     () => ({
       chats,
-      projects,
+      workspaces,
       activeChat,
       activeChatId,
+      activeWorkspace,
+      activeWorkspaceId,
+      workspaceRoots,
       isHydrated,
-      areProjectsHydrated,
+      areWorkspacesHydrated,
       areSettingsHydrated,
       isCatalogHydrated,
       personalization,
@@ -131,6 +145,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       createChat,
       selectChat,
       updateChat,
+      setChatWorkspaceId,
       renameChat,
       lockChatTitle,
       animateRenameChat,
@@ -138,10 +153,16 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       setChatPinned,
       removeChat,
       removeAllChats,
-      removeProjectFromChats,
-      createProject,
-      updateProject,
-      removeProject,
+      removeWorkspaceFromChats,
+      setActiveWorkspaceId,
+      createWorkspace,
+      updateWorkspace,
+      updateWorkspaceTrust,
+      removeWorkspace,
+      addLinkedRoot,
+      setPrimaryRoot,
+      chooseWorkingFolder,
+      removeRoot,
       updatePersonalization,
       handleMemoriesChange,
       handleDeleteMemory,
@@ -152,14 +173,23 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       setCatalog,
       resolveModel,
       getProvider,
+      projects: workspaces,
+      areProjectsHydrated: areWorkspacesHydrated,
+      createProject: createWorkspace,
+      updateProject: updateWorkspace,
+      removeProject: removeWorkspace,
+      removeProjectFromChats: removeWorkspaceFromChats,
     }),
     [
       chats,
-      projects,
+      workspaces,
       activeChat,
       activeChatId,
+      activeWorkspace,
+      activeWorkspaceId,
+      workspaceRoots,
       isHydrated,
-      areProjectsHydrated,
+      areWorkspacesHydrated,
       areSettingsHydrated,
       isCatalogHydrated,
       personalization,
@@ -177,6 +207,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       createChat,
       selectChat,
       updateChat,
+      setChatWorkspaceId,
       renameChat,
       lockChatTitle,
       animateRenameChat,
@@ -184,10 +215,16 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       setChatPinned,
       removeChat,
       removeAllChats,
-      removeProjectFromChats,
-      createProject,
-      updateProject,
-      removeProject,
+      removeWorkspaceFromChats,
+      setActiveWorkspaceId,
+      createWorkspace,
+      updateWorkspace,
+      updateWorkspaceTrust,
+      removeWorkspace,
+      addLinkedRoot,
+      setPrimaryRoot,
+      chooseWorkingFolder,
+      removeRoot,
       updatePersonalization,
       handleMemoriesChange,
       handleDeleteMemory,
@@ -199,23 +236,47 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     ]
   );
 
-  function handleNewChat() {
-    stopCurrentChatRef.current?.();
-    const id = createChat();
-    void navigate({ to: "/chat/$chatId", params: { chatId: id } });
+  function navigateToChat(chatId: string, workspaceId: string | null) {
+    if (workspaceId) {
+      void navigate({
+        to: "/workspace/$workspaceId/chat/$chatId",
+        params: { workspaceId, chatId },
+      });
+      return;
+    }
+    void navigate({ to: "/chat/$chatId", params: { chatId } });
   }
 
-  function handleNewProjectChat(projectId: string) {
+  function handleNewChat() {
     stopCurrentChatRef.current?.();
-    const id = createChat(projectId);
-    void navigate({ to: "/chat/$chatId", params: { chatId: id } });
+    setActiveWorkspaceId(HOME_WORKSPACE_ID);
+    const id = createChat(HOME_WORKSPACE_ID);
+    navigateToChat(id, HOME_WORKSPACE_ID);
+  }
+
+  function handleNewWorkspaceChat(workspaceId: string) {
+    stopCurrentChatRef.current?.();
+    setActiveWorkspaceId(workspaceId);
+    const id = createChat(workspaceId);
+    navigateToChat(id, workspaceId);
+  }
+
+  function handleOpenWorkspace(workspaceId: string) {
+    setActiveWorkspaceId(workspaceId);
+    void navigate({
+      to: "/workspace/$workspaceId",
+      params: { workspaceId },
+    });
   }
 
   function handleSelectChat(id: string) {
     if (id === activeChatId && !isSettingsRoute) return;
     stopCurrentChatRef.current?.();
     selectChat(id);
-    void navigate({ to: "/chat/$chatId", params: { chatId: id } });
+    const chat = getChatById(id);
+    const workspaceId = chat?.workspaceId ?? null;
+    if (workspaceId) setActiveWorkspaceId(workspaceId);
+    navigateToChat(id, workspaceId);
   }
 
   function handleDeleteChat(id: string) {
@@ -223,10 +284,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       stopCurrentChatRef.current?.();
       const nextChat = chats.find((chat) => chat.id !== id);
       if (nextChat) {
-        void navigate({
-          to: "/chat/$chatId",
-          params: { chatId: nextChat.id },
-        });
+        navigateToChat(nextChat.id, nextChat.workspaceId ?? null);
       } else {
         void navigate({ to: "/" });
       }
@@ -236,24 +294,34 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   function handleDeleteAllChats() {
     stopCurrentChatRef.current?.();
+    setActiveWorkspaceId(HOME_WORKSPACE_ID);
     const id = removeAllChats();
-    void navigate({ to: "/chat/$chatId", params: { chatId: id } });
+    navigateToChat(id, HOME_WORKSPACE_ID);
   }
 
-  function handleDeleteProject(id: string) {
-    if (activeChat?.projectId === id) {
+  function handleDeleteWorkspace(id: string) {
+    if (isHomeWorkspace(id)) return;
+    if (activeChat?.workspaceId === id) {
       stopCurrentChatRef.current?.();
     }
-    removeProjectFromChats(id);
-    removeProject(id);
+    removeWorkspaceFromChats(id);
+    removeWorkspace(id);
+    if (activeWorkspaceId === id) {
+      setActiveWorkspaceId(HOME_WORKSPACE_ID);
+      void navigate({ to: "/" });
+    }
   }
 
-  function handleCreateProject(input: ProjectInput) {
-    createProject(input);
+  function handleCreateWorkspace(input: WorkspaceInput) {
+    const workspace = createWorkspace(input);
+    void navigate({
+      to: "/workspace/$workspaceId",
+      params: { workspaceId: workspace.id },
+    });
   }
 
-  function handleUpdateProject(id: string, input: ProjectInput) {
-    updateProject(id, input);
+  function handleUpdateWorkspace(id: string, input: WorkspaceInput) {
+    updateWorkspace(id, input);
   }
 
   function handleOpenSettings() {
@@ -263,10 +331,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   function handleBackToChat() {
     if (activeChatId) {
-      void navigate({
-        to: "/chat/$chatId",
-        params: { chatId: activeChatId },
-      });
+      navigateToChat(activeChatId, activeChat?.workspaceId ?? null);
       return;
     }
     void navigate({ to: "/" });
@@ -290,24 +355,25 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
           />
         ) : null}
 
-        <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           <SidebarInset
             dir="rtl"
-            className="min-h-0 w-0 min-w-0 flex-1 overflow-hidden"
+            className="min-h-0 w-0 min-w-0 max-w-full flex-1 overflow-hidden"
           >
             {children}
           </SidebarInset>
           <AppSidebar
             chats={chats}
-            projects={projects}
+            workspaces={workspaces}
             activeChatId={isSettingsRoute ? null : activeChatId}
             settingsActive={isSettingsRoute}
             memoryCount={memories.length}
             onNewChat={handleNewChat}
-            onNewProjectChat={handleNewProjectChat}
-            onCreateProject={handleCreateProject}
-            onUpdateProject={handleUpdateProject}
-            onDeleteProject={handleDeleteProject}
+            onNewWorkspaceChat={handleNewWorkspaceChat}
+            onOpenWorkspace={handleOpenWorkspace}
+            onCreateWorkspace={handleCreateWorkspace}
+            onUpdateWorkspace={handleUpdateWorkspace}
+            onDeleteWorkspace={handleDeleteWorkspace}
             onSelectChat={handleSelectChat}
             onRenameChat={renameChat}
             onDeleteChat={handleDeleteChat}
