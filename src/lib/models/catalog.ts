@@ -1,9 +1,16 @@
 import { MODELS, DEFAULT_MODEL as BUILTIN_DEFAULT_MODEL } from "./index";
+import type { CodexModelDescriptor } from "@/lib/codex";
 
 export const OPENROUTER_PROVIDER_ID = "openrouter";
 export const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+export const CODEX_PROVIDER_ID = "codex";
+export const CODEX_BASE_URL = "codex://chatgpt";
 
-export const PROVIDER_KINDS = ["openrouter", "openai-compatible"] as const;
+export const PROVIDER_KINDS = [
+  "openrouter",
+  "openai-compatible",
+  "codex",
+] as const;
 export type ProviderKind = (typeof PROVIDER_KINDS)[number];
 
 export const MODEL_SOURCES = ["builtin", "discovered", "manual"] as const;
@@ -100,6 +107,68 @@ export function createBuiltinOpenRouterProvider(
     isBuiltin: true,
     authRequired: true,
     createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function createBuiltinCodexProvider(now = Date.now()): ProviderConfig {
+  return {
+    id: CODEX_PROVIDER_ID,
+    name: "OpenAI Codex",
+    kind: "codex",
+    baseUrl: CODEX_BASE_URL,
+    enabled: true,
+    includeUsage: true,
+    isBuiltin: true,
+    authRequired: true,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function stableHash(value: string) {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+export function createCodexModelRowId(modelId: string) {
+  const readable = modelId
+    .replace(/[^\w./-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 180);
+  return `codex:${readable || "model"}:${stableHash(modelId)}`;
+}
+
+export function createCodexModelConfig(
+  descriptor: CodexModelDescriptor,
+  options?: { existing?: ModelConfig | null; now?: number }
+): ModelConfig {
+  const existing = options?.existing ?? null;
+  const now = options?.now ?? Date.now();
+  return {
+    id: existing?.id ?? createCodexModelRowId(descriptor.model),
+    providerId: CODEX_PROVIDER_ID,
+    modelId: descriptor.model,
+    name: descriptor.displayName || descriptor.model,
+    fullName: descriptor.displayName || descriptor.model,
+    description: descriptor.description,
+    contextLength: existing?.contextLength ?? 0,
+    maxOutput: existing?.maxOutput ?? 0,
+    inputPricePerM: 0,
+    outputPricePerM: 0,
+    // The managed app-server bridge currently serializes text turns only.
+    // Do not advertise image attachments until they are forwarded explicitly.
+    supportsImages: false,
+    supportsTools: false,
+    supportsReasoningEffort: descriptor.supportedReasoningEfforts.length > 0,
+    enabled: existing?.enabled ?? true,
+    isDefault: existing?.isDefault ?? false,
+    source: "builtin",
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
 }

@@ -1,5 +1,6 @@
 import http from "node:http";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import {
@@ -11,6 +12,7 @@ import {
   type AgentRequestBody,
   type AgentRuntimeDeps,
 } from "./agent/runtime";
+import { resolveStaticPath } from "./static-path";
 
 const MAX_REQUEST_BYTES = 10 * 1024 * 1024;
 
@@ -73,7 +75,7 @@ async function pipeWebResponse(
   res.writeHead(webResponse.status, headers);
 
   if (webResponse.body) {
-    Readable.fromWeb(webResponse.body as never).pipe(res);
+    await pipeline(Readable.fromWeb(webResponse.body as never), res);
   } else {
     res.end();
   }
@@ -84,15 +86,13 @@ async function serveStatic(
   urlPath: string,
   res: http.ServerResponse
 ): Promise<void> {
-  const cleanPath = decodeURIComponent(urlPath.split("?")[0]);
-  const relative = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\/+/, "");
-  const resolved = path.join(rendererDir, relative);
-
-  if (!resolved.startsWith(rendererDir)) {
-    res.writeHead(403);
-    res.end("Forbidden");
+  const staticPath = resolveStaticPath(rendererDir, urlPath);
+  if (!staticPath.ok) {
+    res.writeHead(staticPath.status);
+    res.end(staticPath.status === 400 ? "Bad request" : "Forbidden");
     return;
   }
+  const resolved = staticPath.path;
 
   try {
     const data = await fs.readFile(resolved);
@@ -135,19 +135,13 @@ function getAllowedOrigin(
   const origin = req.headers.origin;
   if (!origin) return null;
   if (allowedOrigins.has(origin)) return origin;
-  if (isLoopbackHost(req.headers.host) && origin === `http://${req.headers.host}`) {
+  if (
+    isLoopbackHost(req.headers.host) &&
+    origin === `http://${req.headers.host}`
+  ) {
     return origin;
   }
   return null;
-}
-
-function createRequestAbortSignal(req: http.IncomingMessage): AbortSignal {
-  const controller = new AbortController();
-  req.on("aborted", () => controller.abort());
-  req.on("close", () => {
-    if (!req.complete) controller.abort();
-  });
-  return controller.signal;
 }
 
 export function startServer(
@@ -217,6 +211,7 @@ export function startServer(
         );
         await pipeWebResponse(webResponse, res);
       } catch (error) {
+        if (res.headersSent || res.destroyed) return;
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
@@ -237,22 +232,32 @@ export function startServer(
         return;
       }
 
+      const abortController = new AbortController();
+      const abort = () => {
+        if (!res.writableEnded) abortController.abort();
+      };
+      req.once("aborted", abort);
+      res.once("close", abort);
+
       try {
         const body = await readJsonBody<AgentRequestBody>(req);
-        const abortSignal = createRequestAbortSignal(req);
         const webResponse = await handleAgentChatRequest(
           body,
           agentDeps,
-          abortSignal
+          abortController.signal
         );
         await pipeWebResponse(webResponse, res);
       } catch (error) {
+        if (res.headersSent || res.destroyed) return;
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
             error: error instanceof Error ? error.message : "Unknown error",
           })
         );
+      } finally {
+        req.removeListener("aborted", abort);
+        res.removeListener("close", abort);
       }
       return;
     }
@@ -283,7 +288,12 @@ export function startServer(
     }
 
     if (rendererDir && req.method === "GET") {
-      await serveStatic(rendererDir, url, res);
+      try {
+        await serveStatic(rendererDir, url, res);
+      } catch {
+        if (!res.headersSent) res.writeHead(500);
+        if (!res.writableEnded) res.end("Internal server error");
+      }
       return;
     }
 

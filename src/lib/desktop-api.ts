@@ -1,5 +1,10 @@
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
 import type {
+  CodexAccountStatus,
+  CodexLoginResult,
+  CodexModelSyncResult,
+} from "@/lib/codex";
+import type {
   ModelCatalogSnapshot,
   ModelConfig,
   ModelDiscoveryResult,
@@ -91,6 +96,14 @@ export type DesktopAPI = {
     setOpenRouterKey: (key: string) => Promise<CredentialStatus>;
     clearOpenRouterKey: () => Promise<CredentialStatus>;
     testOpenRouterKey: (key?: string) => Promise<CredentialTestResult>;
+  };
+  codex: {
+    getStatus: (refreshToken?: boolean) => Promise<CodexAccountStatus>;
+    startLogin: (flow?: "browser" | "device-code") => Promise<CodexLoginResult>;
+    cancelLogin: (loginId: string) => Promise<void>;
+    logout: () => Promise<void>;
+    syncModels: () => Promise<CodexModelSyncResult>;
+    onStatusChange: (callback: (status: CodexAccountStatus) => void) => () => void;
   };
   providers: {
     listCatalog: () => Promise<ModelCatalogSnapshot>;

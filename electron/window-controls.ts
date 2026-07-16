@@ -12,18 +12,9 @@ function getWindowState(win: BrowserWindow): WindowState {
   };
 }
 
-function assertTrustedSender(event: IpcMainInvokeEvent) {
-  const url = event.senderFrame?.url ?? "";
-  if (
-    !url.startsWith("http://127.0.0.1:") &&
-    !url.startsWith("http://localhost:")
-  ) {
-    throw new Error("Untrusted IPC sender.");
-  }
-}
-
 export function registerWindowControlHandlers(
-  getMainWindow: () => BrowserWindow | null
+  getMainWindow: () => BrowserWindow | null,
+  assertTrustedSender: (event: IpcMainInvokeEvent) => void
 ) {
   function handle<TResult>(
     channel: string,

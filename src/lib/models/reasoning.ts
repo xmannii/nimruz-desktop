@@ -9,6 +9,16 @@ export const REASONING_EFFORT_LEVELS = [
 
 export type ReasoningEffort = (typeof REASONING_EFFORT_LEVELS)[number];
 
+// Codex app-server 0.144.4 advertises these common levels for the models it
+// exposes through ChatGPT accounts. It does not accept Nimruz's `none` or
+// `minimal` values.
+export const CODEX_REASONING_EFFORT_LEVELS = [
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+] as const satisfies readonly ReasoningEffort[];
+
 export const DEFAULT_REASONING_EFFORT: ReasoningEffort = "medium";
 
 const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
@@ -51,4 +61,16 @@ export function isReasoningEffort(value: unknown): value is ReasoningEffort {
     typeof value === "string" &&
     REASONING_EFFORT_LEVELS.includes(value as ReasoningEffort)
   );
+}
+
+export function normalizeCodexReasoningEffort(
+  value: unknown
+): ReasoningEffort | undefined {
+  if (!isReasoningEffort(value)) return undefined;
+  if (value === "none" || value === "minimal") return "low";
+  return CODEX_REASONING_EFFORT_LEVELS.includes(
+    value as (typeof CODEX_REASONING_EFFORT_LEVELS)[number]
+  )
+    ? value
+    : undefined;
 }

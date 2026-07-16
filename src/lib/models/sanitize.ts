@@ -1,4 +1,6 @@
 import {
+  CODEX_BASE_URL,
+  CODEX_PROVIDER_ID,
   OPENROUTER_BASE_URL,
   OPENROUTER_PROVIDER_ID,
   PROVIDER_KINDS,
@@ -110,7 +112,26 @@ export function sanitizeProviderConfig(
     throw new Error("نوع ارائه‌دهنده نامعتبر است.");
   }
 
-  if (existing?.isBuiltin || input.id === OPENROUTER_PROVIDER_ID) {
+  if (
+    existing?.isBuiltin ||
+    input.id === OPENROUTER_PROVIDER_ID ||
+    input.id === CODEX_PROVIDER_ID
+  ) {
+    if (existing?.kind === "codex" || input.id === CODEX_PROVIDER_ID) {
+      return {
+        id: CODEX_PROVIDER_ID,
+        name: "OpenAI Codex",
+        kind: "codex",
+        baseUrl: CODEX_BASE_URL,
+        enabled: asBoolean(input.enabled, existing?.enabled ?? true),
+        includeUsage: true,
+        isBuiltin: true,
+        authRequired: true,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      };
+    }
+
     return {
       id: OPENROUTER_PROVIDER_ID,
       name: "OpenRouter",

@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type { CodexAccountStatus } from "@/lib/codex";
 import type { DesktopAPI, WindowState } from "@/lib/desktop-api";
 
 const desktopApi: DesktopAPI = {
@@ -36,6 +37,25 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("credentials:clear-openrouter"),
     testOpenRouterKey: (key) =>
       ipcRenderer.invoke("credentials:test-openrouter", key),
+  },
+  codex: {
+    getStatus: (refreshToken) =>
+      ipcRenderer.invoke("codex:status", refreshToken),
+    startLogin: (flow) => ipcRenderer.invoke("codex:login", flow),
+    cancelLogin: (loginId) =>
+      ipcRenderer.invoke("codex:login-cancel", loginId),
+    logout: () => ipcRenderer.invoke("codex:logout"),
+    syncModels: () => ipcRenderer.invoke("codex:sync-models"),
+    onStatusChange: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        status: CodexAccountStatus
+      ) => callback(status);
+      ipcRenderer.on("codex:status-changed", handler);
+      return () => {
+        ipcRenderer.removeListener("codex:status-changed", handler);
+      };
+    },
   },
   providers: {
     listCatalog: () => ipcRenderer.invoke("providers:list-catalog"),

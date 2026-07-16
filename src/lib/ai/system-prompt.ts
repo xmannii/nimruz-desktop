@@ -72,21 +72,26 @@ export function buildSystemInstructions(
   personalization?: unknown,
   memories?: unknown,
   experts?: unknown,
-  skills?: SkillCatalogEntry[]
+  skills?: SkillCatalogEntry[],
+  options?: {
+    includeMemoryTools?: boolean;
+    includeAgentTools?: boolean;
+  }
 ) {
   const hasExperts = sanitizeExperts(experts).some((expert) => expert.enabled);
   const hasSkills = (skills?.length ?? 0) > 0;
+  const includeAgentTools = options?.includeAgentTools !== false;
 
   const sections = [
     getBaseSystemPrompt(),
     buildCurrentDateAppendix(),
-    getMemoryToolsPrompt(),
-    getCreateExpertToolsPrompt(),
-    hasExperts ? getExpertToolsPrompt() : "",
-    hasExperts ? buildExpertsAppendix(experts) : "",
-    hasSkills ? getSkillToolsPrompt() : "",
-    hasSkills ? buildSkillsAppendix(skills) : "",
-    getWebToolsPrompt(),
+    options?.includeMemoryTools === false ? "" : getMemoryToolsPrompt(),
+    includeAgentTools ? getCreateExpertToolsPrompt() : "",
+    includeAgentTools && hasExperts ? getExpertToolsPrompt() : "",
+    includeAgentTools && hasExperts ? buildExpertsAppendix(experts) : "",
+    includeAgentTools && hasSkills ? getSkillToolsPrompt() : "",
+    includeAgentTools && hasSkills ? buildSkillsAppendix(skills) : "",
+    includeAgentTools ? getWebToolsPrompt() : "",
     buildPersonalizationAppendix(personalization),
     buildMemoriesAppendix(memories),
   ].filter(Boolean);

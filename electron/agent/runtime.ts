@@ -39,6 +39,12 @@ import { buildAgentTools } from "./tools";
 import type { WorkspaceFilesStore } from "./workspace-files";
 import type { WorkspaceEventBus } from "./events";
 import { createLanguageModel } from "./model";
+import type { CodexService } from "../codex/service";
+import { handleCodexChatRequest } from "../codex/chat-handler";
+import {
+  isCodexProvider,
+  requiresProviderApiKey,
+} from "./provider-routing";
 
 export type AgentRequestBody = {
   messages: ChatUIMessage[];
@@ -58,6 +64,7 @@ export type AgentRuntimeDeps = {
   database: AppDatabase;
   files: WorkspaceFilesStore;
   events?: WorkspaceEventBus;
+  codex?: CodexService | null;
   resolveModel: (
     providerId?: string,
     modelId?: string
@@ -87,7 +94,10 @@ function resolveModelOrError(
     };
   }
 
-  if (resolved.provider.authRequired && !resolved.apiKey) {
+  if (
+    requiresProviderApiKey(resolved.provider) &&
+    !resolved.apiKey
+  ) {
     return {
       error: new Response(
         JSON.stringify({
@@ -137,19 +147,6 @@ export async function handleAgentChatRequest(
     });
   }
 
-  let languageModel;
-  try {
-    languageModel = createLanguageModel(resolved);
-  } catch (error) {
-    return new Response(
-      JSON.stringify({
-        error:
-          error instanceof Error ? error.message : "پیکربندی مدل نامعتبر است.",
-      }),
-      { status: 409, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
   const runId =
     typeof body.runId === "string" && /^[\w-]{1,128}$/.test(body.runId)
       ? body.runId
@@ -190,6 +187,7 @@ export async function handleAgentChatRequest(
     });
   emitRunChanged(run.status);
 
+  const wallAbortController = new AbortController();
   const wallTimer = setTimeout(() => {
     const current = deps.database.getAgentRun(runId);
     if (
@@ -204,6 +202,9 @@ export async function handleAgentChatRequest(
         finishedAt: Date.now(),
       });
       emitRunChanged("failed");
+      wallAbortController.abort(
+        new Error("Run exceeded wall-clock time limit.")
+      );
     }
   }, MAX_WALL_MS);
 
@@ -212,8 +213,10 @@ export async function handleAgentChatRequest(
     const current = deps.database.getAgentRun(runId);
     if (!current) return;
     if (
+      current.status === "completed" ||
+      current.status === "failed" ||
       current.status === "cancelled" ||
-      (current.status === "failed" && status === "completed")
+      current.finishedAt !== null
     ) {
       return;
     }
@@ -233,6 +236,78 @@ export async function handleAgentChatRequest(
       () => finishRun("cancelled", "Cancelled by user."),
       { once: true }
     );
+  }
+
+  if (isCodexProvider(resolved.provider)) {
+    const codexAbortSignal = abortSignal
+      ? AbortSignal.any([abortSignal, wallAbortController.signal])
+      : wallAbortController.signal;
+    const workspaceContext = workspace
+      ? [
+          "## Active Nimruz workspace context",
+          `Workspace: ${workspace.title}`,
+          workspace.description?.trim()
+            ? `Description: ${workspace.description.trim()}`
+            : "",
+          workspace.instructions?.trim()
+            ? `Workspace instructions:\n${workspace.instructions.trim()}`
+            : "",
+          "This Codex integration runs in an isolated, non-interactive directory. It cannot inspect linked workspace files, execute workspace tools, create artifacts, or update tasks. Do not claim that those actions were performed.",
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+      : "";
+
+    let response: Response;
+    try {
+      response = await handleCodexChatRequest({
+        body,
+        chatId,
+        resolved,
+        codex: deps.codex ?? null,
+        signal: codexAbortSignal,
+        additionalInstructions: workspaceContext,
+        runId,
+        onFinish(status, error) {
+          finishRun(status, error);
+        },
+      });
+    } catch (error) {
+      const message = getChatErrorMessage(error);
+      finishRun("failed", message);
+      return new Response(JSON.stringify({ error: message }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (!response.ok) {
+      let message = `Codex request failed (${response.status}).`;
+      try {
+        const payload = (await response.clone().json()) as { error?: unknown };
+        if (typeof payload.error === "string" && payload.error.trim()) {
+          message = payload.error.trim();
+        }
+      } catch {
+        // Preserve the response for the renderer even if its body is not JSON.
+      }
+      finishRun("failed", message);
+    }
+
+    return response;
+  }
+
+  let languageModel;
+  try {
+    languageModel = createLanguageModel(resolved);
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "پیکربندی مدل نامعتبر است.";
+    finishRun("failed", message);
+    return new Response(JSON.stringify({ error: message }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   const sanitizedExperts = sanitizeExperts(experts);

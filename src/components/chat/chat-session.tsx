@@ -5,8 +5,12 @@ import { useAppShell } from "@/components/app-shell-context";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import type { LocalChat } from "@/lib/chat/storage";
 import { DEFAULT_PROVIDER_ID, type ModelId } from "@/lib/models";
-import type { ProviderModelRef } from "@/lib/models/catalog";
 import {
+  CODEX_PROVIDER_ID,
+  type ProviderModelRef,
+} from "@/lib/models/catalog";
+import {
+  CODEX_REASONING_EFFORT_LEVELS,
   DEFAULT_REASONING_EFFORT,
   type ReasoningEffort,
 } from "@/lib/models/reasoning";
@@ -125,6 +129,17 @@ export function ChatSession({
       modelId: chat.model,
     });
   }, [chat.id, chat.model, chat.providerId]);
+
+  useEffect(() => {
+    if (
+      modelRef.providerId === CODEX_PROVIDER_ID &&
+      !CODEX_REASONING_EFFORT_LEVELS.includes(
+        reasoningEffort as (typeof CODEX_REASONING_EFFORT_LEVELS)[number]
+      )
+    ) {
+      setReasoningEffort(DEFAULT_REASONING_EFFORT);
+    }
+  }, [modelRef.providerId, reasoningEffort]);
 
   useEffect(() => {
     if (!resolveModel(modelRef)) {
@@ -427,14 +442,23 @@ export function ChatSession({
     const trimmed = text.trim();
     if ((!trimmed && attachments.length === 0) || isBusy) return;
 
-    const supportsImages = resolveModel(modelRef)?.supportsImages ?? false;
-    const imageAttachments = attachments.filter(
+    const isCodexProvider = modelRef.providerId === CODEX_PROVIDER_ID;
+    const usableAttachments = isCodexProvider ? [] : attachments;
+    if (isCodexProvider && !trimmed && attachments.length > 0) {
+      toast.error(
+        "پیوست‌های فضای کاری در حالت Codex در دسترس نیستند؛ یک پیام متنی بنویسید."
+      );
+      return;
+    }
+    const supportsImages =
+      !isCodexProvider && (resolveModel(modelRef)?.supportsImages ?? false);
+    const imageAttachments = usableAttachments.filter(
       (a) => a.category === "image" && a.dataUrl
     );
     // Images go to vision models as file parts; everything else (and images the
     // current model can't see) travels as durable `@path` references the agent
     // resolves with its file tools.
-    const referenced = attachments.filter(
+    const referenced = usableAttachments.filter(
       (a) => !(supportsImages && a.category === "image" && a.dataUrl)
     );
     const references = referenced.map((a) => `@${a.relativePath}`);

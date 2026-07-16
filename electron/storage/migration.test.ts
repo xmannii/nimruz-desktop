@@ -99,6 +99,29 @@ function seedV3Database(file: string) {
   db.close();
 }
 
+function seedCodexV4Database(file: string) {
+  seedV3Database(file);
+  const db = new DatabaseSync(file);
+  db.exec(`
+    CREATE TABLE codex_chat_threads (
+      chat_id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      last_user_message_id TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE UNIQUE INDEX codex_chat_threads_thread_id_idx
+      ON codex_chat_threads(thread_id);
+    INSERT INTO codex_chat_threads (
+      chat_id, thread_id, last_user_message_id, created_at, updated_at
+    ) VALUES (
+      'chat-1', 'legacy-codex-thread', 'm1', 500, 600
+    );
+    PRAGMA user_version = 4;
+  `);
+  db.close();
+}
+
 async function withMigratedDatabase(
   operation: (database: AppDatabase) => void | Promise<void>
 ) {
@@ -123,7 +146,7 @@ test("migrates a v3 database to the latest schema version", async () => {
     ).database
       .prepare("PRAGMA user_version")
       .get() as { user_version: number };
-    assert.equal(version.user_version, 5);
+    assert.equal(version.user_version, 6);
   });
 });
 
@@ -193,4 +216,80 @@ test("supports the is_primary column added in v5", async () => {
     assert.equal(roots.find((root) => root.id === "root-b")?.isPrimary, true);
     assert.equal(roots.find((root) => root.id === "root-a")?.isPrimary, false);
   });
+});
+
+test("migrates the old combined Codex v4 lineage into agentic schema v6", async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "nimruz-migrate-codex-v4-")
+  );
+  const file = path.join(directory, "test.sqlite3");
+  seedCodexV4Database(file);
+  const database = new AppDatabase(file);
+  try {
+    assert.equal(database.getWorkspace("proj-1")?.title, "Legacy Project");
+    assert.equal(database.loadChats()[0]?.workspaceId, "proj-1");
+    assert.equal(
+      database.getCodexChatThread("chat-1")?.threadId,
+      "legacy-codex-thread"
+    );
+    const version = database.database
+      .prepare("PRAGMA user_version")
+      .get() as { user_version: number };
+    assert.equal(version.user_version, 6);
+  } finally {
+    database.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("adds Codex thread storage to the official agentic v5 lineage", async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "nimruz-migrate-agentic-v5-")
+  );
+  const file = path.join(directory, "test.sqlite3");
+  seedV3Database(file);
+
+  const initial = new AppDatabase(file);
+  initial.saveWorkspaceRoot({
+    id: "root-v5",
+    workspaceId: "proj-1",
+    kind: "linked",
+    path: "/tmp/proj-v5",
+    label: "V5 root",
+    isPrimary: true,
+    createdAt: 700,
+  });
+  initial.close();
+
+  const legacy = new DatabaseSync(file);
+  legacy.exec(`
+    DROP INDEX IF EXISTS codex_chat_threads_thread_id_idx;
+    DROP TABLE IF EXISTS codex_chat_threads;
+    PRAGMA user_version = 5;
+  `);
+  legacy.close();
+
+  const migrated = new AppDatabase(file);
+  try {
+    assert.equal(
+      migrated.loadWorkspaceRoots("proj-1")[0]?.id,
+      "root-v5"
+    );
+    migrated.saveCodexChatThread({
+      chatId: "chat-1",
+      threadId: "thread-after-v5",
+      lastUserMessageId: "m1",
+    });
+    assert.equal(
+      migrated.getCodexChatThread("chat-1")?.threadId,
+      "thread-after-v5"
+    );
+    const version = migrated.database
+      .prepare("PRAGMA user_version")
+      .get() as { user_version: number };
+    assert.equal(version.user_version, 6);
+  } finally {
+    migrated.close();
+    await rm(directory, { recursive: true, force: true });
+  }
 });

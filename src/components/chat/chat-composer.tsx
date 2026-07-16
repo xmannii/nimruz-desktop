@@ -38,8 +38,14 @@ import {
 } from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { ProviderModelRef } from "@/lib/models/catalog";
-import type { ReasoningEffort } from "@/lib/models/reasoning";
+import {
+  CODEX_PROVIDER_ID,
+  type ProviderModelRef,
+} from "@/lib/models/catalog";
+import {
+  CODEX_REASONING_EFFORT_LEVELS,
+  type ReasoningEffort,
+} from "@/lib/models/reasoning";
 import type { ChatStatus } from "ai";
 import { ArrowUpIcon, PlusIcon, SquareIcon } from "lucide-react";
 import {
@@ -119,8 +125,15 @@ export function ChatComposer({
 
   const isBusy = status === "submitted" || status === "streaming";
   const modelConfig = resolveModel(model);
-  const canAttach = modelConfig?.supportsImages ?? false;
+  const isCodexProvider = model.providerId === CODEX_PROVIDER_ID;
+  const canUseWorkspaceContext = Boolean(workspaceId) && !isCodexProvider;
+  const canAttach =
+    !isCodexProvider && (modelConfig?.supportsImages ?? false);
   const showReasoningEffort = modelConfig?.supportsReasoningEffort ?? false;
+  const reasoningEffortLevels =
+    model.providerId === CODEX_PROVIDER_ID
+      ? CODEX_REASONING_EFFORT_LEVELS
+      : undefined;
   const selectedExpert = useMemo(
     () => resolveSelectedExpert(experts, selectedExpertSlug),
     [experts, selectedExpertSlug]
@@ -132,13 +145,27 @@ export function ChatComposer({
   );
   const hasExpertPicker = expertSuggestions.length > 0;
 
-  const mentionQuery = workspaceId ? getMentionQuery(text) : null;
+  const mentionQuery = canUseWorkspaceContext ? getMentionQuery(text) : null;
   const hasMentionPicker = mentionQuery !== null && mentionEntries.length > 0;
   const mentions = useMemo(() => parseMentions(text), [text]);
 
   useEffect(() => {
     if (!text && !selectedExpert) setIsExpanded(false);
   }, [text, selectedExpert]);
+
+  useEffect(() => {
+    if (
+      !isCodexProvider ||
+      attachments.length === 0 ||
+      !onAttachmentsChange
+    ) {
+      return;
+    }
+    onAttachmentsChange([]);
+    toast.info(
+      "پیوست‌های فضای کاری پاک شدند؛ Codex فقط پیام متنی دریافت می‌کند."
+    );
+  }, [attachments.length, isCodexProvider, onAttachmentsChange]);
 
   useEffect(() => {
     setHighlightIndex(0);
@@ -270,7 +297,12 @@ export function ChatComposer({
     focusComposer();
   }
 
-  const canImport = Boolean(workspaceId);
+  const canImport = canUseWorkspaceContext;
+  const attachmentTitle = isCodexProvider
+    ? "پیوست و اشاره به فایل‌های فضای کاری در حالت Codex در دسترس نیست"
+    : canImport || canAttach
+      ? "افزودن فایل"
+      : "برای افزودن فایل یک فضای کاری لازم است";
 
   function focusComposer() {
     requestAnimationFrame(() => {
@@ -294,7 +326,8 @@ export function ChatComposer({
     focusComposer();
   }
 
-  const canSend = Boolean(text.trim()) || attachments.length > 0;
+  const canSend =
+    Boolean(text.trim()) || (canUseWorkspaceContext && attachments.length > 0);
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -474,9 +507,11 @@ export function ChatComposer({
         reasoningEffort={reasoningEffort}
         onReasoningEffortChange={onReasoningEffortChange}
         showReasoningEffort={showReasoningEffort}
+        reasoningEffortLevels={reasoningEffortLevels}
         isBusy={isBusy}
         canAttach={canAttach}
         canImport={canImport}
+        attachmentTitle={attachmentTitle}
         isImporting={isImporting}
         onAttach={() => fileInputRef.current?.click()}
         text={text}
@@ -506,9 +541,11 @@ export function ChatComposer({
         reasoningEffort={reasoningEffort}
         onReasoningEffortChange={onReasoningEffortChange}
         showReasoningEffort={showReasoningEffort}
+        reasoningEffortLevels={reasoningEffortLevels}
         isBusy={isBusy}
         canAttach={canAttach}
         canImport={canImport}
+        attachmentTitle={attachmentTitle}
         isImporting={isImporting}
         onAttach={() => fileInputRef.current?.click()}
         isExpanded={
@@ -538,7 +575,7 @@ export function ChatComposer({
       />
 
       {centered ? (
-        <ComposerFooter showContext={false} />
+        <ComposerFooter model={model} showContext={false} />
       ) : (
         <ComposerFooter
           messages={messages}
@@ -564,7 +601,11 @@ function ComposerFooter({
       dir="ltr"
       className="relative flex items-center justify-center px-1 pt-2 text-[11px] leading-none text-muted-foreground/75"
     >
-      <span dir="rtl">چت‌بات متن‌باز نیمروز</span>
+      <span dir="rtl">
+        {model?.providerId === CODEX_PROVIDER_ID
+          ? "Codex ایزوله است؛ فایل‌ها و ابزارهای فضای کاری در دسترس نیستند"
+          : "چت‌بات متن‌باز نیمروز"}
+      </span>
       {showContext && model ? (
         <div className="absolute right-0 flex items-center gap-1">
           <ChatContextUsage messages={messages} model={model.modelId} />
@@ -596,9 +637,11 @@ type ComposerSharedProps = {
   reasoningEffort: ReasoningEffort;
   onReasoningEffortChange: (effort: ReasoningEffort) => void;
   showReasoningEffort: boolean;
+  reasoningEffortLevels?: readonly ReasoningEffort[];
   isBusy: boolean;
   canAttach: boolean;
   canImport?: boolean;
+  attachmentTitle?: string;
   isImporting?: boolean;
   onAttach?: () => void;
   text: string;
@@ -616,9 +659,11 @@ function MobileComposer({
   reasoningEffort,
   onReasoningEffortChange,
   showReasoningEffort,
+  reasoningEffortLevels,
   isBusy,
   canAttach,
   canImport = false,
+  attachmentTitle,
   isImporting = false,
   onAttach,
   text,
@@ -656,9 +701,10 @@ function MobileComposer({
             className="size-10 shrink-0 rounded-full"
             aria-label="افزودن پیوست"
             title={
-              canImport || canAttach
+              attachmentTitle ??
+              (canImport || canAttach
                 ? "افزودن فایل"
-                : "برای افزودن فایل یک فضای کاری لازم است"
+                : "برای افزودن فایل یک فضای کاری لازم است")
             }
             disabled={(!canImport && !canAttach) || isBusy || isImporting}
             onClick={onAttach}
@@ -677,6 +723,7 @@ function MobileComposer({
             <ReasoningEffortSlider
               value={reasoningEffort}
               onValueChange={onReasoningEffortChange}
+              levels={reasoningEffortLevels}
               disabled={isBusy}
               compact
             />
@@ -718,9 +765,11 @@ function DesktopComposer({
   reasoningEffort,
   onReasoningEffortChange,
   showReasoningEffort,
+  reasoningEffortLevels,
   isBusy,
   canAttach,
   canImport = false,
+  attachmentTitle,
   isImporting = false,
   onAttach,
   isExpanded,
@@ -773,9 +822,10 @@ function DesktopComposer({
               variant="secondary"
               aria-label="افزودن پیوست"
               title={
-                canImport || canAttach
+                attachmentTitle ??
+                (canImport || canAttach
                   ? "افزودن فایل"
-                  : "برای افزودن فایل یک فضای کاری لازم است"
+                  : "برای افزودن فایل یک فضای کاری لازم است")
               }
               disabled={(!canImport && !canAttach) || isBusy || isImporting}
               onClick={onAttach}
@@ -793,6 +843,7 @@ function DesktopComposer({
               <ReasoningEffortSlider
                 value={reasoningEffort}
                 onValueChange={onReasoningEffortChange}
+                levels={reasoningEffortLevels}
                 disabled={isBusy}
               />
             ) : null}

@@ -17,6 +17,7 @@ export type MessageAttachment = {
 export type ChatMessageMetadata = {
   totalUsage?: LanguageModelUsage;
   attachments?: MessageAttachment[];
+  runId?: string;
 };
 
 export type ChatUIMessage = UIMessage<ChatMessageMetadata>;
