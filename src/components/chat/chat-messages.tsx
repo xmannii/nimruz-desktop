@@ -10,10 +10,7 @@ import { MessageResponse } from "@/components/ai-elements/message";
 import { ChatMemoryToolPart } from "@/components/chat/chat-memory-tool-part";
 import { ChatExpertToolPart } from "@/components/chat/chat-expert-tool-part";
 import { ChatSkillToolPart } from "@/components/chat/chat-skill-tool-part";
-import {
-  ChatFetchUrlToolPart,
-  ChatWebSearchToolPart,
-} from "@/components/chat/chat-web-tool-part";
+import { ChatFetchUrlToolPart } from "@/components/chat/chat-web-tool-part";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent } from "@/components/ui/message";
@@ -295,20 +292,6 @@ function AssistantMessageParts({
                 part as Extract<
                   (typeof message.parts)[number],
                   { type: "tool-load_skill" }
-                >
-              }
-            />
-          );
-        }
-
-        if (part.type === "tool-web_search") {
-          return (
-            <ChatWebSearchToolPart
-              key={`${message.id}-${index}`}
-              part={
-                part as Extract<
-                  (typeof message.parts)[number],
-                  { type: "tool-web_search" }
                 >
               }
             />
