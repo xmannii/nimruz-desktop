@@ -15,6 +15,7 @@ import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppSettingsMemoriesRouteImport } from './routes/_app.settings.memories'
+import { Route as AppSettingsExpertsRouteImport } from './routes/_app.settings.experts'
 import { Route as AppSettingsAppearanceRouteImport } from './routes/_app.settings.appearance'
 import { Route as AppSettingsAboutRouteImport } from './routes/_app.settings.about'
 import { Route as AppChatChatIdRouteImport } from './routes/_app.chat.$chatId'
@@ -48,6 +49,11 @@ const AppSettingsMemoriesRoute = AppSettingsMemoriesRouteImport.update({
   path: '/memories',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsExpertsRoute = AppSettingsExpertsRouteImport.update({
+  id: '/experts',
+  path: '/experts',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsAppearanceRoute = AppSettingsAppearanceRouteImport.update({
   id: '/appearance',
   path: '/appearance',
@@ -70,6 +76,7 @@ export interface FileRoutesByFullPath {
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/about': typeof AppSettingsAboutRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/settings/experts': typeof AppSettingsExpertsRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/': typeof AppSettingsIndexRoute
@@ -79,6 +86,7 @@ export interface FileRoutesByTo {
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/about': typeof AppSettingsAboutRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/settings/experts': typeof AppSettingsExpertsRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings': typeof AppSettingsIndexRoute
@@ -91,6 +99,7 @@ export interface FileRoutesById {
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
   '/_app/settings/about': typeof AppSettingsAboutRoute
   '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/_app/settings/experts': typeof AppSettingsExpertsRoute
   '/_app/settings/memories': typeof AppSettingsMemoriesRoute
   '/_app/settings/models': typeof AppSettingsModelsRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
@@ -103,6 +112,7 @@ export interface FileRouteTypes {
     | '/chat/$chatId'
     | '/settings/about'
     | '/settings/appearance'
+    | '/settings/experts'
     | '/settings/memories'
     | '/settings/models'
     | '/settings/'
@@ -112,6 +122,7 @@ export interface FileRouteTypes {
     | '/chat/$chatId'
     | '/settings/about'
     | '/settings/appearance'
+    | '/settings/experts'
     | '/settings/memories'
     | '/settings/models'
     | '/settings'
@@ -123,6 +134,7 @@ export interface FileRouteTypes {
     | '/_app/chat/$chatId'
     | '/_app/settings/about'
     | '/_app/settings/appearance'
+    | '/_app/settings/experts'
     | '/_app/settings/memories'
     | '/_app/settings/models'
     | '/_app/settings/'
@@ -176,6 +188,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsMemoriesRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/experts': {
+      id: '/_app/settings/experts'
+      path: '/experts'
+      fullPath: '/settings/experts'
+      preLoaderRoute: typeof AppSettingsExpertsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/settings/appearance': {
       id: '/_app/settings/appearance'
       path: '/appearance'
@@ -203,6 +222,7 @@ declare module '@tanstack/react-router' {
 interface AppSettingsRouteChildren {
   AppSettingsAboutRoute: typeof AppSettingsAboutRoute
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
+  AppSettingsExpertsRoute: typeof AppSettingsExpertsRoute
   AppSettingsMemoriesRoute: typeof AppSettingsMemoriesRoute
   AppSettingsModelsRoute: typeof AppSettingsModelsRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
@@ -211,6 +231,7 @@ interface AppSettingsRouteChildren {
 const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsAboutRoute: AppSettingsAboutRoute,
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
+  AppSettingsExpertsRoute: AppSettingsExpertsRoute,
   AppSettingsMemoriesRoute: AppSettingsMemoriesRoute,
   AppSettingsModelsRoute: AppSettingsModelsRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,

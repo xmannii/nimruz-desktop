@@ -72,11 +72,13 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   const {
     personalization,
     memories,
+    experts,
     isHydrated: areSettingsHydrated,
     saveState: personalizationSaveState,
     updatePersonalization,
     handleMemoriesChange,
     handleDeleteMemory,
+    handleExpertsChange,
   } = useAppSettings();
 
   const stopCurrentChatRef = useRef<(() => void) | null>(null);
@@ -99,6 +101,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       isCatalogHydrated,
       personalization,
       memories,
+      experts,
       personalizationSaveState,
       credentialRefreshSignal,
       providers,
@@ -121,6 +124,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       updatePersonalization,
       handleMemoriesChange,
       handleDeleteMemory,
+      handleExpertsChange,
       bumpCredentialRefresh: () =>
         setCredentialRefreshSignal((current) => current + 1),
       refreshCatalog,
@@ -139,6 +143,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       isCatalogHydrated,
       personalization,
       memories,
+      experts,
       personalizationSaveState,
       credentialRefreshSignal,
       providers,
@@ -160,6 +165,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       updatePersonalization,
       handleMemoriesChange,
       handleDeleteMemory,
+      handleExpertsChange,
       refreshCatalog,
       setCatalog,
       resolveModel,

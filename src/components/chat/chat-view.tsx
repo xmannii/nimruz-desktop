@@ -18,12 +18,14 @@ export function ChatView({ chatId }: ChatViewProps) {
     areSettingsHydrated,
     personalization,
     memories,
+    experts,
     credentialRefreshSignal,
     stopCurrentChatRef,
     getChatById,
     selectChat,
     updateChat,
     handleMemoriesChange,
+    handleExpertsChange,
   } = useAppShell();
 
   const resolvedChat = useMemo(() => {
@@ -63,7 +65,9 @@ export function ChatView({ chatId }: ChatViewProps) {
             stopRef={stopCurrentChatRef}
             personalization={personalization}
             memories={memories}
+            experts={experts}
             onMemoriesChange={handleMemoriesChange}
+            onExpertsChange={handleExpertsChange}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">

@@ -33,6 +33,7 @@ import { ChatComposer } from "./chat-composer";
 import { ChatMessages } from "./chat-messages";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { toast } from "sonner";
+import { normalizeExpertSlug, upsertExpert, type Expert } from "@/lib/settings/experts";
 
 const CHAT_UPDATE_THROTTLE_MS = 50;
 let sessionTokenPromise: Promise<string> | undefined;
@@ -48,7 +49,9 @@ type ChatSessionProps = {
   stopRef: MutableRefObject<(() => void) | null>;
   personalization: PersonalizationSettings;
   memories: MemoryEntry[];
+  experts: Expert[];
   onMemoriesChange: (memories: MemoryEntry[]) => void;
+  onExpertsChange: (experts: Expert[]) => void;
 };
 
 export function ChatSession({
@@ -57,7 +60,9 @@ export function ChatSession({
   stopRef,
   personalization,
   memories,
+  experts,
   onMemoriesChange,
+  onExpertsChange,
 }: ChatSessionProps) {
   const {
     catalog,
@@ -133,6 +138,7 @@ export function ChatSession({
           reasoningEffort,
           personalization,
           memories,
+          experts,
         };
 
         if (toolCall.toolName === "save_memory") {
@@ -190,6 +196,27 @@ export function ChatSession({
                 memories: nextMemories,
               },
             },
+          });
+          return;
+        }
+
+        if (toolCall.toolName === "create_expert") {
+          const input = toolCall.input as Partial<Expert>;
+          const nextExperts = upsertExpert(experts, {
+            name: input.name,
+            slug: normalizeExpertSlug(input.slug || input.name),
+            description: input.description,
+            instructions: input.instructions,
+            triggers: input.triggers,
+            enabled: true,
+          });
+          const created = nextExperts.find((item) => item.slug === normalizeExpertSlug(input.slug || input.name));
+          if (created) onExpertsChange(nextExperts);
+          addToolOutput({
+            tool: "create_expert",
+            toolCallId: toolCall.toolCallId,
+            output: { success: Boolean(created), slug: created?.slug },
+            options: { body: { ...requestBody, experts: nextExperts } },
           });
         }
       },
@@ -272,6 +299,7 @@ export function ChatSession({
           reasoningEffort,
           personalization,
           memories,
+          experts,
         },
       }
     );

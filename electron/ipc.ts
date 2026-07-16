@@ -217,6 +217,8 @@ export function registerIpcHandlers(options: {
   handle("storage:save-memories", (value: unknown) =>
     database.saveMemories(value)
   );
+  handle("storage:load-experts", () => database.loadExperts());
+  handle("storage:save-experts", (value: unknown) => database.saveExperts(value));
   handle(
     "storage:import-legacy",
     (value: unknown): LegacyImportResult =>

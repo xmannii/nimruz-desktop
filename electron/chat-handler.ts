@@ -6,6 +6,8 @@ import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { APP_NAME } from "@/lib/branding";
 import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
+import { createExpertTools, expertToolName } from "@/lib/ai/expert-tools";
+import { findExplicitExpert, sanitizeExperts } from "@/lib/settings/experts";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
@@ -16,6 +18,7 @@ import {
   streamText,
   toUIMessageStream,
   type LanguageModel,
+  type ToolSet,
 } from "ai";
 
 export type ChatRequestBody = {
@@ -25,6 +28,7 @@ export type ChatRequestBody = {
   reasoningEffort?: ReasoningEffort;
   personalization?: unknown;
   memories?: unknown;
+  experts?: unknown;
 };
 
 export type ResolvedChatModel = {
@@ -75,6 +79,7 @@ export async function handleChatRequest(
     reasoningEffort,
     personalization,
     memories,
+    experts,
   } = body;
 
   const resolved = resolveModel(providerId, model);
@@ -117,16 +122,39 @@ export async function handleChatRequest(
       ? reasoningEffort
       : undefined;
 
+  const sanitizedExperts = sanitizeExperts(experts);
+  const lastUserText = [...messages].reverse().find((message) => message.role === "user")?.parts
+    ?.filter((part): part is Extract<(typeof messages)[number]["parts"][number], { type: "text" }> => part.type === "text")
+    .map((part) => part.text).join("\n") ?? "";
+  const explicitExpert = findExplicitExpert(sanitizedExperts, lastUserText);
+  const availableTools: ToolSet | undefined = resolved.model.supportsTools
+    ? { ...memoryTools, ...createExpertTools(sanitizedExperts, languageModel) }
+    : undefined;
+
   const result = streamText({
     model: languageModel,
     ...(selectedReasoningEffort ? { reasoning: selectedReasoningEffort } : {}),
     instructions: buildSystemInstructions(
       personalization,
-      sanitizeMemories(memories)
+      sanitizeMemories(memories),
+      sanitizedExperts
     ),
     messages: await convertToModelMessages(messages),
-    ...(resolved.model.supportsTools
-      ? { tools: memoryTools, stopWhen: stepCountIs(5) }
+    ...(availableTools
+      ? {
+          tools: availableTools,
+          stopWhen: stepCountIs(5),
+          ...(explicitExpert
+            ? {
+                prepareStep: ({ stepNumber }: { stepNumber: number }) => ({
+                  toolChoice:
+                    stepNumber === 0
+                      ? { type: "tool" as const, toolName: expertToolName(explicitExpert) }
+                      : "auto" as const,
+                }),
+              }
+            : {}),
+        }
       : {}),
     experimental_transform: smoothStream({
       delayInMs: 12,

@@ -9,6 +9,7 @@ import {
   InfoIcon,
   PaletteIcon,
   UserRoundIcon,
+  SparklesIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -16,6 +17,7 @@ const SETTINGS_NAV: Array<{
   to:
     | "/settings"
     | "/settings/memories"
+    | "/settings/experts"
     | "/settings/models"
     | "/settings/appearance"
     | "/settings/about";
@@ -24,6 +26,12 @@ const SETTINGS_NAV: Array<{
   match: (pathname: string) => boolean;
   badgeKey?: "memories";
 }> = [
+  {
+    to: "/settings/experts",
+    label: "متخصص‌ها",
+    icon: SparklesIcon,
+    match: (pathname) => pathname.startsWith("/settings/experts"),
+  },
   {
     to: "/settings",
     label: "شخصی‌سازی",
