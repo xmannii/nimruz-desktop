@@ -15,6 +15,7 @@ import {
   BrainIcon,
   CpuIcon,
   InfoIcon,
+  ListTodoIcon,
   PaletteIcon,
   SparklesIcon,
   UserRoundIcon,
@@ -28,6 +29,7 @@ export const SETTINGS_NAV: Array<{
     | "/settings/experts"
     | "/settings/models"
     | "/settings/skills"
+    | "/settings/missions"
     | "/settings/appearance"
     | "/settings/about";
   label: string;
@@ -35,6 +37,12 @@ export const SETTINGS_NAV: Array<{
   match: (pathname: string) => boolean;
   badgeKey?: "memories";
 }> = [
+  {
+    to: "/settings/missions",
+    label: "مأموریت‌ها",
+    icon: ListTodoIcon,
+    match: (pathname) => pathname.startsWith("/settings/missions"),
+  },
   {
     to: "/settings/experts",
     label: "متخصص‌ها",

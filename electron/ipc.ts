@@ -9,6 +9,7 @@ import type {
   SkillsPreferences,
 } from "@/lib/skills/index";
 import { normalizeSkillName, sanitizeSkillsPreferences } from "@/lib/skills/index";
+import { createMission, isMissionStatus, type Mission } from "@/lib/missions/types";
 import {
   OPENROUTER_PROVIDER_ID,
   PROVIDER_LIMITS,
@@ -227,6 +228,21 @@ export function registerIpcHandlers(options: {
   );
   handle("storage:load-experts", () => database.loadExperts());
   handle("storage:save-experts", (value: unknown) => database.saveExperts(value));
+  handle("missions:list", (): Mission[] => database.loadMissions());
+  handle("missions:create", (value: unknown): Mission[] => {
+    const mission = createMission(value);
+    database.createMission(mission);
+    return database.loadMissions();
+  });
+  handle("missions:set-status", (id: string, status: string): Mission[] => {
+    if (!isMissionStatus(status)) throw new Error("Invalid mission status.");
+    if (!database.updateMissionStatus(id, status)) throw new Error("Mission not found.");
+    return database.loadMissions();
+  });
+  handle("missions:delete", (id: string): Mission[] => {
+    database.deleteMission(id);
+    return database.loadMissions();
+  });
   handle(
     "storage:import-legacy",
     (value: unknown): LegacyImportResult =>

@@ -15,6 +15,7 @@ import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
 import { Route as AppSettingsSkillsRouteImport } from './routes/_app.settings.skills'
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
+import { Route as AppSettingsMissionsRouteImport } from './routes/_app.settings.missions'
 import { Route as AppSettingsMemoriesRouteImport } from './routes/_app.settings.memories'
 import { Route as AppSettingsExpertsRouteImport } from './routes/_app.settings.experts'
 import { Route as AppSettingsAppearanceRouteImport } from './routes/_app.settings.appearance'
@@ -48,6 +49,11 @@ const AppSettingsSkillsRoute = AppSettingsSkillsRouteImport.update({
 const AppSettingsModelsRoute = AppSettingsModelsRouteImport.update({
   id: '/models',
   path: '/models',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsMissionsRoute = AppSettingsMissionsRouteImport.update({
+  id: '/missions',
+  path: '/missions',
   getParentRoute: () => AppSettingsRoute,
 } as any)
 const AppSettingsMemoriesRoute = AppSettingsMemoriesRouteImport.update({
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/experts': typeof AppSettingsExpertsRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
+  '/settings/missions': typeof AppSettingsMissionsRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings/': typeof AppSettingsIndexRoute
@@ -95,6 +102,7 @@ export interface FileRoutesByTo {
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/experts': typeof AppSettingsExpertsRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
+  '/settings/missions': typeof AppSettingsMissionsRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings': typeof AppSettingsIndexRoute
@@ -109,6 +117,7 @@ export interface FileRoutesById {
   '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
   '/_app/settings/experts': typeof AppSettingsExpertsRoute
   '/_app/settings/memories': typeof AppSettingsMemoriesRoute
+  '/_app/settings/missions': typeof AppSettingsMissionsRoute
   '/_app/settings/models': typeof AppSettingsModelsRoute
   '/_app/settings/skills': typeof AppSettingsSkillsRoute
   '/_app/settings/': typeof AppSettingsIndexRoute
@@ -123,6 +132,7 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/experts'
     | '/settings/memories'
+    | '/settings/missions'
     | '/settings/models'
     | '/settings/skills'
     | '/settings/'
@@ -134,6 +144,7 @@ export interface FileRouteTypes {
     | '/settings/appearance'
     | '/settings/experts'
     | '/settings/memories'
+    | '/settings/missions'
     | '/settings/models'
     | '/settings/skills'
     | '/settings'
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | '/_app/settings/appearance'
     | '/_app/settings/experts'
     | '/_app/settings/memories'
+    | '/_app/settings/missions'
     | '/_app/settings/models'
     | '/_app/settings/skills'
     | '/_app/settings/'
@@ -200,6 +212,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsModelsRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/missions': {
+      id: '/_app/settings/missions'
+      path: '/missions'
+      fullPath: '/settings/missions'
+      preLoaderRoute: typeof AppSettingsMissionsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/settings/memories': {
       id: '/_app/settings/memories'
       path: '/memories'
@@ -243,6 +262,7 @@ interface AppSettingsRouteChildren {
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsExpertsRoute: typeof AppSettingsExpertsRoute
   AppSettingsMemoriesRoute: typeof AppSettingsMemoriesRoute
+  AppSettingsMissionsRoute: typeof AppSettingsMissionsRoute
   AppSettingsModelsRoute: typeof AppSettingsModelsRoute
   AppSettingsSkillsRoute: typeof AppSettingsSkillsRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
@@ -253,6 +273,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
   AppSettingsExpertsRoute: AppSettingsExpertsRoute,
   AppSettingsMemoriesRoute: AppSettingsMemoriesRoute,
+  AppSettingsMissionsRoute: AppSettingsMissionsRoute,
   AppSettingsModelsRoute: AppSettingsModelsRoute,
   AppSettingsSkillsRoute: AppSettingsSkillsRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,

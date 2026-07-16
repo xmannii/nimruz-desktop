@@ -81,6 +81,12 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("skills:update", name, skill),
     delete: (name) => ipcRenderer.invoke("skills:delete", name),
   },
+  missions: {
+    list: () => ipcRenderer.invoke("missions:list"),
+    create: (mission) => ipcRenderer.invoke("missions:create", mission),
+    setStatus: (id, status) => ipcRenderer.invoke("missions:set-status", id, status),
+    delete: (id) => ipcRenderer.invoke("missions:delete", id),
+  },
   updates: {
     getVersion: () => ipcRenderer.invoke("updates:get-version"),
     check: () => ipcRenderer.invoke("updates:check"),

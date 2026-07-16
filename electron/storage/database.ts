@@ -33,6 +33,7 @@ import {
   type SkillsPreferences,
 } from "@/lib/skills/index";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER_ID } from "@/lib/models";
+import type { Mission, MissionInput, MissionStatus, MissionStepStatus } from "@/lib/missions/types";
 
 const LEGACY_MIGRATION_KEY = "legacy-browser-storage-v1";
 
@@ -247,6 +248,38 @@ export class AppDatabase {
       });
     } else {
       this.ensureBuiltinCatalog();
+    }
+
+    if (currentVersion < 3) {
+      this.transaction(() => {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS missions (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            goal TEXT NOT NULL,
+            status TEXT NOT NULL,
+            project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+            workspace_path TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+          CREATE TABLE IF NOT EXISTS mission_steps (
+            id TEXT PRIMARY KEY,
+            mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+            position INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL,
+            depends_on_json TEXT NOT NULL DEFAULT '[]',
+            error TEXT,
+            started_at INTEGER,
+            completed_at INTEGER
+          );
+          CREATE INDEX IF NOT EXISTS missions_updated_at_idx ON missions(updated_at DESC);
+          CREATE INDEX IF NOT EXISTS mission_steps_mission_id_idx ON mission_steps(mission_id, position);
+          PRAGMA user_version = 3;
+        `);
+      });
     }
   }
 
@@ -574,6 +607,67 @@ export class AppDatabase {
       )
       .run(JSON.stringify(experts), Date.now());
     return experts;
+  }
+
+  loadMissions(): Mission[] {
+    const missions = this.database.prepare(
+      `SELECT id, title, goal, status, project_id, workspace_path, created_at, updated_at
+         FROM missions ORDER BY updated_at DESC`
+    ).all();
+    const steps = this.database.prepare(
+      `SELECT id, mission_id, position, title, description, status, depends_on_json,
+              error, started_at, completed_at
+         FROM mission_steps ORDER BY mission_id, position`
+    ).all();
+    const stepsByMission = new Map<string, Mission["steps"]>();
+    for (const row of steps) {
+      let dependsOn: string[] = [];
+      try { dependsOn = JSON.parse(String(row.depends_on_json)); } catch { /* use empty dependencies */ }
+      const step = {
+        id: String(row.id), missionId: String(row.mission_id), position: asNumber(row.position),
+        title: String(row.title), description: String(row.description),
+        status: String(row.status) as MissionStepStatus, dependsOn,
+        error: typeof row.error === "string" ? row.error : null,
+        startedAt: row.started_at == null ? null : asNumber(row.started_at),
+        completedAt: row.completed_at == null ? null : asNumber(row.completed_at),
+      };
+      const existing = stepsByMission.get(step.missionId) ?? [];
+      existing.push(step);
+      stepsByMission.set(step.missionId, existing);
+    }
+    return missions.map((row) => ({
+      id: String(row.id), title: String(row.title), goal: String(row.goal),
+      status: String(row.status) as MissionStatus,
+      projectId: typeof row.project_id === "string" ? row.project_id : null,
+      workspacePath: typeof row.workspace_path === "string" ? row.workspace_path : null,
+      createdAt: asNumber(row.created_at), updatedAt: asNumber(row.updated_at),
+      steps: stepsByMission.get(String(row.id)) ?? [],
+    }));
+  }
+
+  createMission(mission: Mission): Mission {
+    this.transaction(() => {
+      this.database.prepare(
+        `INSERT INTO missions (id, title, goal, status, project_id, workspace_path, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(mission.id, mission.title, mission.goal, mission.status, mission.projectId, mission.workspacePath, mission.createdAt, mission.updatedAt);
+      const statement = this.database.prepare(
+        `INSERT INTO mission_steps (id, mission_id, position, title, description, status, depends_on_json, error, started_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const step of mission.steps) statement.run(step.id, step.missionId, step.position, step.title, step.description, step.status, JSON.stringify(step.dependsOn), step.error, step.startedAt, step.completedAt);
+    });
+    return mission;
+  }
+
+  updateMissionStatus(id: string, status: MissionStatus): Mission | null {
+    const updatedAt = Date.now();
+    this.database.prepare("UPDATE missions SET status = ?, updated_at = ? WHERE id = ?").run(status, updatedAt, id);
+    return this.loadMissions().find((mission) => mission.id === id) ?? null;
+  }
+
+  deleteMission(id: string): void {
+    this.database.prepare("DELETE FROM missions WHERE id = ?").run(id);
   }
 
   getCredential(provider: string): CredentialRow | null {

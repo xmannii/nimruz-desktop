@@ -11,6 +11,7 @@ import type { PersonalizationSettings } from "@/lib/settings/personalization";
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
 import type { Expert } from "@/lib/settings/experts";
+import type { Mission, MissionInput, MissionStatus } from "@/lib/missions/types";
 
 export type CredentialStatus = {
   configured: boolean;
@@ -112,6 +113,12 @@ export type DesktopAPI = {
     create: (skill: SkillDocument) => Promise<SkillSummary[]>;
     update: (name: string, skill: SkillDocument) => Promise<SkillSummary[]>;
     delete: (name: string) => Promise<SkillSummary[]>;
+  };
+  missions: {
+    list: () => Promise<Mission[]>;
+    create: (mission: MissionInput) => Promise<Mission[]>;
+    setStatus: (id: string, status: MissionStatus) => Promise<Mission[]>;
+    delete: (id: string) => Promise<Mission[]>;
   };
   updates: {
     getVersion: () => Promise<string>;
