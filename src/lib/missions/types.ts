@@ -18,6 +18,7 @@ export type MissionStepStatus = "pending" | "running" | "completed" | "failed" |
 export const MISSION_TOOLS = ["list_files", "read_file", "search_files", "write_file", "create_directory", "fetch_url"] as const;
 export type MissionTool = (typeof MISSION_TOOLS)[number];
 export type MissionRisk = "read_only" | "workspace_write" | "external_action";
+export type MissionEvent = { id: string; missionId: string; type: string; message: string; data: Record<string, unknown> | null; createdAt: number };
 
 export type MissionStep = {
   id: string;
@@ -131,6 +132,16 @@ export function createMission(value: unknown): Mission {
 
 export function isMissionStatus(value: unknown): value is MissionStatus {
   return typeof value === "string" && (MISSION_STATUSES as readonly string[]).includes(value);
+}
+
+export function canTransitionMission(from: MissionStatus, to: MissionStatus): boolean {
+  if (from === to) return true;
+  const allowed: Partial<Record<MissionStatus, MissionStatus[]>> = {
+    draft: ["planning", "cancelled"], planning: ["draft", "waiting_for_confirmation", "cancelled"],
+    waiting_for_confirmation: ["planning", "running", "cancelled"], running: ["paused", "waiting_for_approval", "failed", "completed", "cancelled"],
+    waiting_for_approval: ["running", "cancelled"], paused: ["running", "cancelled"], failed: ["running", "cancelled"],
+  };
+  return allowed[from]?.includes(to) ?? false;
 }
 
 export function planMission(mission: Pick<Mission, "id" | "goal" | "workspacePath">): MissionStep[] {

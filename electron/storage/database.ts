@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { nanoid } from "nanoid";
 import type {
   LegacyDataSnapshot,
   LegacyImportResult,
@@ -33,7 +34,7 @@ import {
   type SkillsPreferences,
 } from "@/lib/skills/index";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER_ID } from "@/lib/models";
-import type { Mission, MissionStatus, MissionStepStatus, MissionTool, MissionRisk } from "@/lib/missions/types";
+import type { Mission, MissionEvent, MissionStatus, MissionStepStatus, MissionTool, MissionRisk } from "@/lib/missions/types";
 
 const LEGACY_MIGRATION_KEY = "legacy-browser-storage-v1";
 
@@ -290,6 +291,22 @@ export class AppDatabase {
           ALTER TABLE mission_steps ADD COLUMN risk TEXT NOT NULL DEFAULT 'read_only';
           ALTER TABLE mission_steps ADD COLUMN requires_approval INTEGER NOT NULL DEFAULT 0;
           PRAGMA user_version = 4;
+        `);
+      });
+    }
+    if (currentVersion < 5) {
+      this.transaction(() => {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS mission_events (
+            id TEXT PRIMARY KEY,
+            mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+            event_type TEXT NOT NULL,
+            message TEXT NOT NULL,
+            data_json TEXT,
+            created_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS mission_events_mission_id_idx ON mission_events(mission_id, created_at DESC);
+          PRAGMA user_version = 5;
         `);
       });
     }
@@ -677,13 +694,33 @@ export class AppDatabase {
       );
       for (const step of mission.steps) statement.run(step.id, step.missionId, step.position, step.title, step.description, step.status, JSON.stringify(step.dependsOn), step.error, step.startedAt, step.completedAt, step.tool, JSON.stringify(step.input), step.output ? JSON.stringify(step.output) : null, step.risk, step.requiresApproval ? 1 : 0);
     });
+    this.recordMissionEvent(mission.id, "mission.created", "مأموریت ساخته شد.");
     return mission;
   }
 
   updateMissionStatus(id: string, status: MissionStatus): Mission | null {
     const updatedAt = Date.now();
     this.database.prepare("UPDATE missions SET status = ?, updated_at = ? WHERE id = ?").run(status, updatedAt, id);
+    this.recordMissionEvent(id, "mission.status_changed", `وضعیت مأموریت به ${status} تغییر کرد.`, { status });
     return this.loadMissions().find((mission) => mission.id === id) ?? null;
+  }
+
+  recordMissionEvent(missionId: string, type: string, message: string, data?: Record<string, unknown>): void {
+    this.database.prepare(
+      `INSERT INTO mission_events (id, mission_id, event_type, message, data_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(nanoid(), missionId, type, message, data ? JSON.stringify(data) : null, Date.now());
+  }
+
+  loadMissionEvents(missionId: string): MissionEvent[] {
+    return this.database.prepare(
+      `SELECT id, mission_id, event_type, message, data_json, created_at
+         FROM mission_events WHERE mission_id = ? ORDER BY created_at DESC LIMIT 100`
+    ).all(missionId).map((row) => {
+      let data: Record<string, unknown> | null = null;
+      try { data = row.data_json ? JSON.parse(String(row.data_json)) : null; } catch { /* ignore malformed telemetry */ }
+      return { id: String(row.id), missionId: String(row.mission_id), type: String(row.event_type), message: String(row.message), data, createdAt: asNumber(row.created_at) };
+    });
   }
 
   replaceMissionSteps(id: string, steps: Mission["steps"]): Mission | null {

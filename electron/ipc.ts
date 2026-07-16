@@ -9,7 +9,7 @@ import type {
   SkillsPreferences,
 } from "@/lib/skills/index";
 import { normalizeSkillName, sanitizeSkillsPreferences } from "@/lib/skills/index";
-import { advanceMission, createMission, isMissionStatus, planMission, startMission, type Mission } from "@/lib/missions/types";
+import { advanceMission, canTransitionMission, createMission, isMissionStatus, planMission, startMission, type Mission, type MissionEvent } from "@/lib/missions/types";
 import {
   OPENROUTER_PROVIDER_ID,
   PROVIDER_LIMITS,
@@ -39,6 +39,8 @@ function assertTrustedSender(event: IpcMainInvokeEvent) {
     throw new Error("Untrusted IPC sender.");
   }
 }
+
+const activeMissionRuns = new Set<string>();
 
 export function registerIpcHandlers(options: {
   database: AppDatabase;
@@ -237,9 +239,13 @@ export function registerIpcHandlers(options: {
   });
   handle("missions:set-status", (id: string, status: string): Mission[] => {
     if (!isMissionStatus(status)) throw new Error("Invalid mission status.");
-    if (!database.updateMissionStatus(id, status)) throw new Error("Mission not found.");
+    const mission = database.loadMissions().find((item) => item.id === id);
+    if (!mission) throw new Error("Mission not found.");
+    if (!canTransitionMission(mission.status, status)) throw new Error(`Cannot change mission from ${mission.status} to ${status}.`);
+    database.updateMissionStatus(id, status);
     return database.loadMissions();
   });
+  handle("missions:events", (id: string): MissionEvent[] => database.loadMissionEvents(id));
   handle("missions:plan", (id: string): Mission[] => {
     const mission = database.loadMissions().find((item) => item.id === id);
     if (!mission) throw new Error("Mission not found.");
@@ -287,9 +293,12 @@ export function registerIpcHandlers(options: {
     }
   });
   handle("missions:run", async (id: string): Promise<Mission[]> => {
+    if (activeMissionRuns.has(id)) throw new Error("این مأموریت هم‌اکنون در حال اجراست.");
+    activeMissionRuns.add(id);
+    try {
     let mission: Mission | undefined = database.loadMissions().find((item) => item.id === id);
     if (!mission) throw new Error("Mission not found.");
-    if (mission.status === "waiting_for_confirmation") {
+    if (mission.status === "waiting_for_confirmation" || mission.status === "paused") {
       mission = startMission(mission);
       database.saveMissionSnapshot(mission);
     }
@@ -298,6 +307,7 @@ export function registerIpcHandlers(options: {
       if (!current) break;
       if (current.requiresApproval) {
         database.updateMissionStatus(id, "waiting_for_approval");
+        database.recordMissionEvent(id, "mission.approval_requested", "برای ادامه این اقدام به تأیید نیاز است.", { stepId: current.id, tool: current.tool });
         break;
       }
       const result: ToolResult = current.tool
@@ -307,11 +317,18 @@ export function registerIpcHandlers(options: {
       const next: Mission["steps"][number] | undefined = mission.steps.find((step) => step.status === "pending");
       mission = { ...mission, status: result.success ? next ? "running" : "completed" : "failed", updatedAt: now, steps: mission.steps.map((step) => step.id === current.id ? { ...step, status: result.success ? "completed" as const : "failed" as const, output: { summary: result.summary, ...(result.data ? { data: result.data } : {}) }, error: result.error ?? null, completedAt: result.success ? now : null } : result.success && next && step.id === next.id ? { ...step, status: "running" as const, startedAt: now } : step) };
       database.saveMissionSnapshot(mission);
+      database.recordMissionEvent(id, result.success ? "step.completed" : "step.failed", result.summary, { stepId: current.id, tool: current.tool });
     }
     return database.loadMissions();
+    } finally { activeMissionRuns.delete(id); }
   });
   handle("missions:approve-step", (id: string): Mission[] => {
-    if (!database.updateMissionStatus(id, "running")) throw new Error("Mission not found.");
+    const mission = database.loadMissions().find((item) => item.id === id);
+    if (!mission) throw new Error("Mission not found.");
+    const current = mission.steps.find((step) => step.status === "running");
+    if (!current || mission.status !== "waiting_for_approval") throw new Error("No approval is pending.");
+    database.saveMissionSnapshot({ ...mission, status: "running", steps: mission.steps.map((step) => step.id === current.id ? { ...step, requiresApproval: false } : step), updatedAt: Date.now() });
+    database.recordMissionEvent(id, "mission.approved", "Approval granted; execution can continue.", { stepId: current.id });
     return database.loadMissions();
   });
   handle("missions:retry", (id: string): Mission[] => {

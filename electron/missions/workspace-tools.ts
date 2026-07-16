@@ -29,6 +29,13 @@ export async function executeWorkspaceTool(
   input: Record<string, unknown>,
   workspacePath: string | null
 ): Promise<ToolResult> {
+  if (tool === "fetch_url") {
+    const url = typeof input.url === "string" ? input.url : "";
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) throw new Error("Only public HTTP and HTTPS URLs are allowed.");
+    const response = await fetch(parsed, { signal: AbortSignal.timeout(20_000) });
+    return { success: response.ok, summary: `Fetched ${response.status} from ${url}`, data: { url, status: response.status, content: (await response.text()).slice(0, 100_000) } };
+  }
   const workspace = requireWorkspace(workspacePath);
   const requestedPath = typeof input.path === "string" ? input.path : ".";
   if (tool === "list_files") {
