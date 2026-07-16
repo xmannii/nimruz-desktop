@@ -13,6 +13,7 @@ import {
   type ModelId,
 } from "@/lib/models";
 import type { ProviderModelRef } from "@/lib/models/catalog";
+import { HOME_WORKSPACE_ID } from "@/lib/workspace";
 import type { UIMessage } from "ai";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,7 +23,7 @@ const SAVE_DELAY = 250;
 function createEmptyChat(
   model: ModelId = DEFAULT_MODEL,
   id: string = nanoid(),
-  projectId: string | null = null,
+  workspaceId: string | null = HOME_WORKSPACE_ID,
   providerId: string = DEFAULT_PROVIDER_ID
 ): LocalChat {
   const now = Date.now();
@@ -33,7 +34,7 @@ function createEmptyChat(
     providerId,
     model,
     messages: [],
-    projectId,
+    workspaceId,
     createdAt: now,
     updatedAt: now,
   };
@@ -59,12 +60,18 @@ function areMessagesEqual(left: UIMessage[], right: UIMessage[]): boolean {
 }
 
 function normalizeChat(chat: LocalChat): LocalChat {
+  const legacy = chat as LocalChat & { projectId?: string | null };
   return {
     ...chat,
     providerId: chat.providerId || DEFAULT_PROVIDER_ID,
     model: typeof chat.model === "string" && chat.model ? chat.model : DEFAULT_MODEL,
     messages: Array.isArray(chat.messages) ? chat.messages : [],
-    projectId: typeof chat.projectId === "string" ? chat.projectId : null,
+    workspaceId:
+      typeof chat.workspaceId === "string"
+        ? chat.workspaceId
+        : typeof legacy.projectId === "string"
+          ? legacy.projectId
+          : HOME_WORKSPACE_ID,
     titleIsCustom: Boolean(chat.titleIsCustom),
     pinned: Boolean(chat.pinned),
     pinnedAt:
@@ -138,7 +145,7 @@ export function useChatHistory(
               initialChatId && /^[\w-]{1,128}$/.test(initialChatId)
                 ? initialChatId
                 : nanoid(),
-              null,
+              HOME_WORKSPACE_ID,
               DEFAULT_PROVIDER_ID
             );
         const initialChats = draftChat
@@ -160,7 +167,7 @@ export function useChatHistory(
             initialChatId && /^[\w-]{1,128}$/.test(initialChatId)
               ? initialChatId
               : nanoid(),
-            null,
+            HOME_WORKSPACE_ID,
             DEFAULT_PROVIDER_ID
           );
           setChats([fallbackChat]);
@@ -243,12 +250,12 @@ export function useChatHistory(
     [chats]
   );
 
-  const createChat = useCallback((projectId: string | null = null) => {
+  const createChat = useCallback((workspaceId: string | null = HOME_WORKSPACE_ID) => {
     const currentChat = chats.find((chat) => chat.id === activeChatId);
     const chat = createEmptyChat(
       defaultModelRef?.modelId ?? currentChat?.model ?? DEFAULT_MODEL,
       nanoid(),
-      projectId,
+      workspaceId ?? HOME_WORKSPACE_ID,
       defaultModelRef?.providerId ??
         currentChat?.providerId ??
         DEFAULT_PROVIDER_ID
@@ -270,13 +277,31 @@ export function useChatHistory(
     return chat.id;
   }, [activeChatId, chats, defaultModelRef]);
 
-  const removeProjectFromChats = useCallback((projectId: string) => {
+  const removeWorkspaceFromChats = useCallback((workspaceId: string) => {
     setChats((current) =>
       current.map((chat) =>
-        chat.projectId === projectId ? { ...chat, projectId: null } : chat
+        chat.workspaceId === workspaceId
+          ? { ...chat, workspaceId: HOME_WORKSPACE_ID, updatedAt: Date.now() }
+          : chat
       )
     );
   }, []);
+
+  const setChatWorkspaceId = useCallback(
+    (chatId: string, workspaceId: string) => {
+      setChats((current) =>
+        current.map((chat) =>
+          chat.id === chatId
+            ? { ...chat, workspaceId, updatedAt: Date.now() }
+            : chat
+        )
+      );
+    },
+    []
+  );
+
+  /** @deprecated Use removeWorkspaceFromChats */
+  const removeProjectFromChats = removeWorkspaceFromChats;
 
   const getChatById = useCallback(
     (id: string) => chats.find((chat) => chat.id === id) ?? null,
@@ -400,7 +425,7 @@ export function useChatHistory(
     const chat = createEmptyChat(
       defaultModelRef?.modelId ?? DEFAULT_MODEL,
       nanoid(),
-      null,
+      HOME_WORKSPACE_ID,
       defaultModelRef?.providerId ?? DEFAULT_PROVIDER_ID
     );
 
@@ -423,11 +448,13 @@ export function useChatHistory(
     createChat,
     selectChat,
     updateChat,
+    setChatWorkspaceId,
     renameChat,
     lockChatTitle,
     setChatPinned,
     removeChat,
     removeAllChats,
+    removeWorkspaceFromChats,
     removeProjectFromChats,
   };
 }
