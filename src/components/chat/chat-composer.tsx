@@ -56,7 +56,7 @@ export function ChatComposer({
   centered = false,
   messages = [],
 }: ChatComposerProps) {
-  const { resolveModel } = useAppShell();
+  const { resolveModel, experts } = useAppShell();
   const [isExpanded, setIsExpanded] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const collapsedWidthRef = useRef<number | null>(null);
@@ -65,6 +65,15 @@ export function ChatComposer({
   const modelConfig = resolveModel(model);
   const canAttach = modelConfig?.supportsImages ?? false;
   const showReasoningEffort = modelConfig?.supportsReasoningEffort ?? false;
+  const slashQuery = text.match(/^\/([^\s]*)$/)?.[1]?.toLowerCase();
+  const expertSuggestions = slashQuery === undefined
+    ? []
+    : experts
+        .filter((expert) => expert.enabled)
+        .filter((expert) =>
+          !slashQuery || expert.slug.includes(slashQuery) || expert.name.toLowerCase().includes(slashQuery)
+        )
+        .slice(0, 6);
 
   useEffect(() => {
     if (!text) setIsExpanded(false);
@@ -116,13 +125,40 @@ export function ChatComposer({
   return (
     <form
       className={cn(
-        "w-full",
+        "relative w-full",
         centered
           ? "shrink"
           : "shrink-0 pt-2 pb-[max(0.25rem,env(safe-area-inset-bottom))] md:pb-1.5"
       )}
       onSubmit={handleSubmit}
     >
+      {expertSuggestions.length > 0 ? (
+        <div
+          dir="rtl"
+          role="listbox"
+          aria-label="متخصص‌ها"
+          className="absolute inset-x-0 bottom-full z-40 mb-2 overflow-hidden rounded-2xl border border-border bg-popover p-1.5 shadow-xl"
+        >
+          <p className="px-3 py-1.5 text-xs text-muted-foreground">انتخاب متخصص</p>
+          {expertSuggestions.map((expert) => (
+            <button
+              key={expert.id}
+              type="button"
+              role="option"
+              aria-selected="false"
+              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-start hover:bg-muted"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => onTextChange(`/${expert.slug} `)}
+            >
+              <code dir="ltr" className="rounded bg-muted px-1.5 py-0.5 text-xs">/{expert.slug}</code>
+              <span className="min-w-0">
+                <strong className="block text-sm font-medium">{expert.name}</strong>
+                <span className="block truncate text-xs text-muted-foreground">{expert.description}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
       <MobileComposer
         textareaProps={textareaProps}
         model={model}

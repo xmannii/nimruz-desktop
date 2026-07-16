@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   findExplicitExpert,
+  getExpertValidationErrors,
   normalizeExpertSlug,
   sanitizeExperts,
   upsertExpert,
@@ -9,6 +10,34 @@ import {
 
 test("normalizes a friendly expert name into a slash-command slug", () => {
   assert.equal(normalizeExpertSlug(" /LinkedIn Post Writer "), "linkedin-post-writer");
+});
+
+test("reports incomplete experts and duplicate slash commands", () => {
+  assert.deepEqual(getExpertValidationErrors({}), [
+    "نام متخصص را وارد کنید.",
+    "یک دستور انگلیسی معتبر وارد کنید.",
+    "کار متخصص را کوتاه توضیح دهید.",
+    "روش و سبک کار متخصص را مشخص کنید.",
+  ]);
+
+  const existing = upsertExpert([], {
+    name: "Writer",
+    slug: "writer",
+    description: "Writes posts",
+    instructions: "Write concise posts.",
+  });
+  assert.deepEqual(
+    getExpertValidationErrors(
+      {
+        name: "Another writer",
+        slug: "writer",
+        description: "Writes other posts",
+        instructions: "Write other concise posts.",
+      },
+      existing
+    ),
+    ["دستور /writer قبلاً استفاده شده است."]
+  );
 });
 
 test("sanitizes experts and rejects duplicate slugs", () => {

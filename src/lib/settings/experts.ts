@@ -100,3 +100,16 @@ export function findExplicitExpert(experts: Expert[], text: string): Expert | nu
   const command = text.trim().match(/^[/@]([a-z0-9-]+)(?:\s|$)/i)?.[1]?.toLowerCase();
   return command ? experts.find((item) => item.enabled && item.slug === command) ?? null : null;
 }
+
+export function getExpertValidationErrors(value: Partial<Expert>, experts: Expert[] = []): string[] {
+  const errors: string[] = [];
+  const slug = normalizeExpertSlug(value.slug || value.name);
+  if (!value.name?.trim()) errors.push("نام متخصص را وارد کنید.");
+  if (!slug) errors.push("یک دستور انگلیسی معتبر وارد کنید.");
+  if (!value.description?.trim()) errors.push("کار متخصص را کوتاه توضیح دهید.");
+  if (!value.instructions?.trim()) errors.push("روش و سبک کار متخصص را مشخص کنید.");
+  if (slug && experts.some((item) => item.slug === slug && item.id !== value.id)) {
+    errors.push(`دستور /${slug} قبلاً استفاده شده است.`);
+  }
+  return errors;
+}

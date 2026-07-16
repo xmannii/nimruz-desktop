@@ -33,7 +33,7 @@ import { ChatComposer } from "./chat-composer";
 import { ChatMessages } from "./chat-messages";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { toast } from "sonner";
-import { normalizeExpertSlug, upsertExpert, type Expert } from "@/lib/settings/experts";
+import { getExpertValidationErrors, normalizeExpertSlug, upsertExpert, type Expert } from "@/lib/settings/experts";
 
 const CHAT_UPDATE_THROTTLE_MS = 50;
 let sessionTokenPromise: Promise<string> | undefined;
@@ -202,6 +202,16 @@ export function ChatSession({
 
         if (toolCall.toolName === "create_expert") {
           const input = toolCall.input as Partial<Expert>;
+          const validationErrors = getExpertValidationErrors(input, experts);
+          if (validationErrors.length) {
+            addToolOutput({
+              tool: "create_expert",
+              toolCallId: toolCall.toolCallId,
+              output: { success: false, error: validationErrors[0] },
+              options: { body: requestBody },
+            });
+            return;
+          }
           const nextExperts = upsertExpert(experts, {
             name: input.name,
             slug: normalizeExpertSlug(input.slug || input.name),
@@ -215,7 +225,11 @@ export function ChatSession({
           addToolOutput({
             tool: "create_expert",
             toolCallId: toolCall.toolCallId,
-            output: { success: Boolean(created), slug: created?.slug },
+            output: {
+              success: Boolean(created),
+              slug: created?.slug,
+              error: created ? undefined : "ذخیره متخصص ناموفق بود.",
+            },
             options: { body: { ...requestBody, experts: nextExperts } },
           });
         }
