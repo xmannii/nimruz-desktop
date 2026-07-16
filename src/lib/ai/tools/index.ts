@@ -1,11 +1,13 @@
 import { memoryTools } from "./memory";
 import { expertManagementTools } from "./expert-management";
 import { skillTools } from "./skill";
+import { webTools } from "./web";
 import type { ToolSet } from "ai";
 
 export { memoryTools } from "./memory";
 export { expertManagementTools } from "./expert-management";
 export { skillTools } from "./skill";
+export { webTools } from "./web";
 export { createExpertTools, expertToolName } from "./expert-delegation";
 
 /** Client-handled tools always available in chat. */
@@ -23,7 +25,10 @@ type BuildChatToolsOptions = {
 
 /** Base chat tools registered on every request; skills added only when installed. */
 export function buildChatTools({ skillsRuntime, includeSkills }: BuildChatToolsOptions): ToolSet {
-  const tools = { ...clientSideTools } as ToolSet;
+  const tools = {
+    ...clientSideTools,
+    ...webTools,
+  } as ToolSet;
 
   if (includeSkills) {
     tools.load_skill = {

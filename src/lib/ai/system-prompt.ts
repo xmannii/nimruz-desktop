@@ -10,6 +10,7 @@ import memoryToolsMd from "@/lib/ai/prompts/memory-tools.md";
 import createExpertToolsMd from "@/lib/ai/prompts/create-expert-tools.md";
 import expertToolsMd from "@/lib/ai/prompts/expert-tools.md";
 import skillToolsMd from "@/lib/ai/prompts/skill-tools.md";
+import webToolsMd from "@/lib/ai/prompts/web-tools.md";
 
 export function getBaseSystemPrompt() {
   return systemPromptMd.trim();
@@ -31,6 +32,10 @@ export function getSkillToolsPrompt() {
   return skillToolsMd.trim();
 }
 
+export function getWebToolsPrompt() {
+  return webToolsMd.trim();
+}
+
 export function buildSystemInstructions(
   personalization?: unknown,
   memories?: unknown,
@@ -48,6 +53,7 @@ export function buildSystemInstructions(
     hasExperts ? buildExpertsAppendix(experts) : "",
     hasSkills ? getSkillToolsPrompt() : "",
     hasSkills ? buildSkillsAppendix(skills) : "",
+    getWebToolsPrompt(),
     buildPersonalizationAppendix(personalization),
     buildMemoriesAppendix(memories),
   ].filter(Boolean);
