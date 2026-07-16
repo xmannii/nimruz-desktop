@@ -3,6 +3,10 @@
   "version": "0.1.3",
   "description": "Nimruz — Persian desktop AI chat powered by OpenRouter",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=9"
+  },
   "author": "Mani",
   "repository": {
     "type": "git",
