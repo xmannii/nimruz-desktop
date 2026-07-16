@@ -11,6 +11,7 @@ import {
   type ReasoningEffort,
 } from "@/lib/models/reasoning";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import type { WorkspaceTrustSettings } from "@/lib/workspace";
 import {
   addMemory,
   deleteMemory,
@@ -19,8 +20,12 @@ import {
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
+  lastAssistantMessageIsCompleteWithApprovalResponses,
   lastAssistantMessageIsCompleteWithToolCalls,
+  type FileUIPart,
 } from "ai";
+import type { ComposerAttachment } from "@/lib/chat/composer-context";
+import { useNavigate } from "@tanstack/react-router";
 import {
   useCallback,
   useEffect,
@@ -42,6 +47,28 @@ let sessionTokenPromise: Promise<string> | undefined;
 function getSessionToken() {
   sessionTokenPromise ??= window.desktop.auth.getSessionToken();
   return sessionTokenPromise;
+}
+
+type AutoApproveKey = Exclude<keyof WorkspaceTrustSettings, "level">;
+
+/** Maps a tool part type to the trust flag that auto-approves its category. */
+const TOOL_TRUST_KEY: Record<string, AutoApproveKey> = {
+  list_directory: "autoApproveReads",
+  read_file: "autoApproveReads",
+  search_files: "autoApproveReads",
+  load_skill: "autoApproveReads",
+  write_file: "autoApproveWrites",
+  apply_patch: "autoApproveWrites",
+  move_file: "autoApproveWrites",
+  create_artifact: "autoApproveWrites",
+  update_task: "autoApproveWrites",
+  run_command: "autoApproveShell",
+  fetch_url: "autoApproveNetwork",
+  web_search: "autoApproveNetwork",
+};
+
+function trustKeyForToolType(toolType: string): AutoApproveKey | null {
+  return TOOL_TRUST_KEY[toolType.replace(/^tool-/, "")] ?? null;
 }
 
 type ChatSessionProps = {
@@ -74,8 +101,14 @@ export function ChatSession({
     setCatalog,
     animateRenameChat,
     lockChatTitle,
+    setChatWorkspaceId,
+    setActiveWorkspaceId,
+    workspaces,
+    updateWorkspaceTrust,
   } = useAppShell();
+  const navigate = useNavigate();
   const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedExpertSlug, setSelectedExpertSlug] = useState<string | null>(
     null
   );
@@ -127,13 +160,23 @@ export function ChatSession({
     toast.error(getChatErrorMessage(chatError));
   }, []);
 
-  const { messages, sendMessage, regenerate, status, stop, error, addToolOutput } =
-    useChat<ChatUIMessage>({
+  const {
+    messages,
+    sendMessage,
+    regenerate,
+    status,
+    stop,
+    error,
+    addToolOutput,
+    addToolApprovalResponse,
+  } = useChat<ChatUIMessage>({
       id: chat.id,
       messages: chat.messages as ChatUIMessage[],
       transport,
       throttle: CHAT_UPDATE_THROTTLE_MS,
-      sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+      sendAutomaticallyWhen: (options) =>
+        lastAssistantMessageIsCompleteWithToolCalls(options) ||
+        lastAssistantMessageIsCompleteWithApprovalResponses(options),
       onError: handleChatError,
       onToolCall: ({ toolCall }) => {
         if (toolCall.dynamic) return;
@@ -145,6 +188,8 @@ export function ChatSession({
           personalization,
           memories,
           experts,
+          chatId: chat.id,
+          workspaceId: chat.workspaceId,
         };
 
         if (toolCall.toolName === "save_memory") {
@@ -252,8 +297,12 @@ export function ChatSession({
       memories,
       experts,
       selectedExpertSlug: selectedExpertSlug ?? undefined,
+      chatId: chat.id,
+      workspaceId: chat.workspaceId ?? undefined,
     }),
     [
+      chat.id,
+      chat.workspaceId,
       experts,
       memories,
       modelRef.modelId,
@@ -339,17 +388,84 @@ export function ChatSession({
     [getRequestBody, isBusy, regenerate]
   );
 
+  const handleToolApprovalResponse = useCallback(
+    (
+      approvalId: string,
+      approved: boolean,
+      options?: { always?: boolean; toolType?: string }
+    ) => {
+      if (approved && options?.always && options.toolType && chat.workspaceId) {
+        const trustKey = trustKeyForToolType(options.toolType);
+        const workspace = workspaces.find(
+          (item) => item.id === chat.workspaceId
+        );
+        if (trustKey && workspace && !workspace.trust[trustKey]) {
+          void updateWorkspaceTrust(workspace.id, {
+            ...workspace.trust,
+            [trustKey]: true,
+          }).catch((error) => {
+            console.error("Failed to update workspace trust:", error);
+          });
+        }
+      }
+      void addToolApprovalResponse({
+        id: approvalId,
+        approved,
+        options: { body: getRequestBody() },
+      });
+    },
+    [
+      addToolApprovalResponse,
+      chat.workspaceId,
+      getRequestBody,
+      updateWorkspaceTrust,
+      workspaces,
+    ]
+  );
+
   function handleSubmit() {
     const trimmed = text.trim();
-    if (!trimmed || isBusy) return;
+    if ((!trimmed && attachments.length === 0) || isBusy) return;
+
+    const supportsImages = resolveModel(modelRef)?.supportsImages ?? false;
+    const imageAttachments = attachments.filter(
+      (a) => a.category === "image" && a.dataUrl
+    );
+    // Images go to vision models as file parts; everything else (and images the
+    // current model can't see) travels as durable `@path` references the agent
+    // resolves with its file tools.
+    const referenced = attachments.filter(
+      (a) => !(supportsImages && a.category === "image" && a.dataUrl)
+    );
+    const references = referenced.map((a) => `@${a.relativePath}`);
+    const finalText = references.length
+      ? [trimmed, references.join(" ")].filter(Boolean).join("\n\n")
+      : trimmed;
+    const files: FileUIPart[] = supportsImages
+      ? imageAttachments.map((a) => ({
+          type: "file",
+          mediaType: a.mimeType,
+          url: a.dataUrl as string,
+          filename: a.name,
+        }))
+      : [];
+    // Documents (and images the model can't view) are shown as cards from
+    // metadata; image file parts render themselves.
+    const attachmentMeta = referenced.map((a) => ({
+      name: a.name,
+      relativePath: a.relativePath,
+      mediaType: a.mimeType,
+      category: a.category,
+    }));
 
     const isFirstMessage = messages.length === 0 && !chat.titleIsCustom;
     const chatId = chat.id;
+    const titleSeed = trimmed || attachments[0]?.name || "گفتگوی جدید";
 
     if (isFirstMessage) {
       lockChatTitle(chatId);
       void generateChatTitle({
-        message: trimmed,
+        message: titleSeed,
         providerId: modelRef.providerId,
         model: modelRef.modelId,
         getSessionToken,
@@ -359,21 +475,39 @@ export function ChatSession({
         })
         .catch((error) => {
           console.error("Failed to generate chat title:", error);
-          animateRenameChat(chatId, fallbackTitleFromMessage(trimmed));
+          animateRenameChat(chatId, fallbackTitleFromMessage(titleSeed));
         });
     }
 
     void sendMessage(
-      { text: trimmed },
+      {
+        text: finalText,
+        ...(files.length ? { files } : {}),
+        ...(attachmentMeta.length
+          ? { metadata: { attachments: attachmentMeta } }
+          : {}),
+      },
       {
         body: getRequestBody(),
       }
     );
     setText("");
+    setAttachments([]);
     setSelectedExpertSlug(null);
   }
 
   const showCenteredComposer = messages.length === 0;
+
+  function handleWorkspaceChange(nextWorkspaceId: string) {
+    if (chat.workspaceId === nextWorkspaceId) return;
+    setChatWorkspaceId(chat.id, nextWorkspaceId);
+    setActiveWorkspaceId(nextWorkspaceId);
+    void navigate({
+      to: "/workspace/$workspaceId/chat/$chatId",
+      params: { workspaceId: nextWorkspaceId, chatId: chat.id },
+      replace: true,
+    });
+  }
 
   const composer = (
     <ChatComposer
@@ -390,6 +524,12 @@ export function ChatSession({
       onStop={stop}
       centered={showCenteredComposer}
       messages={contextMessages}
+      workspaceId={chat.workspaceId}
+      onWorkspaceChange={
+        showCenteredComposer ? handleWorkspaceChange : undefined
+      }
+      attachments={attachments}
+      onAttachmentsChange={setAttachments}
     />
   );
 
@@ -417,6 +557,8 @@ export function ChatSession({
             error={error}
             isBusy={isBusy}
             onRegenerate={handleRegenerate}
+            onToolApprovalResponse={handleToolApprovalResponse}
+            workspaceId={chat.workspaceId}
           />
           <div className="mx-auto w-full max-w-3xl shrink-0 px-3 sm:px-6">
             {composer}

@@ -1,20 +1,81 @@
 "use client";
 
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
-  Marker,
-  MarkerContent,
-  MarkerIcon,
-  markerVariants,
-} from "@/components/ui/marker";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
-import { ChevronDownIcon } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import {
+  Children,
+  createContext,
+  useContext,
+  useMemo,
+  type ReactNode,
+} from "react";
+
+type StepPosition = "single" | "first" | "middle" | "last";
+
+type ToolStepContextValue = {
+  position: StepPosition;
+  index: number;
+  total: number;
+};
+
+const ToolStepContext = createContext<ToolStepContextValue | null>(null);
+
+function stepPosition(index: number, total: number): StepPosition {
+  if (total <= 1) return "single";
+  if (index === 0) return "first";
+  if (index === total - 1) return "last";
+  return "middle";
+}
+
+/** Wraps consecutive tool calls as a connected step timeline. */
+export function ChatToolStepGroup({
+  leading,
+  children,
+  className,
+}: {
+  /** Optional first step (e.g. reasoning) drawn above the tools. */
+  leading?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+}) {
+  const items = Children.toArray(children).filter(Boolean);
+  const allItems = leading != null ? [leading, ...items] : items;
+  if (allItems.length === 0) return null;
+
+  if (allItems.length === 1) {
+    return (
+      <ToolStepContext.Provider
+        value={{ position: "single", index: 0, total: 1 }}
+      >
+        <div className={cn("my-0.5", className)}>{allItems[0]}</div>
+      </ToolStepContext.Provider>
+    );
+  }
+
+  return (
+    <ol
+      dir="rtl"
+      className={cn(
+        "my-1 flex list-none flex-col gap-0 rounded-xl border border-border/50 bg-muted/15 px-2 py-1.5",
+        className
+      )}
+    >
+      {allItems.map((child, index) => (
+        <li key={index}>
+          <ToolStepContext.Provider
+            value={{
+              position: stepPosition(index, allItems.length),
+              index,
+              total: allItems.length,
+            }}
+          >
+            {child}
+          </ToolStepContext.Provider>
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 type ChatToolInvocationProps = {
   label: ReactNode;
@@ -26,48 +87,6 @@ type ChatToolInvocationProps = {
   children?: ReactNode;
 };
 
-function ToolMarkerContent({
-  label,
-  icon,
-  isLoading,
-  isError,
-  showChevron,
-  chevronOpen,
-}: {
-  label: ReactNode;
-  icon?: ReactNode;
-  isLoading: boolean;
-  isError: boolean;
-  showChevron?: boolean;
-  chevronOpen?: boolean;
-}) {
-  return (
-    <>
-      <MarkerIcon>
-        {isLoading ? <Spinner className="size-3.5" /> : icon}
-      </MarkerIcon>
-      <MarkerContent
-        dir="rtl"
-        className={cn(
-          "min-w-0 flex-1 truncate text-right",
-          isLoading && "shimmer",
-          isError && "text-destructive/90"
-        )}
-      >
-        {label}
-      </MarkerContent>
-      {showChevron ? (
-        <ChevronDownIcon
-          className={cn(
-            "size-3.5 shrink-0 text-muted-foreground/70 transition-transform",
-            chevronOpen && "rotate-180"
-          )}
-        />
-      ) : null}
-    </>
-  );
-}
-
 export function ChatToolInvocation({
   label,
   icon,
@@ -77,64 +96,120 @@ export function ChatToolInvocation({
   panelTitle,
   children,
 }: ChatToolInvocationProps) {
-  const [open, setOpen] = useState(false);
-  const canExpand = expandable && !isLoading && Boolean(children);
+  const step = useContext(ToolStepContext);
+  const position = step?.position ?? "single";
+  const showDetails = expandable && !isLoading && Boolean(children);
+  const inStack = position !== "single";
 
-  const markerClassName = cn(
-    markerVariants({ variant: "border" }),
-    "w-full py-0.5 text-xs leading-5"
-  );
-
-  if (!canExpand) {
-    return (
-      <Marker
-        dir="rtl"
-        variant="border"
-        role={isLoading ? "status" : undefined}
-        className={markerClassName}
-      >
-        <ToolMarkerContent
-          label={label}
-          icon={icon}
-          isLoading={isLoading}
-          isError={isError}
-        />
-      </Marker>
-    );
-  }
+  const stepLabel = useMemo(() => {
+    if (!step || step.total <= 1) return null;
+    return `${(step.index + 1).toLocaleString("fa-IR")} از ${step.total.toLocaleString("fa-IR")}`;
+  }, [step]);
 
   return (
-    <Collapsible open={open} onOpenChange={setOpen} className="w-full">
-      <CollapsibleTrigger
-        dir="rtl"
-        role={isLoading ? "status" : undefined}
+    <div
+      dir="rtl"
+      className={cn(
+        "group/tool relative flex gap-2.5",
+        inStack ? "min-h-7" : "my-0.5"
+      )}
+    >
+      {/* Timeline rail */}
+      <div
+        className="relative flex w-4 shrink-0 flex-col items-center"
+        aria-hidden
+      >
+        {position === "middle" || position === "last" ? (
+          <span className="absolute top-0 h-[0.7rem] w-px bg-border" />
+        ) : null}
+        <span
+          className={cn(
+            "relative z-10 mt-[0.55rem] size-2 shrink-0 rounded-full ring-2 ring-background transition-colors",
+            isLoading && "bg-foreground/50",
+            isError && "bg-destructive",
+            !isLoading &&
+              !isError &&
+              "bg-muted-foreground/35 group-hover/tool:bg-foreground/70",
+            position === "single" && "mt-2"
+          )}
+        />
+        {position === "first" || position === "middle" ? (
+          <span className="w-px min-h-[0.75rem] flex-1 bg-border" />
+        ) : (
+          <span className="flex-1" />
+        )}
+      </div>
+
+      <div
         className={cn(
-          markerClassName,
-          "cursor-pointer transition-colors hover:text-foreground/90"
+          "min-w-0 flex-1 rounded-lg transition-[background-color,box-shadow,padding] duration-200",
+          "hover:bg-muted/45 focus-within:bg-muted/45",
+          showDetails && "hover:shadow-sm focus-within:shadow-sm",
+          position === "single" && "border border-transparent hover:border-border/50 px-1.5"
         )}
       >
-        <ToolMarkerContent
-          label={label}
-          icon={icon}
-          isLoading={isLoading}
-          isError={isError}
-          showChevron
-          chevronOpen={open}
-        />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="pt-1.5">
         <div
-          dir="rtl"
-          className="max-h-48 overflow-y-auto overscroll-contain rounded-xl border border-border/60 bg-muted/25 px-3 py-2.5 text-right text-sm leading-6 text-foreground"
+          className={cn(
+            "flex min-h-7 items-center gap-2 py-1 pe-1",
+            isLoading && "opacity-90"
+          )}
+          role={isLoading ? "status" : undefined}
         >
-          {panelTitle ? (
-            <p className="mb-2 text-[11px] font-medium text-muted-foreground">
-              {panelTitle}
-            </p>
+          <span
+            className={cn(
+              "flex size-4 shrink-0 items-center justify-center text-muted-foreground transition-colors",
+              "[&_svg:not([class*='size-'])]:size-3.5",
+              "group-hover/tool:text-foreground/80",
+              isError && "text-destructive"
+            )}
+          >
+            {isLoading ? <Spinner className="size-3.5" /> : icon}
+          </span>
+
+          <div
+            className={cn(
+              "min-w-0 flex-1 truncate text-right text-xs leading-5 text-muted-foreground transition-colors",
+              "group-hover/tool:text-foreground/90",
+              isLoading && "shimmer text-muted-foreground",
+              isError && "text-destructive/90"
+            )}
+          >
+            {label}
+          </div>
+
+          {stepLabel ? (
+            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60 opacity-0 transition-opacity group-hover/tool:opacity-100">
+              {stepLabel}
+            </span>
           ) : null}
-          {children}
         </div>
-      </CollapsibleContent>
-    </Collapsible>
+
+        {showDetails ? (
+          <div
+            className={cn(
+              "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
+              "grid-rows-[0fr] opacity-0",
+              "group-hover/tool:grid-rows-[1fr] group-hover/tool:opacity-100",
+              "group-focus-within/tool:grid-rows-[1fr] group-focus-within/tool:opacity-100"
+            )}
+          >
+            <div className="min-h-0 overflow-hidden">
+              <div
+                dir="rtl"
+                tabIndex={0}
+                className="mb-1.5 max-h-40 overflow-y-auto overscroll-contain rounded-lg border border-border/50 bg-background/60 px-2.5 py-2 text-right text-xs leading-5 text-foreground outline-none"
+              >
+                {panelTitle ? (
+                  <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+                    {panelTitle}
+                  </p>
+                ) : null}
+                {children}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }
