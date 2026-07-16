@@ -49,6 +49,27 @@ export type MissionInput = {
   steps?: Array<{ title: string; description?: string }>;
 };
 
+export const SAMPLE_MISSIONS: Array<MissionInput & { label: string }> = [
+  {
+    label: "گزارش هزینه‌ها",
+    title: "ساخت گزارش هزینه‌ها",
+    goal: "فاکتورهای workspace را بررسی کن، هزینه‌ها را دسته‌بندی کن و گزارش نهایی بساز.",
+    steps: [{ title: "جمع‌آوری فاکتورها" }, { title: "دسته‌بندی هزینه‌ها" }, { title: "محاسبه جمع‌ها" }, { title: "ساخت گزارش نهایی" }],
+  },
+  {
+    label: "مرور پروژه",
+    title: "مرور وضعیت پروژه",
+    goal: "وضعیت پروژه را بررسی کن، ریسک‌ها و کارهای عقب‌افتاده را مشخص کن و خلاصه مدیریتی بساز.",
+    steps: [{ title: "بررسی ورودی‌های پروژه" }, { title: "شناسایی ریسک‌ها" }, { title: "فهرست کارهای عقب‌افتاده" }, { title: "تهیه خلاصه مدیریتی" }],
+  },
+  {
+    label: "مرور اسناد",
+    title: "مرور و خلاصه‌سازی اسناد",
+    goal: "اسناد انتخاب‌شده را مرور کن، نکات مهم و اقدام‌های بعدی را در یک گزارش جمع کن.",
+    steps: [{ title: "فهرست‌کردن اسناد" }, { title: "استخراج نکات کلیدی" }, { title: "مقایسه موارد مهم" }, { title: "نوشتن گزارش خلاصه" }],
+  },
+];
+
 export const MISSION_LIMITS = {
   title: 160,
   goal: 8_000,
@@ -125,4 +146,36 @@ export function planMission(mission: Pick<Mission, "id" | "goal" | "workspacePat
     startedAt: null,
     completedAt: null,
   }));
+}
+
+export function startMission(mission: Mission): Mission {
+  if (mission.status !== "waiting_for_confirmation" && mission.status !== "paused") {
+    throw new Error("Only a confirmed or paused mission can start.");
+  }
+  const nextStep = mission.steps.find((step) => step.status === "pending");
+  if (!nextStep) return { ...mission, status: "completed", updatedAt: Date.now() };
+  return {
+    ...mission,
+    status: "running",
+    updatedAt: Date.now(),
+    steps: mission.steps.map((step) => step.id === nextStep.id ? { ...step, status: "running", startedAt: step.startedAt ?? Date.now() } : step),
+  };
+}
+
+export function advanceMission(mission: Mission): Mission {
+  if (mission.status !== "running") throw new Error("Only a running mission can advance.");
+  const current = mission.steps.find((step) => step.status === "running");
+  if (!current) return startMission(mission);
+  const nextPending = mission.steps.find((step) => step.status === "pending");
+  const now = Date.now();
+  return {
+    ...mission,
+    status: nextPending ? "running" : "completed",
+    updatedAt: now,
+    steps: mission.steps.map((step) => {
+      if (step.id === current.id) return { ...step, status: "completed", completedAt: now };
+      if (nextPending && step.id === nextPending.id) return { ...step, status: "running", startedAt: now };
+      return step;
+    }),
+  };
 }

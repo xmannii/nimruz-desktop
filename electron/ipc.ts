@@ -9,7 +9,7 @@ import type {
   SkillsPreferences,
 } from "@/lib/skills/index";
 import { normalizeSkillName, sanitizeSkillsPreferences } from "@/lib/skills/index";
-import { createMission, isMissionStatus, planMission, type Mission } from "@/lib/missions/types";
+import { advanceMission, createMission, isMissionStatus, planMission, startMission, type Mission } from "@/lib/missions/types";
 import {
   OPENROUTER_PROVIDER_ID,
   PROVIDER_LIMITS,
@@ -248,6 +248,18 @@ export function registerIpcHandlers(options: {
   });
   handle("missions:confirm-plan", (id: string): Mission[] => {
     if (!database.updateMissionStatus(id, "waiting_for_confirmation")) throw new Error("Mission not found.");
+    return database.loadMissions();
+  });
+  handle("missions:start", (id: string): Mission[] => {
+    const mission = database.loadMissions().find((item) => item.id === id);
+    if (!mission) throw new Error("Mission not found.");
+    database.saveMissionSnapshot(startMission(mission));
+    return database.loadMissions();
+  });
+  handle("missions:advance", (id: string): Mission[] => {
+    const mission = database.loadMissions().find((item) => item.id === id);
+    if (!mission) throw new Error("Mission not found.");
+    database.saveMissionSnapshot(advanceMission(mission));
     return database.loadMissions();
   });
   handle("missions:delete", (id: string): Mission[] => {

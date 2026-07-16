@@ -679,6 +679,19 @@ export class AppDatabase {
     return this.loadMissions().find((mission) => mission.id === id) ?? null;
   }
 
+  saveMissionSnapshot(mission: Mission): Mission {
+    this.transaction(() => {
+      this.database.prepare("UPDATE missions SET status = ?, updated_at = ? WHERE id = ?").run(mission.status, mission.updatedAt, mission.id);
+      this.database.prepare("DELETE FROM mission_steps WHERE mission_id = ?").run(mission.id);
+      const statement = this.database.prepare(
+        `INSERT INTO mission_steps (id, mission_id, position, title, description, status, depends_on_json, error, started_at, completed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const step of mission.steps) statement.run(step.id, mission.id, step.position, step.title, step.description, step.status, JSON.stringify(step.dependsOn), step.error, step.startedAt, step.completedAt);
+    });
+    return mission;
+  }
+
   deleteMission(id: string): void {
     this.database.prepare("DELETE FROM missions WHERE id = ?").run(id);
   }

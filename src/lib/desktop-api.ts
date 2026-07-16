@@ -120,6 +120,8 @@ export type DesktopAPI = {
     setStatus: (id: string, status: MissionStatus) => Promise<Mission[]>;
     plan: (id: string) => Promise<Mission[]>;
     confirmPlan: (id: string) => Promise<Mission[]>;
+    start: (id: string) => Promise<Mission[]>;
+    advance: (id: string) => Promise<Mission[]>;
     delete: (id: string) => Promise<Mission[]>;
   };
   updates: {
