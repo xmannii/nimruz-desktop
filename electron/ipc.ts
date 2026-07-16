@@ -17,7 +17,7 @@ import {
 import { CredentialService } from "./credentials";
 import { AppDatabase } from "./storage/database";
 import { SkillStore } from "./skills/store";
-import { executeWorkspaceTool } from "./missions/workspace-tools";
+import { executeWorkspaceTool, type ToolResult } from "./missions/workspace-tools";
 import { registerWindowControlHandlers } from "./window-controls";
 import {
   validateChatsPayload,
@@ -285,6 +285,30 @@ export function registerIpcHandlers(options: {
       database.saveMissionSnapshot({ ...mission, status: "failed", steps: mission.steps.map((step) => step.id === current.id ? { ...step, status: "failed", error: error instanceof Error ? error.message : "اجرای ابزار ناموفق بود." } : step), updatedAt: Date.now() });
       throw error;
     }
+  });
+  handle("missions:run", async (id: string): Promise<Mission[]> => {
+    let mission: Mission | undefined = database.loadMissions().find((item) => item.id === id);
+    if (!mission) throw new Error("Mission not found.");
+    if (mission.status === "waiting_for_confirmation") {
+      mission = startMission(mission);
+      database.saveMissionSnapshot(mission);
+    }
+    while (mission.status === "running") {
+      const current: Mission["steps"][number] | undefined = mission.steps.find((step) => step.status === "running");
+      if (!current) break;
+      if (current.requiresApproval) {
+        database.updateMissionStatus(id, "waiting_for_approval");
+        break;
+      }
+      const result: ToolResult = current.tool
+        ? await executeWorkspaceTool(current.tool, current.input, mission.workspacePath)
+        : { success: true, summary: "این مرحله بدون ابزار اجرا شد." };
+      const now = Date.now();
+      const next: Mission["steps"][number] | undefined = mission.steps.find((step) => step.status === "pending");
+      mission = { ...mission, status: result.success ? next ? "running" : "completed" : "failed", updatedAt: now, steps: mission.steps.map((step) => step.id === current.id ? { ...step, status: result.success ? "completed" as const : "failed" as const, output: { summary: result.summary, ...(result.data ? { data: result.data } : {}) }, error: result.error ?? null, completedAt: result.success ? now : null } : result.success && next && step.id === next.id ? { ...step, status: "running" as const, startedAt: now } : step) };
+      database.saveMissionSnapshot(mission);
+    }
+    return database.loadMissions();
   });
   handle("missions:approve-step", (id: string): Mission[] => {
     if (!database.updateMissionStatus(id, "running")) throw new Error("Mission not found.");

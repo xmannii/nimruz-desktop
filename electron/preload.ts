@@ -92,6 +92,7 @@ const desktopApi: DesktopAPI = {
     executeStep: (id) => ipcRenderer.invoke("missions:execute-step", id),
     approveStep: (id) => ipcRenderer.invoke("missions:approve-step", id),
     retry: (id) => ipcRenderer.invoke("missions:retry", id),
+    run: (id) => ipcRenderer.invoke("missions:run", id),
     delete: (id) => ipcRenderer.invoke("missions:delete", id),
   },
   updates: {
