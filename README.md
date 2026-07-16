@@ -6,22 +6,25 @@
 
 > **Experimental software** — Nimruz is early-stage and may contain bugs or rough edges. Please test it, expect occasional issues, and [report problems on GitHub](https://github.com/xmannii/nimruz-desktop/issues) so we can fix them.
 
-Nimruz connects to [OpenRouter](https://openrouter.ai/) (and custom OpenAI-compatible providers) so you can chat with many models from one native app. Chats, projects, memories, and personalization settings are stored locally on your machine.
+Nimruz connects to [OpenRouter](https://openrouter.ai/) (and custom OpenAI-compatible providers) so you can chat with many models from one native app. Chats, projects, memories, experts, skills, and personalization settings are stored locally on your machine.
 
 ## Download
 
-Pre-built installers are on the [Releases](https://github.com/xmannii/nimruz-desktop/releases) page.
+Pre-built **Windows** and **macOS** installers are published automatically on every [release](https://github.com/xmannii/nimruz-desktop/releases).
 
-- [Nimruz 0.1.0 for macOS (Apple Silicon)](https://github.com/xmannii/nimruz-desktop/releases/download/v0.1.0/Nimruz-0.1.0-arm64.dmg)
+| Platform | Installer | Latest |
+| --- | --- | --- |
+| **macOS** (Apple Silicon) | `.dmg` | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
+| **Windows** | `.exe` (NSIS) | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
+| **Linux** | AppImage | Build locally with `pnpm dist` |
 
-**Windows** — a pre-built installer is coming soon.
-
-**Other platforms** — you can build Windows (NSIS), Linux (AppImage), and macOS installers yourself on the target OS with `pnpm dist` (see [Build a distributable](#build-a-distributable) below).
+See [CHANGELOG.md](CHANGELOG.md) for release notes. **v0.3.0** adds user-defined **experts**, with thanks to contributor [@mshojaei77](https://github.com/mshojaei77).
 
 ### macOS install
 
-1. Open the DMG and drag **Nimruz** to **Applications**.
-2. Open Nimruz using one of the methods below.
+1. Download the latest `.dmg` from [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest).
+2. Open the DMG and drag **Nimruz** to **Applications**.
+3. Open Nimruz using one of the methods below.
 
 macOS builds are not code-signed or notarized yet, so Gatekeeper may block the app. The **“Nimruz is damaged and can’t be opened”** message is misleading — the app is fine; macOS is rejecting an unsigned download.
 
@@ -35,16 +38,23 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 
 **If macOS already blocked the app:** Open **System Settings → Privacy & Security** and click **Open Anyway** next to the Nimruz entry.
 
+### Windows install
+
+1. Download the latest `.exe` installer from [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest).
+2. Run the installer and follow the prompts.
+
 ## Features
 
-- **Streaming chat** with markdown, code blocks, math, Mermaid diagrams, and CJK support
+- **Streaming chat** — markdown, code blocks, math (KaTeX), Mermaid diagrams, and CJK support
 - **OpenRouter integration** — browse, favorite, and switch models; optional reasoning effort controls
 - **Custom providers** — add OpenAI-compatible endpoints with your own API keys
 - **Projects** — organize conversations by topic or workflow
 - **Memories** — the assistant can save and forget durable facts about you over time
+- **Experts (متخصص‌ها)** — define reusable specialists (e.g. LinkedIn writer, code reviewer); pick one with `/` in chat and delegate work via expert tools
+- **Skills (مهارت‌ها)** — install and author `SKILL.md` agent skills; the assistant loads instructions on demand with `load_skill`
 - **Personalization** — response style, custom instructions, and profile context
 - **Local-first storage** — SQLite database in Electron `userData`; API keys encrypted with the OS keychain
-- **Cross-platform builds** — macOS (DMG), Windows (NSIS), and Linux (AppImage)
+- **Automated releases** — GitHub Actions builds and publishes Windows + macOS installers when the version in `package.json` changes on `main`
 
 ## Screenshots
 
@@ -80,26 +90,31 @@ Installers are written to `release/` (DMG / NSIS / AppImage depending on your pl
 
 ### Release (GitHub Actions)
 
-Bump the version in `package.json`, commit, and push to `main`. GitHub Actions builds Windows + macOS installers and publishes them to [Releases](https://github.com/xmannii/nimruz-desktop/releases).
+When you bump the version in `package.json` and push to `main`, GitHub Actions automatically:
+
+1. Builds **Windows** (NSIS `.exe`) and **macOS** (`.dmg`) installers
+2. Creates a GitHub Release with both artifacts attached
 
 ```bash
-# 1. Change "version" in package.json (e.g. 0.1.2 → 0.1.3)
-# 2. Commit and push:
-git add package.json
-git commit -m "Bump version to 0.1.3"
+# 1. Change "version" in package.json (e.g. 0.3.0 → 0.3.1)
+# 2. Update CHANGELOG.md
+# 3. Commit and push:
+git add package.json CHANGELOG.md
+git commit -m "Bump version to 0.3.1"
 git push origin main
 ```
 
-You can also run the **Release** workflow manually from the Actions tab.
+You can also run the **Release** workflow manually from the Actions tab (`workflow_dispatch`).
 
 ## Architecture
 
 ```
 Electron main (Node)
 ├─ authenticated local HTTP server
-│  ├─ POST /api/chat  → streamText + OpenRouter
+│  ├─ POST /api/chat  → streamText + tools (memory, skills, experts)
 │  └─ GET  /*         → static renderer (production only)
-├─ SQLite database    → chats, projects, memories, personalization
+├─ SQLite database    → chats, projects, memories, experts, settings
+├─ Skills store       → ~/.nimruz/skills and standard agent skill paths
 ├─ safeStorage        → encrypted API keys
 └─ BrowserWindow → sandboxed Vite renderer
 ```
@@ -131,6 +146,8 @@ Electron main (Node)
 ## Local data
 
 Application data lives in Electron's platform-specific `userData` directory (folder name **Nimruz**) as `nimruz.sqlite3`. Legacy IndexedDB/localStorage data is imported once and kept as a rollback copy. Saved API keys are not portable between machines or OS users.
+
+Skills are stored under `~/.nimruz/skills` (and other standard agent skill directories).
 
 ## Relationship to the web app
 
