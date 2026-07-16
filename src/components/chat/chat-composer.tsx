@@ -2,6 +2,22 @@
 
 import { ChatContextUsage } from "@/components/chat/chat-context-usage";
 import { ExpertSlashSuggestions } from "@/components/chat/expert-slash-suggestions";
+import { ComposerContextChips } from "@/components/chat/composer-context-chips";
+import { ComposerWorkspacePicker } from "@/components/chat/composer-workspace-picker";
+import {
+  MentionSuggestions,
+  type MentionSuggestion,
+} from "@/components/chat/mention-suggestions";
+import {
+  applyMention,
+  getMentionQuery,
+  parseMentions,
+  removeMention,
+  splitMentionQuery,
+  WORKSPACE_MENTION,
+  type ComposerAttachment,
+} from "@/lib/chat/composer-context";
+import { classifyFile } from "@/lib/workspace";
 import { ModelPicker } from "@/components/chat/model-picker";
 import { ReasoningEffortSlider } from "@/components/chat/reasoning-effort-slider";
 import { SelectedExpertBadge } from "@/components/chat/selected-expert-badge";
@@ -30,13 +46,26 @@ import {
   type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
+  type ReactNode,
   type RefObject,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { toast } from "sonner";
 import { shouldExpandComposer } from "./composer-utils";
+
+async function fileToBase64(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer();
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
 
 type ChatComposerProps = {
   text: string;
@@ -52,6 +81,10 @@ type ChatComposerProps = {
   onStop: () => void;
   centered?: boolean;
   messages?: ChatUIMessage[];
+  workspaceId?: string | null;
+  onWorkspaceChange?: (workspaceId: string) => void;
+  attachments?: ComposerAttachment[];
+  onAttachmentsChange?: (attachments: ComposerAttachment[]) => void;
 };
 
 export function ChatComposer({
@@ -68,12 +101,20 @@ export function ChatComposer({
   onStop,
   centered = false,
   messages = [],
+  workspaceId = null,
+  onWorkspaceChange,
+  attachments = [],
+  onAttachmentsChange,
 }: ChatComposerProps) {
-  const { resolveModel, experts } = useAppShell();
+  const { resolveModel, experts, workspaces } = useAppShell();
   const [isExpanded, setIsExpanded] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(0);
+  const [mentionEntries, setMentionEntries] = useState<MentionSuggestion[]>([]);
+  const [mentionHighlight, setMentionHighlight] = useState(0);
+  const [isImporting, setIsImporting] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const collapsedWidthRef = useRef<number | null>(null);
 
   const isBusy = status === "submitted" || status === "streaming";
@@ -91,6 +132,10 @@ export function ChatComposer({
   );
   const hasExpertPicker = expertSuggestions.length > 0;
 
+  const mentionQuery = workspaceId ? getMentionQuery(text) : null;
+  const hasMentionPicker = mentionQuery !== null && mentionEntries.length > 0;
+  const mentions = useMemo(() => parseMentions(text), [text]);
+
   useEffect(() => {
     if (!text && !selectedExpert) setIsExpanded(false);
   }, [text, selectedExpert]);
@@ -98,6 +143,134 @@ export function ChatComposer({
   useEffect(() => {
     setHighlightIndex(0);
   }, [slashQuery, expertSuggestions.length]);
+
+  // Load `@` mention suggestions from the workspace file tree.
+  useEffect(() => {
+    if (!workspaceId || mentionQuery === null) {
+      setMentionEntries([]);
+      return;
+    }
+    let cancelled = false;
+    const { dir, name } = splitMentionQuery(mentionQuery);
+    void window.desktop.storage
+      .listWorkspaceFiles(workspaceId, dir)
+      .then((entries) => {
+        if (cancelled) return;
+        const filtered = entries
+          .filter((entry) =>
+            name ? entry.name.toLowerCase().includes(name.toLowerCase()) : true
+          )
+          .slice(0, 8);
+        const relativeBase = dir === "." ? "" : `${dir}/`;
+        const suggestions: MentionSuggestion[] = filtered.map((entry) => ({
+          kind: "file",
+          value:
+            entry.kind === "directory"
+              ? `${relativeBase}${entry.name}/`
+              : `${relativeBase}${entry.name}`,
+          label: `${relativeBase}${entry.name}`,
+          entry,
+        }));
+        if (dir === "." && "workspace".includes(name.toLowerCase())) {
+          suggestions.unshift({
+            kind: "workspace",
+            value: WORKSPACE_MENTION,
+            label: "کل فضای کاری",
+          });
+        }
+        setMentionEntries(suggestions);
+        setMentionHighlight(0);
+      })
+      .catch(() => {
+        if (!cancelled) setMentionEntries([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId, mentionQuery]);
+
+  function selectMention(suggestion: MentionSuggestion) {
+    const keepOpen =
+      suggestion.kind === "file" && suggestion.entry.kind === "directory";
+    onTextChange(applyMention(text, suggestion.value, { keepOpen }));
+    focusComposer();
+  }
+
+  function handleRemoveMention(mention: string) {
+    onTextChange(removeMention(text, mention));
+  }
+
+  async function handleImportFiles(files: FileList | null) {
+    if (!files || files.length === 0 || !workspaceId) return;
+
+    const selected = Array.from(files);
+    const isImage = (file: File) =>
+      file.type.startsWith("image/") ||
+      classifyFile(file.name) === "image";
+    const allowed = canAttach ? selected : selected.filter((f) => !isImage(f));
+
+    if (allowed.length < selected.length) {
+      toast.error("مدل انتخاب‌شده از تصویر پشتیبانی نمی‌کند؛ تصاویر افزوده نشدند.");
+    }
+    if (allowed.length === 0) {
+      focusComposer();
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const payload = await Promise.all(
+        allowed.map(async (file) => ({
+          name: file.name,
+          base64: await fileToBase64(file),
+          mimeType: file.type || undefined,
+        }))
+      );
+      const imported =
+        await window.desktop.storage.importWorkspaceFiles(workspaceId, payload);
+      if (imported.length > 0) {
+        const next: ComposerAttachment[] = imported.map((item, index) => {
+          const category = classifyFile(item.name);
+          const image =
+            item.mimeType.startsWith("image/") || category === "image";
+          return {
+            id: item.relativePath,
+            name: item.name,
+            relativePath: item.relativePath,
+            mimeType: item.mimeType,
+            category,
+            sizeBytes: item.sizeBytes,
+            dataUrl: image
+              ? `data:${item.mimeType};base64,${payload[index].base64}`
+              : undefined,
+          };
+        });
+        const existing = new Set(attachments.map((a) => a.id));
+        const merged = [
+          ...attachments,
+          ...next.filter((a) => !existing.has(a.id)),
+        ];
+        onAttachmentsChange?.(merged);
+        toast.success(
+          `${imported.length.toLocaleString("fa-IR")} فایل افزوده شد.`
+        );
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "بارگذاری فایل ناموفق بود."
+      );
+    } finally {
+      setIsImporting(false);
+      focusComposer();
+    }
+  }
+
+  function handleRemoveAttachment(id: string) {
+    onAttachmentsChange?.(attachments.filter((a) => a.id !== id));
+    focusComposer();
+  }
+
+  const canImport = Boolean(workspaceId);
 
   function focusComposer() {
     requestAnimationFrame(() => {
@@ -121,9 +294,11 @@ export function ChatComposer({
     focusComposer();
   }
 
+  const canSend = Boolean(text.trim()) || attachments.length > 0;
+
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!text.trim() || isBusy) return;
+    if (!canSend || isBusy) return;
     onSubmit();
   }
 
@@ -143,6 +318,31 @@ export function ChatComposer({
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (hasMentionPicker) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionHighlight((index) =>
+          Math.min(index + 1, mentionEntries.length - 1)
+        );
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionHighlight((index) => Math.max(index - 1, 0));
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        selectMention(mentionEntries[mentionHighlight]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionEntries([]);
+        return;
+      }
+    }
+
     if (hasExpertPicker) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -234,6 +434,38 @@ export function ChatComposer({
         />
       ) : null}
 
+      {hasMentionPicker ? (
+        <MentionSuggestions
+          suggestions={mentionEntries}
+          highlightIndex={mentionHighlight}
+          onHighlight={setMentionHighlight}
+          onSelect={selectMention}
+        />
+      ) : null}
+
+      {centered && onWorkspaceChange ? (
+        <div dir="rtl" className="mb-2 flex items-center justify-start gap-2">
+          <span className="text-xs text-muted-foreground">پروژه:</span>
+          <ComposerWorkspacePicker
+            workspaces={workspaces}
+            workspaceId={workspaceId}
+            onWorkspaceChange={onWorkspaceChange}
+            disabled={isBusy}
+          />
+        </div>
+      ) : null}
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        hidden
+        onChange={(event) => {
+          void handleImportFiles(event.target.files);
+          event.target.value = "";
+        }}
+      />
+
       <MobileComposer
         badgeProps={badgeProps}
         textareaProps={textareaProps}
@@ -244,9 +476,25 @@ export function ChatComposer({
         showReasoningEffort={showReasoningEffort}
         isBusy={isBusy}
         canAttach={canAttach}
+        canImport={canImport}
+        isImporting={isImporting}
+        onAttach={() => fileInputRef.current?.click()}
         text={text}
+        canSend={canSend}
         onStop={onStop}
         centered={centered}
+        attachments={
+          canImport &&
+          (attachments.length > 0 || mentions.length > 0 || isImporting) ? (
+            <ComposerContextChips
+              attachments={attachments}
+              onRemoveAttachment={handleRemoveAttachment}
+              mentions={mentions}
+              onRemoveMention={handleRemoveMention}
+              isImporting={isImporting}
+            />
+          ) : null
+        }
       />
 
       <DesktopComposer
@@ -260,10 +508,33 @@ export function ChatComposer({
         showReasoningEffort={showReasoningEffort}
         isBusy={isBusy}
         canAttach={canAttach}
-        isExpanded={centered || isExpanded || Boolean(selectedExpert)}
+        canImport={canImport}
+        isImporting={isImporting}
+        onAttach={() => fileInputRef.current?.click()}
+        isExpanded={
+          centered ||
+          isExpanded ||
+          Boolean(selectedExpert) ||
+          attachments.length > 0 ||
+          mentions.length > 0 ||
+          isImporting
+        }
         text={text}
+        canSend={canSend}
         onStop={onStop}
         centered={centered}
+        attachments={
+          canImport &&
+          (attachments.length > 0 || mentions.length > 0 || isImporting) ? (
+            <ComposerContextChips
+              attachments={attachments}
+              onRemoveAttachment={handleRemoveAttachment}
+              mentions={mentions}
+              onRemoveMention={handleRemoveMention}
+              isImporting={isImporting}
+            />
+          ) : null
+        }
       />
 
       {centered ? (
@@ -327,9 +598,14 @@ type ComposerSharedProps = {
   showReasoningEffort: boolean;
   isBusy: boolean;
   canAttach: boolean;
+  canImport?: boolean;
+  isImporting?: boolean;
+  onAttach?: () => void;
   text: string;
+  canSend?: boolean;
   onStop: () => void;
   centered?: boolean;
+  attachments?: ReactNode;
 };
 
 function MobileComposer({
@@ -342,9 +618,14 @@ function MobileComposer({
   showReasoningEffort,
   isBusy,
   canAttach,
+  canImport = false,
+  isImporting = false,
+  onAttach,
   text,
+  canSend = false,
   onStop,
   centered = false,
+  attachments = null,
 }: ComposerSharedProps) {
   return (
     <div
@@ -354,6 +635,8 @@ function MobileComposer({
       {badgeProps ? (
         <SelectedExpertBadge {...badgeProps} className="pb-0" />
       ) : null}
+
+      {attachments}
 
       <Textarea
         {...textareaProps}
@@ -373,11 +656,12 @@ function MobileComposer({
             className="size-10 shrink-0 rounded-full"
             aria-label="افزودن پیوست"
             title={
-              canAttach
-                ? "افزودن پیوست"
-                : "این مدل از تصویر پشتیبانی نمی‌کند"
+              canImport || canAttach
+                ? "افزودن فایل"
+                : "برای افزودن فایل یک فضای کاری لازم است"
             }
-            disabled={!canAttach || isBusy}
+            disabled={(!canImport && !canAttach) || isBusy || isImporting}
+            onClick={onAttach}
           >
             <PlusIcon />
           </InputGroupButton>
@@ -414,7 +698,7 @@ function MobileComposer({
             type="submit"
             size="icon"
             className="size-10 shrink-0 rounded-full"
-            disabled={!text.trim()}
+            disabled={!canSend}
             aria-label="ارسال"
           >
             <ArrowUpIcon />
@@ -436,16 +720,21 @@ function DesktopComposer({
   showReasoningEffort,
   isBusy,
   canAttach,
+  canImport = false,
+  isImporting = false,
+  onAttach,
   isExpanded,
   text,
+  canSend = false,
   onStop,
   centered = false,
+  attachments = null,
 }: ComposerSharedProps & {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   isExpanded: boolean;
   centered?: boolean;
 }) {
-  const showExpandedLayout = isExpanded || Boolean(badgeProps);
+  const showExpandedLayout = isExpanded || Boolean(badgeProps) || Boolean(attachments);
 
   return (
     <div
@@ -458,6 +747,8 @@ function DesktopComposer({
       )}
     >
       {badgeProps ? <SelectedExpertBadge {...badgeProps} /> : null}
+
+      {attachments}
 
       <InputGroup
         dir="ltr"
@@ -482,11 +773,12 @@ function DesktopComposer({
               variant="secondary"
               aria-label="افزودن پیوست"
               title={
-                canAttach
-                  ? "افزودن پیوست"
-                  : "این مدل از تصویر پشتیبانی نمی‌کند"
+                canImport || canAttach
+                  ? "افزودن فایل"
+                  : "برای افزودن فایل یک فضای کاری لازم است"
               }
-              disabled={!canAttach || isBusy}
+              disabled={(!canImport && !canAttach) || isBusy || isImporting}
+              onClick={onAttach}
             >
               <PlusIcon />
             </InputGroupButton>
@@ -522,7 +814,7 @@ function DesktopComposer({
                 size="icon-sm"
                 type="submit"
                 variant="default"
-                disabled={!text.trim()}
+                disabled={!canSend}
                 aria-label="ارسال"
               >
                 <ArrowUpIcon />
@@ -561,7 +853,7 @@ function DesktopComposer({
               size="icon-sm"
               type="submit"
               variant="default"
-              disabled={!text.trim()}
+              disabled={!canSend}
               aria-label="ارسال"
             >
               <ArrowUpIcon />
