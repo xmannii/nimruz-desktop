@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { CredentialService } from "./credentials";
 import { registerIpcHandlers } from "./ipc";
 import { startServer } from "./server";
+import { SkillStore } from "./skills/store";
 import { AppDatabase } from "./storage/database";
 import { attachWindowStateEvents } from "./window-controls";
 import {
@@ -98,11 +99,13 @@ app.whenReady().then(async () => {
     path.join(app.getPath("userData"), DATABASE_FILE)
   );
   const credentials = new CredentialService(database);
+  const skills = new SkillStore();
   const sessionToken = randomBytes(32).toString("base64url");
 
   registerIpcHandlers({
     database,
     credentials,
+    skills,
     sessionToken,
     getMainWindow: () => mainWindow,
   });
@@ -120,6 +123,10 @@ app.whenReady().then(async () => {
           apiKey: auth.apiKey,
         };
       },
+      getSkillsCatalog: async () =>
+        skills.getEnabledCatalog(database!.loadSkillsPreferences()),
+      loadSkillContent: async (name) =>
+        skills.loadSkillContent(name, database!.loadSkillsPreferences()),
       allowedOrigins: [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -141,6 +148,10 @@ app.whenReady().then(async () => {
           apiKey: auth.apiKey,
         };
       },
+      getSkillsCatalog: async () =>
+        skills.getEnabledCatalog(database!.loadSkillsPreferences()),
+      loadSkillContent: async (name) =>
+        skills.loadSkillContent(name, database!.loadSkillsPreferences()),
     });
     localServer = result.server;
     rendererUrl = `http://127.0.0.1:${result.port}/`;

@@ -1,25 +1,10 @@
 "use client";
 
 import { useAppShell } from "@/components/app-shell-context";
-import { SettingsNav } from "@/components/settings/settings-nav";
-import { Button } from "@/components/ui/button";
-import { Outlet, useNavigate } from "@tanstack/react-router";
-import { ArrowRightIcon } from "lucide-react";
+import { Outlet } from "@tanstack/react-router";
 
 export function SettingsLayout() {
-  const navigate = useNavigate();
-  const { memories, activeChatId, personalizationSaveState } = useAppShell();
-
-  function handleBack() {
-    if (activeChatId) {
-      void navigate({
-        to: "/chat/$chatId",
-        params: { chatId: activeChatId },
-      });
-      return;
-    }
-    void navigate({ to: "/" });
-  }
+  const { personalizationSaveState } = useAppShell();
 
   const saveLabel =
     personalizationSaveState === "saving"
@@ -56,26 +41,11 @@ export function SettingsLayout() {
             ) : null}
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="shrink-0 gap-1.5"
-          onClick={handleBack}
-        >
-          <ArrowRightIcon className="size-3.5" />
-          بازگشت به گفتگو
-        </Button>
       </header>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <aside className="w-52 shrink-0 border-e border-border bg-muted/15 sm:w-56">
-          <SettingsNav memoryCount={memories.length} />
-        </aside>
-        <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
-          <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-8 sm:py-8">
-            <Outlet />
-          </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-8 sm:py-8">
+          <Outlet />
         </div>
       </div>
     </div>
