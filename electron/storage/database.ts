@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { nanoid } from "nanoid";
 import type {
   LegacyDataSnapshot,
   LegacyImportResult,
@@ -33,7 +34,7 @@ import {
   type SkillsPreferences,
 } from "@/lib/skills/index";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER_ID } from "@/lib/models";
-import type { Mission, MissionInput, MissionStatus, MissionStepStatus } from "@/lib/missions/types";
+import type { Mission, MissionEvent, MissionStatus, MissionStepStatus, MissionTool, MissionRisk } from "@/lib/missions/types";
 
 const LEGACY_MIGRATION_KEY = "legacy-browser-storage-v1";
 
@@ -278,6 +279,34 @@ export class AppDatabase {
           CREATE INDEX IF NOT EXISTS missions_updated_at_idx ON missions(updated_at DESC);
           CREATE INDEX IF NOT EXISTS mission_steps_mission_id_idx ON mission_steps(mission_id, position);
           PRAGMA user_version = 3;
+        `);
+      });
+    }
+    if (currentVersion < 4) {
+      this.transaction(() => {
+        this.database.exec(`
+          ALTER TABLE mission_steps ADD COLUMN tool TEXT;
+          ALTER TABLE mission_steps ADD COLUMN input_json TEXT NOT NULL DEFAULT '{}';
+          ALTER TABLE mission_steps ADD COLUMN output_json TEXT;
+          ALTER TABLE mission_steps ADD COLUMN risk TEXT NOT NULL DEFAULT 'read_only';
+          ALTER TABLE mission_steps ADD COLUMN requires_approval INTEGER NOT NULL DEFAULT 0;
+          PRAGMA user_version = 4;
+        `);
+      });
+    }
+    if (currentVersion < 5) {
+      this.transaction(() => {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS mission_events (
+            id TEXT PRIMARY KEY,
+            mission_id TEXT NOT NULL REFERENCES missions(id) ON DELETE CASCADE,
+            event_type TEXT NOT NULL,
+            message TEXT NOT NULL,
+            data_json TEXT,
+            created_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS mission_events_mission_id_idx ON mission_events(mission_id, created_at DESC);
+          PRAGMA user_version = 5;
         `);
       });
     }
@@ -616,13 +645,17 @@ export class AppDatabase {
     ).all();
     const steps = this.database.prepare(
       `SELECT id, mission_id, position, title, description, status, depends_on_json,
-              error, started_at, completed_at
+              error, started_at, completed_at, tool, input_json, output_json, risk, requires_approval
          FROM mission_steps ORDER BY mission_id, position`
     ).all();
     const stepsByMission = new Map<string, Mission["steps"]>();
     for (const row of steps) {
       let dependsOn: string[] = [];
       try { dependsOn = JSON.parse(String(row.depends_on_json)); } catch { /* use empty dependencies */ }
+      let input: Record<string, unknown> = {};
+      let output: Record<string, unknown> | null = null;
+      try { input = JSON.parse(String(row.input_json ?? "{}")); } catch { /* use empty input */ }
+      try { output = row.output_json ? JSON.parse(String(row.output_json)) : null; } catch { /* use empty output */ }
       const step = {
         id: String(row.id), missionId: String(row.mission_id), position: asNumber(row.position),
         title: String(row.title), description: String(row.description),
@@ -630,6 +663,10 @@ export class AppDatabase {
         error: typeof row.error === "string" ? row.error : null,
         startedAt: row.started_at == null ? null : asNumber(row.started_at),
         completedAt: row.completed_at == null ? null : asNumber(row.completed_at),
+        tool: typeof row.tool === "string" ? row.tool as MissionTool : null,
+        input, output,
+        risk: row.risk === "workspace_write" || row.risk === "external_action" ? row.risk as MissionRisk : "read_only",
+        requiresApproval: asBoolean(row.requires_approval),
       };
       const existing = stepsByMission.get(step.missionId) ?? [];
       existing.push(step);
@@ -652,18 +689,64 @@ export class AppDatabase {
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       ).run(mission.id, mission.title, mission.goal, mission.status, mission.projectId, mission.workspacePath, mission.createdAt, mission.updatedAt);
       const statement = this.database.prepare(
-        `INSERT INTO mission_steps (id, mission_id, position, title, description, status, depends_on_json, error, started_at, completed_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO mission_steps (id, mission_id, position, title, description, status, depends_on_json, error, started_at, completed_at, tool, input_json, output_json, risk, requires_approval)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
-      for (const step of mission.steps) statement.run(step.id, step.missionId, step.position, step.title, step.description, step.status, JSON.stringify(step.dependsOn), step.error, step.startedAt, step.completedAt);
+      for (const step of mission.steps) statement.run(step.id, step.missionId, step.position, step.title, step.description, step.status, JSON.stringify(step.dependsOn), step.error, step.startedAt, step.completedAt, step.tool, JSON.stringify(step.input), step.output ? JSON.stringify(step.output) : null, step.risk, step.requiresApproval ? 1 : 0);
     });
+    this.recordMissionEvent(mission.id, "mission.created", "مأموریت ساخته شد.");
     return mission;
   }
 
   updateMissionStatus(id: string, status: MissionStatus): Mission | null {
     const updatedAt = Date.now();
     this.database.prepare("UPDATE missions SET status = ?, updated_at = ? WHERE id = ?").run(status, updatedAt, id);
+    this.recordMissionEvent(id, "mission.status_changed", `وضعیت مأموریت به ${status} تغییر کرد.`, { status });
     return this.loadMissions().find((mission) => mission.id === id) ?? null;
+  }
+
+  recordMissionEvent(missionId: string, type: string, message: string, data?: Record<string, unknown>): void {
+    this.database.prepare(
+      `INSERT INTO mission_events (id, mission_id, event_type, message, data_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(nanoid(), missionId, type, message, data ? JSON.stringify(data) : null, Date.now());
+  }
+
+  loadMissionEvents(missionId: string): MissionEvent[] {
+    return this.database.prepare(
+      `SELECT id, mission_id, event_type, message, data_json, created_at
+         FROM mission_events WHERE mission_id = ? ORDER BY created_at DESC LIMIT 100`
+    ).all(missionId).map((row) => {
+      let data: Record<string, unknown> | null = null;
+      try { data = row.data_json ? JSON.parse(String(row.data_json)) : null; } catch { /* ignore malformed telemetry */ }
+      return { id: String(row.id), missionId: String(row.mission_id), type: String(row.event_type), message: String(row.message), data, createdAt: asNumber(row.created_at) };
+    });
+  }
+
+  replaceMissionSteps(id: string, steps: Mission["steps"]): Mission | null {
+    this.transaction(() => {
+      this.database.prepare("DELETE FROM mission_steps WHERE mission_id = ?").run(id);
+      const statement = this.database.prepare(
+        `INSERT INTO mission_steps (id, mission_id, position, title, description, status, depends_on_json, error, started_at, completed_at, tool, input_json, output_json, risk, requires_approval)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const step of steps) statement.run(step.id, id, step.position, step.title, step.description, step.status, JSON.stringify(step.dependsOn), step.error, step.startedAt, step.completedAt, step.tool, JSON.stringify(step.input), step.output ? JSON.stringify(step.output) : null, step.risk, step.requiresApproval ? 1 : 0);
+      this.database.prepare("UPDATE missions SET status = 'planning', updated_at = ? WHERE id = ?").run(Date.now(), id);
+    });
+    return this.loadMissions().find((mission) => mission.id === id) ?? null;
+  }
+
+  saveMissionSnapshot(mission: Mission): Mission {
+    this.transaction(() => {
+      this.database.prepare("UPDATE missions SET status = ?, updated_at = ? WHERE id = ?").run(mission.status, mission.updatedAt, mission.id);
+      this.database.prepare("DELETE FROM mission_steps WHERE mission_id = ?").run(mission.id);
+      const statement = this.database.prepare(
+        `INSERT INTO mission_steps (id, mission_id, position, title, description, status, depends_on_json, error, started_at, completed_at, tool, input_json, output_json, risk, requires_approval)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      );
+      for (const step of mission.steps) statement.run(step.id, mission.id, step.position, step.title, step.description, step.status, JSON.stringify(step.dependsOn), step.error, step.startedAt, step.completedAt, step.tool, JSON.stringify(step.input), step.output ? JSON.stringify(step.output) : null, step.risk, step.requiresApproval ? 1 : 0);
+    });
+    return mission;
   }
 
   deleteMission(id: string): void {
