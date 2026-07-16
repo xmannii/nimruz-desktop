@@ -90,6 +90,7 @@ export type DesktopAPI = {
     loadChats: () => Promise<LocalChat[]>;
     saveChats: (chats: LocalChat[]) => Promise<void>;
     deleteChat: (id: string) => Promise<void>;
+    deleteAllChats: () => Promise<void>;
     loadProjects: () => Promise<LocalProject[]>;
     saveProject: (project: LocalProject) => Promise<void>;
     deleteProject: (id: string) => Promise<void>;

@@ -5,6 +5,7 @@ import {
   MEMORY_CATEGORY_LABELS,
   type MemoryCategory,
 } from "@/lib/settings/memories";
+import { BrainIcon } from "lucide-react";
 
 type SaveMemoryToolPart = {
   type: "tool-save_memory";
@@ -48,6 +49,7 @@ export function ChatMemoryToolPart({
 
     return (
       <ChatToolInvocation
+        icon={<BrainIcon />}
         label={
           isLoading
             ? "در حال ذخیره خاطره…"
@@ -66,6 +68,7 @@ export function ChatMemoryToolPart({
 
   return (
     <ChatToolInvocation
+      icon={<BrainIcon />}
       label={
         isLoading
           ? "در حال حذف خاطره…"

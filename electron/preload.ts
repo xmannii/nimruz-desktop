@@ -55,6 +55,7 @@ const desktopApi: DesktopAPI = {
     loadChats: () => ipcRenderer.invoke("storage:load-chats"),
     saveChats: (chats) => ipcRenderer.invoke("storage:save-chats", chats),
     deleteChat: (id) => ipcRenderer.invoke("storage:delete-chat", id),
+    deleteAllChats: () => ipcRenderer.invoke("storage:delete-all-chats"),
     loadProjects: () => ipcRenderer.invoke("storage:load-projects"),
     saveProject: (project) =>
       ipcRenderer.invoke("storage:save-project", project),

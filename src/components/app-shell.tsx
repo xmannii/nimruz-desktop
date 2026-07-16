@@ -11,11 +11,13 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAppSettings } from "@/hooks/use-app-settings";
 import { useAppUpdate } from "@/hooks/use-app-update";
 import { useChatHistory } from "@/hooks/use-chat-history";
+import { useTypingChatTitles } from "@/hooks/use-typing-chat-title";
 import { useModelCatalog } from "@/hooks/use-model-catalog";
 import { useProjects, type ProjectInput } from "@/hooks/use-projects";
 import { APP_HEADER_HEIGHT } from "@/lib/branding";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
+  useCallback,
   useMemo,
   useRef,
   useState,
@@ -57,9 +59,23 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     selectChat,
     updateChat,
     renameChat,
+    lockChatTitle,
+    setChatPinned,
     removeChat,
+    removeAllChats,
     removeProjectFromChats,
   } = useChatHistory(initialChatId, defaultRef);
+
+  const { typingTitles, animateChatTitle } = useTypingChatTitles();
+
+  const animateRenameChat = useCallback(
+    (chatId: string, title: string) => {
+      animateChatTitle(chatId, title, (finalTitle) => {
+        renameChat(chatId, finalTitle);
+      });
+    },
+    [animateChatTitle, renameChat]
+  );
 
   const {
     projects,
@@ -116,7 +132,12 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       selectChat,
       updateChat,
       renameChat,
+      lockChatTitle,
+      animateRenameChat,
+      typingTitles,
+      setChatPinned,
       removeChat,
+      removeAllChats,
       removeProjectFromChats,
       createProject,
       updateProject,
@@ -157,7 +178,12 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       selectChat,
       updateChat,
       renameChat,
+      lockChatTitle,
+      animateRenameChat,
+      typingTitles,
+      setChatPinned,
       removeChat,
+      removeAllChats,
       removeProjectFromChats,
       createProject,
       updateProject,
@@ -206,6 +232,12 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       }
     }
     removeChat(id);
+  }
+
+  function handleDeleteAllChats() {
+    stopCurrentChatRef.current?.();
+    const id = removeAllChats();
+    void navigate({ to: "/chat/$chatId", params: { chatId: id } });
   }
 
   function handleDeleteProject(id: string) {
@@ -279,6 +311,9 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
             onSelectChat={handleSelectChat}
             onRenameChat={renameChat}
             onDeleteChat={handleDeleteChat}
+            onDeleteAllChats={handleDeleteAllChats}
+            onPinChat={setChatPinned}
+            typingTitles={typingTitles}
             onOpenSettings={handleOpenSettings}
             onBackToChat={handleBackToChat}
           />

@@ -32,6 +32,7 @@ import {
 import { ChatComposer } from "./chat-composer";
 import { ChatMessages } from "./chat-messages";
 import { getChatErrorMessage } from "@/lib/chat/errors";
+import { generateChatTitle, fallbackTitleFromMessage } from "@/lib/chat/generate-chat-title";
 import { toast } from "sonner";
 import { getExpertValidationErrors, normalizeExpertSlug, upsertExpert, type Expert } from "@/lib/settings/experts";
 
@@ -71,6 +72,8 @@ export function ChatSession({
     resolveModel,
     refreshCatalog,
     setCatalog,
+    animateRenameChat,
+    lockChatTitle,
   } = useAppShell();
   const [text, setText] = useState("");
   const [selectedExpertSlug, setSelectedExpertSlug] = useState<string | null>(
@@ -124,7 +127,7 @@ export function ChatSession({
     toast.error(getChatErrorMessage(chatError));
   }, []);
 
-  const { messages, sendMessage, status, stop, error, addToolOutput } =
+  const { messages, sendMessage, regenerate, status, stop, error, addToolOutput } =
     useChat<ChatUIMessage>({
       id: chat.id,
       messages: chat.messages as ChatUIMessage[],
@@ -240,6 +243,27 @@ export function ChatSession({
       },
     });
 
+  const getRequestBody = useCallback(
+    () => ({
+      providerId: modelRef.providerId,
+      model: modelRef.modelId,
+      reasoningEffort,
+      personalization,
+      memories,
+      experts,
+      selectedExpertSlug: selectedExpertSlug ?? undefined,
+    }),
+    [
+      experts,
+      memories,
+      modelRef.modelId,
+      modelRef.providerId,
+      personalization,
+      reasoningEffort,
+      selectedExpertSlug,
+    ]
+  );
+
   useEffect(() => {
     stopRef.current = stop;
 
@@ -304,22 +328,45 @@ export function ChatSession({
     ? (chat.messages as ChatUIMessage[])
     : messages;
 
+  const handleRegenerate = useCallback(
+    (messageId: string) => {
+      if (isBusy) return;
+      void regenerate({
+        messageId,
+        body: getRequestBody(),
+      });
+    },
+    [getRequestBody, isBusy, regenerate]
+  );
+
   function handleSubmit() {
     const trimmed = text.trim();
     if (!trimmed || isBusy) return;
 
+    const isFirstMessage = messages.length === 0 && !chat.titleIsCustom;
+    const chatId = chat.id;
+
+    if (isFirstMessage) {
+      lockChatTitle(chatId);
+      void generateChatTitle({
+        message: trimmed,
+        providerId: modelRef.providerId,
+        model: modelRef.modelId,
+        getSessionToken,
+      })
+        .then((title) => {
+          animateRenameChat(chatId, title);
+        })
+        .catch((error) => {
+          console.error("Failed to generate chat title:", error);
+          animateRenameChat(chatId, fallbackTitleFromMessage(trimmed));
+        });
+    }
+
     void sendMessage(
       { text: trimmed },
       {
-        body: {
-          providerId: modelRef.providerId,
-          model: modelRef.modelId,
-          reasoningEffort,
-          personalization,
-          memories,
-          experts,
-          selectedExpertSlug: selectedExpertSlug ?? undefined,
-        },
+        body: getRequestBody(),
       }
     );
     setText("");
@@ -364,7 +411,13 @@ export function ChatSession({
         </div>
       ) : (
         <>
-          <ChatMessages messages={messages} status={status} error={error} />
+          <ChatMessages
+            messages={messages}
+            status={status}
+            error={error}
+            isBusy={isBusy}
+            onRegenerate={handleRegenerate}
+          />
           <div className="mx-auto w-full max-w-3xl shrink-0 px-3 sm:px-6">
             {composer}
           </div>

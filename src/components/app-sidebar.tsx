@@ -52,14 +52,19 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
+import { exportChatJson, exportChatMarkdown } from "@/lib/chat/export-chat";
 import type { ProjectInput } from "@/hooks/use-projects";
 import { SettingsSidebarNav } from "@/components/settings/settings-nav";
+import { ChatSidebarTitle } from "@/components/chat/chat-sidebar-title";
 import {
+  DownloadIcon,
   FolderIcon,
   HistoryIcon,
   MessageSquareIcon,
   MoreHorizontalIcon,
   PencilIcon,
+  PinIcon,
+  PinOffIcon,
   PlusIcon,
   SearchIcon,
   CogIcon,
@@ -80,6 +85,9 @@ type AppSidebarProps = {
   onSelectChat: (id: string) => void;
   onRenameChat: (id: string, title: string) => void;
   onDeleteChat: (id: string) => void;
+  onDeleteAllChats: () => void;
+  onPinChat: (id: string, pinned: boolean) => void;
+  typingTitles?: Record<string, string>;
   onOpenSettings: () => void;
   onBackToChat: () => void;
   settingsActive?: boolean;
@@ -140,10 +148,12 @@ function ChatItemMenu({
   chat,
   onRename,
   onDelete,
+  onPin,
 }: {
   chat: LocalChat;
   onRename: (chat: LocalChat) => void;
   onDelete: (chat: LocalChat) => void;
+  onPin: (chat: LocalChat, pinned: boolean) => void;
 }) {
   return (
     <DropdownMenu>
@@ -160,6 +170,18 @@ function ChatItemMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" dir="rtl">
         <DropdownMenuGroup>
+          <DropdownMenuItem onClick={() => onPin(chat, !chat.pinned)}>
+            {chat.pinned ? <PinOffIcon /> : <PinIcon />}
+            {chat.pinned ? "برداشتن سنجاق" : "سنجاق کردن"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => exportChatMarkdown(chat)}>
+            <DownloadIcon />
+            خروجی Markdown
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => exportChatJson(chat)}>
+            <DownloadIcon />
+            خروجی JSON
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onRename(chat)}>
             <PencilIcon />
             تغییر نام
@@ -189,6 +211,9 @@ export function AppSidebar({
   onSelectChat,
   onRenameChat,
   onDeleteChat,
+  onDeleteAllChats,
+  onPinChat,
+  typingTitles = {},
   onOpenSettings,
   onBackToChat,
   settingsActive = false,
@@ -205,15 +230,27 @@ export function AppSidebar({
   );
   const [chatToDelete, setChatToDelete] = useState<LocalChat | null>(null);
   const [chatToRename, setChatToRename] = useState<LocalChat | null>(null);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const isIconMode = state === "collapsed" && !isMobile;
   const projectIds = useMemo(
     () => new Set(projects.map((project) => project.id)),
     [projects]
   );
+  const pinnedUnassignedChats = useMemo(
+    () =>
+      chats.filter(
+        (chat) =>
+          chat.pinned &&
+          (!chat.projectId || !projectIds.has(chat.projectId))
+      ),
+    [chats, projectIds]
+  );
   const unassignedChats = useMemo(
     () =>
       chats.filter(
-        (chat) => !chat.projectId || !projectIds.has(chat.projectId)
+        (chat) =>
+          !chat.pinned &&
+          (!chat.projectId || !projectIds.has(chat.projectId))
       ),
     [chats, projectIds]
   );
@@ -333,7 +370,7 @@ export function AppSidebar({
               </SidebarGroup>
 
               {!isIconMode ? (
-                <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                <div className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
                   <SidebarGroup className="mt-2 pt-0">
                     <SidebarGroupLabel className="mb-1 pe-8">
                       پروژه‌ها
@@ -435,12 +472,18 @@ export function AppSidebar({
                                           isActive={chat.id === activeChatId}
                                           onClick={() => handleSelectChat(chat.id)}
                                         >
-                                          <span>{chat.title}</span>
+                                          <ChatSidebarTitle
+                                            title={chat.title}
+                                            typingTitle={typingTitles[chat.id]}
+                                          />
                                         </SidebarMenuButton>
                                         <ChatItemMenu
                                           chat={chat}
                                           onRename={setChatToRename}
                                           onDelete={setChatToDelete}
+                                          onPin={(item, pinned) =>
+                                            onPinChat(item.id, pinned)
+                                          }
                                         />
                                       </SidebarMenuSubItem>
                                     ))}
@@ -453,6 +496,38 @@ export function AppSidebar({
                       ) : null}
                     </SidebarGroupContent>
                   </SidebarGroup>
+
+                  {pinnedUnassignedChats.length > 0 ? (
+                    <SidebarGroup className="pt-0">
+                      <SidebarGroupLabel>سنجاق‌شده</SidebarGroupLabel>
+                      <SidebarGroupContent>
+                        <SidebarMenu>
+                          {pinnedUnassignedChats.map((chat) => (
+                            <SidebarMenuItem key={chat.id}>
+                              <SidebarMenuButton
+                                isActive={chat.id === activeChatId}
+                                onClick={() => handleSelectChat(chat.id)}
+                              >
+                                <PinIcon className="size-3.5 shrink-0 opacity-70" />
+                                <ChatSidebarTitle
+                                  title={chat.title}
+                                  typingTitle={typingTitles[chat.id]}
+                                />
+                              </SidebarMenuButton>
+                              <ChatItemMenu
+                                chat={chat}
+                                onRename={setChatToRename}
+                                onDelete={setChatToDelete}
+                                onPin={(item, pinned) =>
+                                  onPinChat(item.id, pinned)
+                                }
+                              />
+                            </SidebarMenuItem>
+                          ))}
+                        </SidebarMenu>
+                      </SidebarGroupContent>
+                    </SidebarGroup>
+                  ) : null}
 
                   {unassignedChats.length > 0 ? (
                     <SidebarGroup className="pt-0">
@@ -470,12 +545,18 @@ export function AppSidebar({
                                     isActive={chat.id === activeChatId}
                                     onClick={() => handleSelectChat(chat.id)}
                                   >
-                                    <span>{chat.title}</span>
+                                    <ChatSidebarTitle
+                                      title={chat.title}
+                                      typingTitle={typingTitles[chat.id]}
+                                    />
                                   </SidebarMenuButton>
                                   <ChatItemMenu
                                     chat={chat}
                                     onRename={setChatToRename}
                                     onDelete={setChatToDelete}
+                                    onPin={(item, pinned) =>
+                                      onPinChat(item.id, pinned)
+                                    }
                                   />
                                 </SidebarMenuItem>
                               ))}
@@ -506,6 +587,23 @@ export function AppSidebar({
           className="border-t border-sidebar-border p-3 group-data-[collapsible=icon]:p-2"
         >
           <SidebarMenu>
+            {!settingsActive && chats.length > 0 ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip={{ children: "حذف همه گفتگوها", side: "left" }}
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => {
+                    setDeleteAllOpen(true);
+                    closeMobileSidebar();
+                  }}
+                >
+                  <Trash2Icon />
+                  <span className="group-data-[collapsible=icon]:sr-only">
+                    حذف همه گفتگوها
+                  </span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
             <SidebarMenuItem>
               {settingsActive ? (
                 <SidebarMenuButton
@@ -563,7 +661,11 @@ export function AppSidebar({
                       onSelect={() => handleSelectChat(chat.id)}
                     >
                       <FolderIcon />
-                      <span className="truncate">{chat.title}</span>
+                      <ChatSidebarTitle
+                        title={chat.title}
+                        typingTitle={typingTitles[chat.id]}
+                        className="truncate"
+                      />
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -579,7 +681,11 @@ export function AppSidebar({
                     onSelect={() => handleSelectChat(chat.id)}
                   >
                     <MessageSquareIcon />
-                    <span className="truncate">{chat.title}</span>
+                    <ChatSidebarTitle
+                      title={chat.title}
+                      typingTitle={typingTitles[chat.id]}
+                      className="truncate"
+                    />
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -635,6 +741,30 @@ export function AppSidebar({
               }}
             >
               حذف گفتگو
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteAllOpen} onOpenChange={setDeleteAllOpen}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>حذف همه گفتگوها؟</AlertDialogTitle>
+            <AlertDialogDescription>
+              {chats.length} گفتگو برای همیشه حذف می‌شود و قابل بازیابی نیست.
+              یک گفتگوی خالی جدید باز می‌شود.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>انصراف</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                onDeleteAllChats();
+                setDeleteAllOpen(false);
+              }}
+            >
+              حذف همه
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

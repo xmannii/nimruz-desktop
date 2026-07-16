@@ -12,6 +12,8 @@ export type LocalChat = {
   createdAt: number;
   updatedAt: number;
   titleIsCustom?: boolean;
+  pinned?: boolean;
+  pinnedAt?: number | null;
 };
 
 export type LocalProject = {
@@ -34,6 +36,10 @@ export async function saveLocalChats(chats: LocalChat[]): Promise<void> {
 
 export async function deleteLocalChat(id: string): Promise<void> {
   await window.desktop.storage.deleteChat(id);
+}
+
+export async function deleteAllLocalChats(): Promise<void> {
+  await window.desktop.storage.deleteAllChats();
 }
 
 export async function loadLocalProjects(): Promise<LocalProject[]> {

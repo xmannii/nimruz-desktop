@@ -7,11 +7,15 @@ import {
 } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { MessageResponse } from "@/components/ai-elements/message";
+import {
+  ChatMessageActions,
+  copyTextToClipboard,
+} from "@/components/chat/chat-message-actions";
 import { ChatMemoryToolPart } from "@/components/chat/chat-memory-tool-part";
 import { ChatExpertToolPart } from "@/components/chat/chat-expert-tool-part";
 import { ChatSkillToolPart } from "@/components/chat/chat-skill-tool-part";
 import { ChatFetchUrlToolPart } from "@/components/chat/chat-web-tool-part";
-import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Bubble, BubbleContent, BubbleGroup } from "@/components/ui/bubble";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
 import { Message, MessageContent } from "@/components/ui/message";
 import {
@@ -24,6 +28,7 @@ import {
   useMessageScroller,
 } from "@/components/ui/message-scroller";
 import { Spinner } from "@/components/ui/spinner";
+import { getAssistantCopyText } from "@/lib/chat/message-text";
 import { cn } from "@/lib/utils";
 import type { ChatStatus, UIMessage } from "ai";
 import { getChatErrorMessage } from "@/lib/chat/errors";
@@ -33,6 +38,8 @@ type ChatMessagesProps = {
   messages: UIMessage[];
   status: ChatStatus;
   error?: Error;
+  isBusy?: boolean;
+  onRegenerate?: (messageId: string) => void;
 };
 
 function ChatAutoScrollViewport({
@@ -109,7 +116,13 @@ function ChatAutoScrollViewport({
   );
 }
 
-export function ChatMessages({ messages, status, error }: ChatMessagesProps) {
+export function ChatMessages({
+  messages,
+  status,
+  error,
+  isBusy = false,
+  onRegenerate,
+}: ChatMessagesProps) {
   return (
     <>
       <MessageScrollerProvider autoScroll={false} defaultScrollPosition="end">
@@ -125,6 +138,8 @@ export function ChatMessages({ messages, status, error }: ChatMessagesProps) {
                     messageIndex === messages.length - 1 &&
                     message.role === "assistant"
                   }
+                  isBusy={isBusy}
+                  onRegenerate={onRegenerate}
                 />
               ))}
 
@@ -162,9 +177,13 @@ export function ChatMessages({ messages, status, error }: ChatMessagesProps) {
 const ChatMessageRow = memo(function ChatMessageRow({
   message,
   isStreaming,
+  isBusy,
+  onRegenerate,
 }: {
   message: UIMessage;
   isStreaming: boolean;
+  isBusy: boolean;
+  onRegenerate?: (messageId: string) => void;
 }) {
   const isUser = message.role === "user";
 
@@ -172,17 +191,38 @@ const ChatMessageRow = memo(function ChatMessageRow({
     <MessageScrollerItem messageId={message.id}>
       <Message
         align={isUser ? "end" : "start"}
-        className={cn("text-base", !isUser && "max-w-full")}
+        className={cn(
+          "text-base",
+          !isUser && "max-w-full flex-col items-stretch"
+        )}
         dir="ltr"
       >
         <MessageContent className={cn(!isUser && "w-full max-w-full")}>
           {isUser ? (
             <UserMessageParts message={message} />
           ) : (
-            <AssistantMessageParts
-              message={message}
-              isStreaming={isStreaming}
-            />
+            <>
+              <BubbleGroup className="w-full max-w-full gap-2">
+                <AssistantMessageParts
+                  message={message}
+                  isStreaming={isStreaming}
+                />
+              </BubbleGroup>
+              {!isStreaming ? (
+                <ChatMessageActions
+                  disabled={isBusy}
+                  showCopy
+                  showRegenerate={Boolean(onRegenerate)}
+                  onCopy={() =>
+                    void copyTextToClipboard(
+                      getAssistantCopyText(message),
+                      "پاسخ کپی شد."
+                    )
+                  }
+                  onRegenerate={() => onRegenerate?.(message.id)}
+                />
+              ) : null}
+            </>
           )}
         </MessageContent>
       </Message>

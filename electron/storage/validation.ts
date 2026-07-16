@@ -56,6 +56,11 @@ function parseChat(value: unknown): LocalChat | null {
     createdAt: Number(chat.createdAt),
     updatedAt: Number(chat.updatedAt),
     titleIsCustom: Boolean(chat.titleIsCustom),
+    pinned: Boolean(chat.pinned),
+    pinnedAt:
+      chat.pinnedAt == null || !Number.isFinite(chat.pinnedAt)
+        ? null
+        : Number(chat.pinnedAt),
   };
 }
 

@@ -2,6 +2,7 @@
 
 import { ChatToolInvocation } from "@/components/chat/chat-tool-invocation";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { SparklesIcon } from "lucide-react";
 
 type LoadSkillToolPart = {
   type: "tool-load_skill";
@@ -59,6 +60,7 @@ export function ChatSkillToolPart({ part }: { part: LoadSkillToolPart }) {
 
   return (
     <ChatToolInvocation
+      icon={<SparklesIcon />}
       label={label}
       isLoading={isLoading}
       isError={isError}

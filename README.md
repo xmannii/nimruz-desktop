@@ -18,7 +18,7 @@ Pre-built **Windows** and **macOS** installers are published automatically on ev
 | **Windows** | `.exe` (NSIS) | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Linux** | AppImage | Build locally with `pnpm dist` |
 
-See [CHANGELOG.md](CHANGELOG.md) for release notes. **v0.3.0** adds user-defined **experts**, with thanks to contributor [@mshojaei77](https://github.com/mshojaei77).
+See [CHANGELOG.md](CHANGELOG.md) for release notes. **v0.3.1** adds **`fetch_url`**, auto chat titles, pin/export/delete-all chats, and message copy/regenerate.
 
 ### macOS install
 
@@ -48,10 +48,13 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 - **Streaming chat** — markdown, code blocks, math (KaTeX), Mermaid diagrams, and CJK support
 - **OpenRouter integration** — browse, favorite, and switch models; optional reasoning effort controls
 - **Custom providers** — add OpenAI-compatible endpoints with your own API keys
+- **Web fetch** — the assistant can read public URLs with `fetch_url` (safe HTML-to-text extraction)
+- **Auto chat titles** — conversations are named automatically from the first message
 - **Projects** — organize conversations by topic or workflow
 - **Memories** — the assistant can save and forget durable facts about you over time
 - **Experts (متخصص‌ها)** — define reusable specialists (e.g. LinkedIn writer, code reviewer); pick one with `/` in chat and delegate work via expert tools
 - **Skills (مهارت‌ها)** — install and author `SKILL.md` agent skills; the assistant loads instructions on demand with `load_skill`
+- **Chat management** — pin chats, export as Markdown/JSON, copy/regenerate assistant replies, delete all chats
 - **Personalization** — response style, custom instructions, and profile context
 - **Local-first storage** — SQLite database in Electron `userData`; API keys encrypted with the OS keychain
 - **Automated releases** — GitHub Actions builds and publishes Windows + macOS installers when the version in `package.json` changes on `main`
@@ -111,8 +114,9 @@ You can also run the **Release** workflow manually from the Actions tab (`workfl
 ```
 Electron main (Node)
 ├─ authenticated local HTTP server
-│  ├─ POST /api/chat  → streamText + tools (memory, skills, experts)
-│  └─ GET  /*         → static renderer (production only)
+│  ├─ POST /api/chat       → streamText + tools (memory, skills, experts, fetch_url)
+│  ├─ POST /api/chat/title → auto title generation (OpenAI-compatible)
+│  └─ GET  /*              → static renderer (production only)
 ├─ SQLite database    → chats, projects, memories, experts, settings
 ├─ Skills store       → ~/.nimruz/skills and standard agent skill paths
 ├─ safeStorage        → encrypted API keys

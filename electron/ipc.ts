@@ -203,6 +203,7 @@ export function registerIpcHandlers(options: {
     database.saveChats(validateChatsPayload(value))
   );
   handle("storage:delete-chat", (id: string) => database.deleteChat(id));
+  handle("storage:delete-all-chats", () => database.deleteAllChats());
 
   handle("storage:load-projects", () => database.loadProjects());
   handle("storage:save-project", (value: unknown) =>

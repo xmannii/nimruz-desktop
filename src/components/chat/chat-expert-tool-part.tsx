@@ -2,6 +2,7 @@
 
 import { ChatToolInvocation } from "@/components/chat/chat-tool-invocation";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { BotIcon } from "lucide-react";
 
 type ExpertToolPart = {
   type: string;
@@ -91,6 +92,7 @@ export function ChatExpertToolPart({ part }: { part: ExpertToolPart }) {
 
   return (
     <ChatToolInvocation
+      icon={<BotIcon />}
       label={label}
       isLoading={isLoading}
       isError={Boolean(error)}

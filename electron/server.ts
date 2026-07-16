@@ -2,7 +2,7 @@ import http from "node:http";
 import { Readable } from "node:stream";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { handleChatRequest, type ChatRequestBody } from "./chat-handler";
+import { handleChatRequest, handleGenerateChatTitleRequest, type ChatRequestBody, type ChatTitleRequestBody } from "./chat-handler";
 
 const MAX_REQUEST_BYTES = 10 * 1024 * 1024;
 
@@ -24,7 +24,7 @@ const MIME_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-function readJsonBody(req: http.IncomingMessage): Promise<ChatRequestBody> {
+function readJsonBody<T = ChatRequestBody>(req: http.IncomingMessage): Promise<T> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -190,6 +190,36 @@ export function startServer(
     }
 
     const url = req.url ?? "/";
+
+    if (req.headers.authorization !== `Bearer ${sessionToken}`) {
+      if (
+        (url === "/api/chat/title" || url.startsWith("/api/chat")) &&
+        req.method === "POST"
+      ) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+    }
+
+    if (url === "/api/chat/title" && req.method === "POST") {
+      try {
+        const body = await readJsonBody<ChatTitleRequestBody>(req);
+        const webResponse = await handleGenerateChatTitleRequest(
+          body,
+          resolveChatModel
+        );
+        await pipeWebResponse(webResponse, res);
+      } catch (error) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: error instanceof Error ? error.message : "Unknown error",
+          })
+        );
+      }
+      return;
+    }
 
     if (url.startsWith("/api/chat") && req.method === "POST") {
       if (req.headers.authorization !== `Bearer ${sessionToken}`) {

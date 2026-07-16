@@ -1,6 +1,7 @@
 "use client";
 
 import { ChatToolInvocation } from "@/components/chat/chat-tool-invocation";
+import { GlobeIcon } from "lucide-react";
 
 type FetchUrlToolPart = {
   type: "tool-fetch_url";
@@ -126,6 +127,7 @@ export function ChatFetchUrlToolPart({ part }: { part: FetchUrlToolPart }) {
 
   return (
     <ChatToolInvocation
+      icon={<GlobeIcon />}
       label={label}
       isLoading={isLoading}
       isError={isError}

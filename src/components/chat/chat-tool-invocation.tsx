@@ -5,6 +5,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Marker,
+  MarkerContent,
+  MarkerIcon,
+  markerVariants,
+} from "@/components/ui/marker";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 import { ChevronDownIcon } from "lucide-react";
@@ -12,6 +18,7 @@ import { useState, type ReactNode } from "react";
 
 type ChatToolInvocationProps = {
   label: ReactNode;
+  icon?: ReactNode;
   isLoading?: boolean;
   isError?: boolean;
   expandable?: boolean;
@@ -19,8 +26,51 @@ type ChatToolInvocationProps = {
   children?: ReactNode;
 };
 
+function ToolMarkerContent({
+  label,
+  icon,
+  isLoading,
+  isError,
+  showChevron,
+  chevronOpen,
+}: {
+  label: ReactNode;
+  icon?: ReactNode;
+  isLoading: boolean;
+  isError: boolean;
+  showChevron?: boolean;
+  chevronOpen?: boolean;
+}) {
+  return (
+    <>
+      <MarkerIcon>
+        {isLoading ? <Spinner className="size-3.5" /> : icon}
+      </MarkerIcon>
+      <MarkerContent
+        dir="rtl"
+        className={cn(
+          "min-w-0 flex-1 truncate text-right",
+          isLoading && "shimmer",
+          isError && "text-destructive/90"
+        )}
+      >
+        {label}
+      </MarkerContent>
+      {showChevron ? (
+        <ChevronDownIcon
+          className={cn(
+            "size-3.5 shrink-0 text-muted-foreground/70 transition-transform",
+            chevronOpen && "rotate-180"
+          )}
+        />
+      ) : null}
+    </>
+  );
+}
+
 export function ChatToolInvocation({
   label,
+  icon,
   isLoading = false,
   isError = false,
   expandable = false,
@@ -30,49 +80,47 @@ export function ChatToolInvocation({
   const [open, setOpen] = useState(false);
   const canExpand = expandable && !isLoading && Boolean(children);
 
-  const triggerContent = (
-    <>
-      {canExpand ? (
-        <ChevronDownIcon
-          className={cn(
-            "size-3 shrink-0 text-muted-foreground/70 transition-transform",
-            open && "rotate-180"
-          )}
-        />
-      ) : null}
-      <span
-        className={cn(
-          "min-w-0 flex-1 truncate text-right",
-          isError ? "text-destructive/90" : "text-muted-foreground"
-        )}
-      >
-        {label}
-      </span>
-      {isLoading ? <Spinner className="size-3 shrink-0" /> : null}
-    </>
+  const markerClassName = cn(
+    markerVariants({ variant: "border" }),
+    "w-full py-0.5 text-xs leading-5"
   );
 
   if (!canExpand) {
     return (
-      <div
+      <Marker
         dir="rtl"
-        role="status"
-        className="flex w-full items-center gap-1.5 py-0.5 text-right text-xs leading-5"
+        variant="border"
+        role={isLoading ? "status" : undefined}
+        className={markerClassName}
       >
-        {triggerContent}
-      </div>
+        <ToolMarkerContent
+          label={label}
+          icon={icon}
+          isLoading={isLoading}
+          isError={isError}
+        />
+      </Marker>
     );
   }
 
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={setOpen}
-      dir="rtl"
-      className="w-full"
-    >
-      <CollapsibleTrigger className="flex w-full cursor-pointer items-center gap-1.5 py-0.5 text-right text-xs leading-5 transition-colors hover:text-foreground/80">
-        {triggerContent}
+    <Collapsible open={open} onOpenChange={setOpen} className="w-full">
+      <CollapsibleTrigger
+        dir="rtl"
+        role={isLoading ? "status" : undefined}
+        className={cn(
+          markerClassName,
+          "cursor-pointer transition-colors hover:text-foreground/90"
+        )}
+      >
+        <ToolMarkerContent
+          label={label}
+          icon={icon}
+          isLoading={isLoading}
+          isError={isError}
+          showChevron
+          chevronOpen={open}
+        />
       </CollapsibleTrigger>
       <CollapsibleContent className="pt-1.5">
         <div
