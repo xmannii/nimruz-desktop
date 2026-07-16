@@ -24,15 +24,4 @@ export const memoryTools = {
       id: z.string().describe("The id of the memory to delete"),
     }),
   },
-  create_expert: {
-    description:
-      "Create a reusable specialist when the user explicitly asks to create, add, or configure an expert/sub-agent. Do not use merely because a task could benefit from an expert.",
-    inputSchema: z.object({
-      name: z.string().min(1).max(60).describe("Friendly display name"),
-      slug: z.string().min(1).max(40).describe("Lowercase command slug, for example linkedin-post"),
-      description: z.string().min(1).max(240).describe("Clear sentence describing when the main assistant should delegate"),
-      instructions: z.string().min(1).max(8000).describe("Detailed role, style, workflow, length, constraints, and output expectations"),
-      triggers: z.array(z.string().min(1).max(80)).max(12).optional().describe("Natural-language phrases associated with this expert"),
-    }),
-  },
 };

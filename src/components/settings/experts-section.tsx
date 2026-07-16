@@ -25,12 +25,12 @@ import {
   type Expert,
 } from "@/lib/settings/experts";
 import {
+  BotIcon,
   CheckIcon,
   CopyIcon,
   PencilIcon,
   PlayIcon,
   PlusIcon,
-  SparklesIcon,
   Trash2Icon,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -98,11 +98,40 @@ export function ExpertsSettingsSection() {
   return (
     <SettingsSection
       title="متخصص‌ها"
-      description="دستیارهای قابل استفاده مجدد برای کارهای تکراری بسازید و با /نام-متخصص مستقیماً آن‌ها را فراخوانی کنید."
-      icon={SparklesIcon}
+      description="دستیارهای تخصصی برای کارهای تکراری — با /نام-متخصص در گفتگو فراخوانی می‌شوند."
+      icon={BotIcon}
     >
       {!draft ? (
         <>
+          <div
+            dir="rtl"
+            className="rounded-2xl border border-border/70 bg-muted/30 p-4"
+          >
+            <p className="text-sm font-medium">نحوه استفاده در گفتگو</p>
+            <ol className="mt-2 list-inside list-decimal space-y-1.5 text-xs leading-6 text-muted-foreground">
+              <li>یک متخصص بسازید یا از قالب‌ها شروع کنید و آن را فعال نگه دارید.</li>
+              <li>
+                در ابتدای پیام،{" "}
+                <code dir="ltr" className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                  /نام-متخصص
+                </code>{" "}
+                را بنویسید — فهرست پیشنهادها نمایش داده می‌شود.
+              </li>
+              <li>
+                با ↑↓ حرکت کنید و Enter یا Tab بزنید — نام متخصص به‌صورت
+                نشان (badge) در نوار پیام ظاهر می‌شود.
+              </li>
+              <li>درخواست خود را بنویسید و ارسال کنید.</li>
+            </ol>
+            <p className="mt-2.5 text-xs leading-5 text-muted-foreground">
+              دستور{" "}
+              <code dir="ltr" className="rounded bg-muted px-1.5 py-0.5 text-[11px]">
+                /linkedin-writer
+              </code>{" "}
+              در متن پیام نمایش داده نمی‌شود؛ فقط نشان متخصص را می‌بینید.
+            </p>
+          </div>
+
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-muted-foreground">از یک قالب شروع کنید یا متخصص دلخواه خود را بسازید.</p>
             <Button
@@ -151,7 +180,8 @@ export function ExpertsSettingsSection() {
 
       {experts.length === 0 && !draft ? (
         <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-          هنوز متخصصی ندارید. یکی از قالب‌ها را انتخاب کنید یا در گفتگو بگویید «یک متخصص برای من بساز».
+          هنوز متخصصی ندارید. یکی از قالب‌ها را انتخاب کنید، یا در گفتگو بگویید
+          «یک متخصص برای من بساز».
         </div>
       ) : !draft ? (
         <div className="flex flex-col gap-2.5">
@@ -196,7 +226,7 @@ export function ExpertsSettingsSection() {
           <AlertDialogHeader>
             <AlertDialogTitle>حذف متخصص؟</AlertDialogTitle>
             <AlertDialogDescription>
-              متخصص «{deleteTarget?.name}» و دستور /{deleteTarget?.slug} حذف می‌شود.
+              متخصص «{deleteTarget?.name}» حذف می‌شود.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -246,7 +276,9 @@ function ExpertEditor({
     <div dir="rtl" className="flex flex-col gap-5 rounded-2xl border border-border p-4">
       <div>
         <h3 className="text-sm font-semibold">{draft.id ? "ویرایش متخصص" : "بررسی و ساخت متخصص"}</h3>
-        <p className="mt-1 text-xs text-muted-foreground">تنظیمات را بررسی کنید؛ می‌توانید قبل از ذخیره یک دستور آزمایشی بسازید.</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          پس از ذخیره، با نوشتن /{draft.slug || "نام-متخصص"} در گفتگو قابل فراخوانی است.
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -306,7 +338,13 @@ function ExpertEditor({
       </label>
 
       <div className="rounded-xl bg-muted/40 p-3">
-        <div className="mb-2 flex items-center gap-2 text-sm font-medium"><PlayIcon className="size-4" /> آزمایش در گفتگو</div>
+        <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+          <PlayIcon className="size-4" /> آزمایش در گفتگو
+        </div>
+        <p className="mb-2 text-xs leading-5 text-muted-foreground">
+          در گفتگو / را بزنید و متخصص را انتخاب کنید، سپس این متن را بچسبانید
+          و ارسال کنید.
+        </p>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input value={testPrompt} onChange={(event) => setTestPrompt(event.target.value)} placeholder="یک درخواست واقعی برای آزمایش بنویسید…" />
           <Button type="button" variant="secondary" className="shrink-0 gap-1.5" disabled={!testPrompt.trim() || !normalizeExpertSlug(draft.slug || draft.name)} onClick={onCopyTest}>

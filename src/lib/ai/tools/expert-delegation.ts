@@ -1,10 +1,12 @@
 import type { Expert } from "@/lib/settings/experts";
+import { expertDelegationToolName } from "@/lib/settings/experts";
 import { generateText, tool, type LanguageModel } from "ai";
 import { z } from "zod";
 
 export function expertToolName(expert: Expert) {
-  return `expert_${expert.slug.replace(/-/g, "_")}`;
+  return expertDelegationToolName(expert.slug);
 }
+
 export function createExpertTools(experts: Expert[], model: LanguageModel) {
   return Object.fromEntries(
     experts.filter((expert) => expert.enabled).map((expert) => [
@@ -12,7 +14,11 @@ export function createExpertTools(experts: Expert[], model: LanguageModel) {
       tool({
         description: `Delegate to ${expert.name}. ${expert.description} Use this expert whenever the user's request matches this purpose.`,
         inputSchema: z.object({
-          task: z.string().min(1).max(12_000).describe("Complete task and all relevant context for the expert"),
+          task: z
+            .string()
+            .min(1)
+            .max(12_000)
+            .describe("Complete task and all relevant context for the expert"),
         }),
         execute: async ({ task }, { abortSignal }) => {
           const result = await generateText({

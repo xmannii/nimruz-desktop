@@ -4,9 +4,11 @@ import {
   buildSkillsAppendix,
   type SkillCatalogEntry,
 } from "@/lib/skills/catalog";
+import { buildExpertsAppendix, sanitizeExperts } from "@/lib/settings/experts";
 import systemPromptMd from "@/lib/ai/prompts/system-prompt.md";
 import memoryToolsMd from "@/lib/ai/prompts/memory-tools.md";
-import { sanitizeExperts } from "@/lib/settings/experts";
+import createExpertToolsMd from "@/lib/ai/prompts/create-expert-tools.md";
+import expertToolsMd from "@/lib/ai/prompts/expert-tools.md";
 import skillToolsMd from "@/lib/ai/prompts/skill-tools.md";
 
 export function getBaseSystemPrompt() {
@@ -15,6 +17,14 @@ export function getBaseSystemPrompt() {
 
 export function getMemoryToolsPrompt() {
   return memoryToolsMd.trim();
+}
+
+export function getCreateExpertToolsPrompt() {
+  return createExpertToolsMd.trim();
+}
+
+export function getExpertToolsPrompt() {
+  return expertToolsMd.trim();
 }
 
 export function getSkillToolsPrompt() {
@@ -27,22 +37,19 @@ export function buildSystemInstructions(
   experts?: unknown,
   skills?: SkillCatalogEntry[]
 ) {
-  const enabledExperts = sanitizeExperts(experts).filter((expert) => expert.enabled);
-  const expertsAppendix = enabledExperts.length
-    ? [
-        "## Available experts",
-        "Delegate matching work to the available expert tool. Explicit /slug or @slug requests must use that expert. Pass a self-contained task. Use expert results to answer the user directly.",
-        enabledExperts.map((expert) => `- /${expert.slug}: ${expert.description}${expert.triggers.length ? ` (signals: ${expert.triggers.join(", ")})` : ""}`).join("\n"),
-      ].join("\n\n")
-    : "";
+  const hasExperts = sanitizeExperts(experts).some((expert) => expert.enabled);
+  const hasSkills = (skills?.length ?? 0) > 0;
+
   const sections = [
     getBaseSystemPrompt(),
     getMemoryToolsPrompt(),
-    getSkillToolsPrompt(),
+    getCreateExpertToolsPrompt(),
+    hasExperts ? getExpertToolsPrompt() : "",
+    hasExperts ? buildExpertsAppendix(experts) : "",
+    hasSkills ? getSkillToolsPrompt() : "",
+    hasSkills ? buildSkillsAppendix(skills) : "",
     buildPersonalizationAppendix(personalization),
     buildMemoriesAppendix(memories),
-    expertsAppendix,
-    buildSkillsAppendix(skills),
   ].filter(Boolean);
 
   return sections.join("\n\n");

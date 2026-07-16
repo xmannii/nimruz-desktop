@@ -101,9 +101,72 @@ export function findExplicitExpert(experts: Expert[], text: string): Expert | nu
   return command ? experts.find((item) => item.enabled && item.slug === command) ?? null : null;
 }
 
+export function resolveSelectedExpert(
+  experts: Expert[],
+  slug?: string | null
+): Expert | null {
+  if (!slug) return null;
+  const normalized = normalizeExpertSlug(slug);
+  if (!normalized) return null;
+  return experts.find((item) => item.enabled && item.slug === normalized) ?? null;
+}
+
+/** Partial slug after leading `/` while the user is still picking a command. */
+export function getExpertSlashQuery(text: string): string | null {
+  const trimmed = text.trimStart();
+  const match = trimmed.match(/^\/([^\s]*)$/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+export function filterExpertSuggestions(
+  experts: Expert[],
+  query: string | null,
+  limit = 6
+): Expert[] {
+  const enabled = experts.filter((expert) => expert.enabled);
+  if (query === null) return [];
+
+  return enabled
+    .filter(
+      (expert) =>
+        !query ||
+        expert.slug.includes(query) ||
+        expert.name.toLowerCase().includes(query)
+    )
+    .slice(0, limit);
+}
+
+export function expertDelegationToolName(slug: string) {
+  return `expert_${slug.replace(/-/g, "_")}`;
+}
+
+export function buildExpertsAppendix(experts: Expert[] | unknown): string {
+  const enabled = sanitizeExperts(experts).filter((expert) => expert.enabled);
+  if (!enabled.length) return "";
+
+  const lines = enabled.map((expert) => {
+    const toolName = expertDelegationToolName(expert.slug);
+    const triggers = expert.triggers.length
+      ? ` — signals: ${expert.triggers.join(", ")}`
+      : "";
+    return `- \`${toolName}\` (/${expert.slug}): ${expert.description}${triggers}`;
+  });
+
+  return [
+    "## Available experts",
+    "",
+    ...lines,
+  ].join("\n");
+}
+
 export function getExpertValidationErrors(value: Partial<Expert>, experts: Expert[] = []): string[] {
   const errors: string[] = [];
   const slug = normalizeExpertSlug(value.slug || value.name);
+  const isNewExpert = !value.id;
+
+  if (isNewExpert && experts.length >= EXPERT_LIMITS.maxEntries) {
+    errors.push(`حداکثر ${EXPERT_LIMITS.maxEntries.toLocaleString("fa-IR")} متخصص ذخیره شده است.`);
+  }
   if (!value.name?.trim()) errors.push("نام متخصص را وارد کنید.");
   if (!slug) errors.push("یک دستور انگلیسی معتبر وارد کنید.");
   if (!value.description?.trim()) errors.push("کار متخصص را کوتاه توضیح دهید.");

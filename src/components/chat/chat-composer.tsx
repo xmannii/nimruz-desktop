@@ -1,10 +1,18 @@
 "use client";
 
 import { ChatContextUsage } from "@/components/chat/chat-context-usage";
+import { ExpertSlashSuggestions } from "@/components/chat/expert-slash-suggestions";
 import { ModelPicker } from "@/components/chat/model-picker";
 import { ReasoningEffortSlider } from "@/components/chat/reasoning-effort-slider";
+import { SelectedExpertBadge } from "@/components/chat/selected-expert-badge";
 import { useAppShell } from "@/components/app-shell-context";
 import type { ChatUIMessage } from "@/lib/chat/message";
+import {
+  filterExpertSuggestions,
+  getExpertSlashQuery,
+  resolveSelectedExpert,
+  type Expert,
+} from "@/lib/settings/experts";
 import { Button } from "@/components/ui/button";
 import {
   InputGroup,
@@ -24,6 +32,7 @@ import {
   type KeyboardEvent,
   type RefObject,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -36,6 +45,8 @@ type ChatComposerProps = {
   onModelChange: (model: ProviderModelRef) => void;
   reasoningEffort: ReasoningEffort;
   onReasoningEffortChange: (effort: ReasoningEffort) => void;
+  selectedExpertSlug: string | null;
+  onSelectedExpertChange: (slug: string | null) => void;
   status: ChatStatus;
   onSubmit: () => void;
   onStop: () => void;
@@ -50,6 +61,8 @@ export function ChatComposer({
   onModelChange,
   reasoningEffort,
   onReasoningEffortChange,
+  selectedExpertSlug,
+  onSelectedExpertChange,
   status,
   onSubmit,
   onStop,
@@ -58,6 +71,8 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const { resolveModel, experts } = useAppShell();
   const [isExpanded, setIsExpanded] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const collapsedWidthRef = useRef<number | null>(null);
 
@@ -65,19 +80,46 @@ export function ChatComposer({
   const modelConfig = resolveModel(model);
   const canAttach = modelConfig?.supportsImages ?? false;
   const showReasoningEffort = modelConfig?.supportsReasoningEffort ?? false;
-  const slashQuery = text.match(/^\/([^\s]*)$/)?.[1]?.toLowerCase();
-  const expertSuggestions = slashQuery === undefined
-    ? []
-    : experts
-        .filter((expert) => expert.enabled)
-        .filter((expert) =>
-          !slashQuery || expert.slug.includes(slashQuery) || expert.name.toLowerCase().includes(slashQuery)
-        )
-        .slice(0, 6);
+  const selectedExpert = useMemo(
+    () => resolveSelectedExpert(experts, selectedExpertSlug),
+    [experts, selectedExpertSlug]
+  );
+  const slashQuery = getExpertSlashQuery(text);
+  const expertSuggestions = useMemo(
+    () => filterExpertSuggestions(experts, slashQuery),
+    [experts, slashQuery]
+  );
+  const hasExpertPicker = expertSuggestions.length > 0;
 
   useEffect(() => {
-    if (!text) setIsExpanded(false);
-  }, [text]);
+    if (!text && !selectedExpert) setIsExpanded(false);
+  }, [text, selectedExpert]);
+
+  useEffect(() => {
+    setHighlightIndex(0);
+  }, [slashQuery, expertSuggestions.length]);
+
+  function focusComposer() {
+    requestAnimationFrame(() => {
+      const el =
+        textareaRef.current ??
+        formRef.current?.querySelector<HTMLTextAreaElement>("textarea");
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }
+
+  function selectExpert(expert: Expert) {
+    onSelectedExpertChange(expert.slug);
+    onTextChange("");
+    focusComposer();
+  }
+
+  function clearExpert() {
+    onSelectedExpertChange(null);
+    focusComposer();
+  }
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -100,20 +142,62 @@ export function ChatComposer({
     }
   }
 
-  function handleKeyDown(
-    e: KeyboardEvent<HTMLTextAreaElement>
-  ) {
+  function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (hasExpertPicker) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlightIndex((index) =>
+          Math.min(index + 1, expertSuggestions.length - 1)
+        );
+        return;
+      }
+
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlightIndex((index) => Math.max(index - 1, 0));
+        return;
+      }
+
+      if (e.key === "Tab") {
+        e.preventDefault();
+        selectExpert(expertSuggestions[highlightIndex]);
+        return;
+      }
+
+      if (e.key === "Enter" && !e.shiftKey && slashQuery !== null) {
+        e.preventDefault();
+        selectExpert(expertSuggestions[highlightIndex]);
+        return;
+      }
+    }
+
+    if (
+      e.key === "Backspace" &&
+      !text &&
+      selectedExpert &&
+      e.currentTarget.selectionStart === 0 &&
+      e.currentTarget.selectionEnd === 0
+    ) {
+      e.preventDefault();
+      clearExpert();
+      return;
+    }
+
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       e.currentTarget.form?.requestSubmit();
     }
   }
 
+  const placeholder = selectedExpert
+    ? "درخواست خود را برای این متخصص بنویسید..."
+    : centered
+      ? "ایده، سؤال، یا / برای انتخاب متخصص..."
+      : "پیام خود را بنویسید... (/ برای متخصص)";
+
   const textareaProps = {
     dir: "rtl" as const,
-    placeholder: centered
-      ? "ایده، سؤال، یا هر چیزی که می‌خواهی بپرسی..."
-      : "پیام خود را بنویسید...",
+    placeholder,
     value: text,
     rows: centered ? 4 : 1,
     onChange: (e: ChangeEvent<HTMLTextAreaElement>) =>
@@ -122,8 +206,17 @@ export function ChatComposer({
     disabled: isBusy,
   };
 
+  const badgeProps = selectedExpert
+    ? {
+        name: selectedExpert.name,
+        onClear: clearExpert,
+        disabled: isBusy,
+      }
+    : null;
+
   return (
     <form
+      ref={formRef}
       className={cn(
         "relative w-full",
         centered
@@ -132,34 +225,17 @@ export function ChatComposer({
       )}
       onSubmit={handleSubmit}
     >
-      {expertSuggestions.length > 0 ? (
-        <div
-          dir="rtl"
-          role="listbox"
-          aria-label="متخصص‌ها"
-          className="absolute inset-x-0 bottom-full z-40 mb-2 overflow-hidden rounded-2xl border border-border bg-popover p-1.5 shadow-xl"
-        >
-          <p className="px-3 py-1.5 text-xs text-muted-foreground">انتخاب متخصص</p>
-          {expertSuggestions.map((expert) => (
-            <button
-              key={expert.id}
-              type="button"
-              role="option"
-              aria-selected="false"
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-start hover:bg-muted"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onTextChange(`/${expert.slug} `)}
-            >
-              <code dir="ltr" className="rounded bg-muted px-1.5 py-0.5 text-xs">/{expert.slug}</code>
-              <span className="min-w-0">
-                <strong className="block text-sm font-medium">{expert.name}</strong>
-                <span className="block truncate text-xs text-muted-foreground">{expert.description}</span>
-              </span>
-            </button>
-          ))}
-        </div>
+      {hasExpertPicker ? (
+        <ExpertSlashSuggestions
+          suggestions={expertSuggestions}
+          highlightIndex={highlightIndex}
+          onHighlight={setHighlightIndex}
+          onSelect={selectExpert}
+        />
       ) : null}
+
       <MobileComposer
+        badgeProps={badgeProps}
         textareaProps={textareaProps}
         model={model}
         onModelChange={onModelChange}
@@ -174,6 +250,7 @@ export function ChatComposer({
       />
 
       <DesktopComposer
+        badgeProps={badgeProps}
         textareaRef={textareaRef}
         textareaProps={textareaProps}
         model={model}
@@ -183,7 +260,7 @@ export function ChatComposer({
         showReasoningEffort={showReasoningEffort}
         isBusy={isBusy}
         canAttach={canAttach}
-        isExpanded={centered || isExpanded}
+        isExpanded={centered || isExpanded || Boolean(selectedExpert)}
         text={text}
         onStop={onStop}
         centered={centered}
@@ -226,7 +303,14 @@ function ComposerFooter({
   );
 }
 
+type BadgeProps = {
+  name: string;
+  onClear: () => void;
+  disabled?: boolean;
+};
+
 type ComposerSharedProps = {
+  badgeProps: BadgeProps | null;
   textareaProps: {
     dir: "rtl";
     placeholder: string;
@@ -249,6 +333,7 @@ type ComposerSharedProps = {
 };
 
 function MobileComposer({
+  badgeProps,
   textareaProps,
   model,
   onModelChange,
@@ -266,11 +351,16 @@ function MobileComposer({
       dir="ltr"
       className="flex flex-col overflow-hidden rounded-2xl border border-input bg-input/30 shadow-sm ring-1 ring-foreground/5 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 md:hidden"
     >
+      {badgeProps ? (
+        <SelectedExpertBadge {...badgeProps} className="pb-0" />
+      ) : null}
+
       <Textarea
         {...textareaProps}
         className={cn(
           "max-h-40 resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-base leading-6 shadow-none ring-0 focus-visible:ring-0",
-          centered ? "min-h-28" : "min-h-12"
+          centered ? "min-h-28" : "min-h-12",
+          badgeProps && "pt-2"
         )}
       />
 
@@ -336,6 +426,7 @@ function MobileComposer({
 }
 
 function DesktopComposer({
+  badgeProps,
   textareaRef,
   textareaProps,
   model,
@@ -354,59 +445,108 @@ function DesktopComposer({
   isExpanded: boolean;
   centered?: boolean;
 }) {
+  const showExpandedLayout = isExpanded || Boolean(badgeProps);
+
   return (
-    <InputGroup
+    <div
       dir="ltr"
       className={cn(
-        "hidden md:flex",
-        isExpanded ? "items-end" : "items-center",
-        isExpanded
-          ? "rounded-2xl has-[textarea]:rounded-2xl"
-          : "rounded-full has-[textarea]:rounded-full"
+        "hidden overflow-hidden md:flex md:flex-col",
+        showExpandedLayout
+          ? "rounded-2xl border border-input bg-input/30 shadow-sm ring-1 ring-foreground/5 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50"
+          : "rounded-full border border-input bg-input/30 shadow-sm ring-1 ring-foreground/5 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50"
       )}
     >
-      <InputGroupAddon
-        align={isExpanded ? "block-end" : "inline-start"}
+      {badgeProps ? <SelectedExpertBadge {...badgeProps} /> : null}
+
+      <InputGroup
+        dir="ltr"
         className={cn(
-          "gap-1.5",
-          isExpanded
-            ? "order-last justify-between px-2 pb-2"
-            : "py-1 ps-2 pe-1"
+          "rounded-none border-0 bg-transparent shadow-none ring-0",
+          showExpandedLayout ? "items-end" : "items-center"
         )}
       >
-        <div className="flex items-center gap-1.5">
-          <InputGroupButton
-            size="icon-sm"
-            type="button"
-            variant="secondary"
-            aria-label="افزودن پیوست"
-            title={
-              canAttach
-                ? "افزودن پیوست"
-                : "این مدل از تصویر پشتیبانی نمی‌کند"
-            }
-            disabled={!canAttach || isBusy}
-          >
-            <PlusIcon />
-          </InputGroupButton>
+        <InputGroupAddon
+          align={showExpandedLayout ? "block-end" : "inline-start"}
+          className={cn(
+            "gap-1.5",
+            showExpandedLayout
+              ? "order-last justify-between px-2 pb-2"
+              : "py-1 ps-2 pe-1"
+          )}
+        >
+          <div className="flex items-center gap-1.5">
+            <InputGroupButton
+              size="icon-sm"
+              type="button"
+              variant="secondary"
+              aria-label="افزودن پیوست"
+              title={
+                canAttach
+                  ? "افزودن پیوست"
+                  : "این مدل از تصویر پشتیبانی نمی‌کند"
+              }
+              disabled={!canAttach || isBusy}
+            >
+              <PlusIcon />
+            </InputGroupButton>
 
-          <ModelPicker
-            value={model}
-            onValueChange={onModelChange}
-            disabled={isBusy}
-          />
-
-          {showReasoningEffort ? (
-            <ReasoningEffortSlider
-              value={reasoningEffort}
-              onValueChange={onReasoningEffortChange}
+            <ModelPicker
+              value={model}
+              onValueChange={onModelChange}
               disabled={isBusy}
             />
-          ) : null}
-        </div>
 
-        {isExpanded ? (
-          isBusy ? (
+            {showReasoningEffort ? (
+              <ReasoningEffortSlider
+                value={reasoningEffort}
+                onValueChange={onReasoningEffortChange}
+                disabled={isBusy}
+              />
+            ) : null}
+          </div>
+
+          {showExpandedLayout ? (
+            isBusy ? (
+              <InputGroupButton
+                size="icon-sm"
+                type="button"
+                variant="default"
+                onClick={onStop}
+                aria-label="توقف"
+              >
+                <SquareIcon />
+              </InputGroupButton>
+            ) : (
+              <InputGroupButton
+                size="icon-sm"
+                type="submit"
+                variant="default"
+                disabled={!text.trim()}
+                aria-label="ارسال"
+              >
+                <ArrowUpIcon />
+              </InputGroupButton>
+            )
+          ) : null}
+        </InputGroupAddon>
+
+        <InputGroupTextarea
+          ref={textareaRef}
+          {...textareaProps}
+          className={cn(
+            "max-h-48 overflow-y-auto text-base leading-7",
+            showExpandedLayout ? "px-3 py-3" : "py-2.5",
+            centered ? "min-h-28" : "min-h-11",
+            badgeProps && "pt-1"
+          )}
+        />
+
+        <InputGroupAddon
+          align="inline-end"
+          className={cn("py-1 ps-1 pe-2", showExpandedLayout && "hidden")}
+        >
+          {isBusy ? (
             <InputGroupButton
               size="icon-sm"
               type="button"
@@ -426,46 +566,9 @@ function DesktopComposer({
             >
               <ArrowUpIcon />
             </InputGroupButton>
-          )
-        ) : null}
-      </InputGroupAddon>
-
-      <InputGroupTextarea
-        ref={textareaRef}
-        {...textareaProps}
-        className={cn(
-          "max-h-48 overflow-y-auto text-base leading-7",
-          isExpanded ? "px-3 py-3" : "py-2.5",
-          centered ? "min-h-28" : "min-h-11"
-        )}
-      />
-
-      <InputGroupAddon
-        align="inline-end"
-        className={cn("py-1 ps-1 pe-2", isExpanded && "hidden")}
-      >
-        {isBusy ? (
-          <InputGroupButton
-            size="icon-sm"
-            type="button"
-            variant="default"
-            onClick={onStop}
-            aria-label="توقف"
-          >
-            <SquareIcon />
-          </InputGroupButton>
-        ) : (
-          <InputGroupButton
-            size="icon-sm"
-            type="submit"
-            variant="default"
-            disabled={!text.trim()}
-            aria-label="ارسال"
-          >
-            <ArrowUpIcon />
-          </InputGroupButton>
-        )}
-      </InputGroupAddon>
-    </InputGroup>
+          )}
+        </InputGroupAddon>
+      </InputGroup>
+    </div>
   );
 }

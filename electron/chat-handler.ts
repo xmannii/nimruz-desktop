@@ -1,6 +1,9 @@
 import { isReasoningEffort, type ReasoningEffort } from "@/lib/models/reasoning";
-import { memoryTools } from "@/lib/ai/memory-tools";
-import { skillTools } from "@/lib/ai/skill-tools";
+import {
+  buildChatTools,
+  createExpertTools,
+  expertToolName,
+} from "@/lib/ai/tools";
 import { sanitizeMemories } from "@/lib/settings/memories";
 import { buildSystemInstructions } from "@/lib/ai/system-prompt";
 import type { SkillCatalogEntry } from "@/lib/skills/catalog";
@@ -8,8 +11,7 @@ import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { APP_NAME } from "@/lib/branding";
 import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
-import { createExpertTools, expertToolName } from "@/lib/ai/expert-tools";
-import { findExplicitExpert, sanitizeExperts } from "@/lib/settings/experts";
+import { findExplicitExpert, resolveSelectedExpert, sanitizeExperts } from "@/lib/settings/experts";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
@@ -31,6 +33,7 @@ export type ChatRequestBody = {
   personalization?: unknown;
   memories?: unknown;
   experts?: unknown;
+  selectedExpertSlug?: string;
 };
 
 export type ResolvedChatModel = {
@@ -72,37 +75,6 @@ function createLanguageModel(
   return compatible.chatModel(model.modelId);
 }
 
-function createChatTools(skillsRuntime?: SkillsRuntime) {
-  return {
-    ...memoryTools,
-    load_skill: {
-      ...skillTools.load_skill,
-      execute: async ({ name }: { name: string }) => {
-        if (!skillsRuntime) {
-          return {
-            success: false,
-            error: "Skills are not available in this session.",
-          };
-        }
-
-        const content = await skillsRuntime.loadSkillContent(name);
-        if (!content) {
-          return {
-            success: false,
-            error: `Skill "${name}" was not found or is disabled.`,
-          };
-        }
-
-        return {
-          success: true,
-          name,
-          content,
-        };
-      },
-    },
-  };
-}
-
 export async function handleChatRequest(
   body: ChatRequestBody,
   resolveModel: (
@@ -119,6 +91,7 @@ export async function handleChatRequest(
     personalization,
     memories,
     experts,
+    selectedExpertSlug,
   } = body;
 
   const resolved = resolveModel(providerId, model);
@@ -162,19 +135,26 @@ export async function handleChatRequest(
       : undefined;
 
   const sanitizedExperts = sanitizeExperts(experts);
+  const enabledExperts = sanitizedExperts.filter((expert) => expert.enabled);
   const lastUserText = [...messages].reverse().find((message) => message.role === "user")?.parts
     ?.filter((part): part is Extract<(typeof messages)[number]["parts"][number], { type: "text" }> => part.type === "text")
     .map((part) => part.text).join("\n") ?? "";
-  const explicitExpert = findExplicitExpert(sanitizedExperts, lastUserText);
-  const availableTools: ToolSet | undefined = resolved.model.supportsTools
-    ? {
-        ...createChatTools(skillsRuntime),
-        ...createExpertTools(sanitizedExperts, languageModel),
-      }
-    : undefined;
+  const explicitExpert =
+    resolveSelectedExpert(sanitizedExperts, selectedExpertSlug) ??
+    findExplicitExpert(sanitizedExperts, lastUserText);
   const skillsCatalog = skillsRuntime
     ? await skillsRuntime.getSkillsCatalog()
     : [];
+  const hasSkills = skillsCatalog.length > 0;
+  const chatTools = buildChatTools({ skillsRuntime, includeSkills: hasSkills });
+  const availableTools: ToolSet | undefined = resolved.model.supportsTools
+    ? {
+        ...chatTools,
+        ...(enabledExperts.length > 0
+          ? createExpertTools(sanitizedExperts, languageModel)
+          : {}),
+      }
+    : undefined;
 
   const result = streamText({
     model: languageModel,

@@ -73,6 +73,9 @@ export function ChatSession({
     setCatalog,
   } = useAppShell();
   const [text, setText] = useState("");
+  const [selectedExpertSlug, setSelectedExpertSlug] = useState<string | null>(
+    null
+  );
   const [modelRef, setModelRef] = useState<ProviderModelRef>({
     providerId: chat.providerId || DEFAULT_PROVIDER_ID,
     modelId: chat.model,
@@ -232,6 +235,7 @@ export function ChatSession({
             },
             options: { body: { ...requestBody, experts: nextExperts } },
           });
+          return;
         }
       },
     });
@@ -314,10 +318,12 @@ export function ChatSession({
           personalization,
           memories,
           experts,
+          selectedExpertSlug: selectedExpertSlug ?? undefined,
         },
       }
     );
     setText("");
+    setSelectedExpertSlug(null);
   }
 
   const showCenteredComposer = messages.length === 0;
@@ -330,6 +336,8 @@ export function ChatSession({
       onModelChange={handleModelChange}
       reasoningEffort={reasoningEffort}
       onReasoningEffortChange={handleReasoningEffortChange}
+      selectedExpertSlug={selectedExpertSlug}
+      onSelectedExpertChange={setSelectedExpertSlug}
       status={status}
       onSubmit={handleSubmit}
       onStop={stop}

@@ -1,50 +1,118 @@
 "use client";
 
-import { Spinner } from "@/components/ui/spinner";
-import { AlertCircleIcon, CheckCircle2Icon, SparklesIcon } from "lucide-react";
+import { ChatToolInvocation } from "@/components/chat/chat-tool-invocation";
+import { MessageResponse } from "@/components/ai-elements/message";
 
 type ExpertToolPart = {
   type: string;
   state: string;
-  input?: { name?: string; slug?: string };
-  output?: { success?: boolean; slug?: string; error?: string };
+  input?: {
+    name?: string;
+    slug?: string;
+    task?: string;
+  };
+  output?: unknown;
   errorText?: string;
 };
 
+function getExpertSlug(part: ExpertToolPart) {
+  if (part.type === "tool-create_expert") {
+    const output = part.output as { slug?: string } | undefined;
+    return output?.slug ?? part.input?.slug;
+  }
+  return part.type.replace(/^tool-expert_/, "").replace(/_/g, "-");
+}
+
+function getExpertResponseText(output: unknown): string | null {
+  if (typeof output === "string") {
+    const trimmed = output.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  return null;
+}
+
+function getExpertError(part: ExpertToolPart): string | null {
+  if (part.state === "output-error") {
+    return (
+      part.errorText ?? "ساخت یا اجرای متخصص ناموفق بود؛ دوباره تلاش کنید."
+    );
+  }
+
+  const output = part.output as { success?: boolean; error?: string } | undefined;
+  if (output && typeof output === "object" && output.success === false) {
+    return (
+      output.error ?? "ساخت یا اجرای متخصص ناموفق بود؛ دوباره تلاش کنید."
+    );
+  }
+
+  return null;
+}
+
 export function ChatExpertToolPart({ part }: { part: ExpertToolPart }) {
   const isCreation = part.type === "tool-create_expert";
-  const isLoading = part.state === "input-streaming" || part.state === "input-available";
-  const isError = part.state === "output-error" || (!isLoading && part.output?.success === false);
-  const slug = isCreation
-    ? part.output?.slug ?? part.input?.slug
-    : part.type.replace(/^tool-expert_/, "").replace(/_/g, "-");
+  const isDelegation = part.type.startsWith("tool-expert_");
+  const isLoading =
+    part.state === "input-streaming" || part.state === "input-available";
+  const slug = getExpertSlug(part);
+  const error = getExpertError(part);
+  const responseText = isDelegation ? getExpertResponseText(part.output) : null;
+
+  const label = isLoading ? (
+    isCreation ? (
+      "در حال بررسی و ساخت متخصص…"
+    ) : (
+      <>
+        متخصص{" "}
+        <span dir="ltr" className="font-mono">
+          /{slug}
+        </span>{" "}
+        در حال انجام درخواست است…
+      </>
+    )
+  ) : error ? (
+    error
+  ) : isCreation ? (
+    <>
+      متخصص{" "}
+      <span dir="ltr" className="font-mono">
+        /{slug ?? "expert"}
+      </span>{" "}
+      ساخته و آماده استفاده شد
+    </>
+  ) : (
+    <>
+      متخصص{" "}
+      <span dir="ltr" className="font-mono">
+        /{slug}
+      </span>{" "}
+      پاسخ داد
+    </>
+  );
 
   return (
-    <div
-      dir="rtl"
-      role="status"
-      className="flex w-full items-center gap-2 rounded-lg border border-border/60 bg-muted/35 px-2 py-1 text-xs leading-5 text-muted-foreground"
+    <ChatToolInvocation
+      label={label}
+      isLoading={isLoading}
+      isError={Boolean(error)}
+      expandable={Boolean(responseText)}
+      panelTitle={part.input?.task ? "درخواست" : undefined}
     >
-      {isLoading ? (
-        <Spinner className="size-3" />
-      ) : isError ? (
-        <AlertCircleIcon className="size-3 text-destructive" />
-      ) : isCreation ? (
-        <CheckCircle2Icon className="size-3 text-emerald-600" />
-      ) : (
-        <SparklesIcon className="size-3" />
-      )}
-      <span>
-        {isLoading
-          ? isCreation
-            ? "در حال بررسی و ساخت متخصص…"
-            : `متخصص /${slug} در حال انجام درخواست است…`
-          : isError
-            ? part.output?.error || part.errorText || "ساخت یا اجرای متخصص ناموفق بود؛ دوباره تلاش کنید."
-            : isCreation
-              ? `متخصص /${slug ?? "expert"} ساخته و آماده استفاده شد`
-              : `متخصص /${slug} پاسخ داد`}
-      </span>
-    </div>
+      {responseText ? (
+        <>
+          {part.input?.task ? (
+            <p className="mb-2 text-xs leading-5 text-muted-foreground">
+              {part.input.task}
+            </p>
+          ) : null}
+          <MessageResponse
+            dir="rtl"
+            mode="static"
+            className="text-right text-sm leading-7"
+          >
+            {responseText}
+          </MessageResponse>
+        </>
+      ) : null}
+    </ChatToolInvocation>
   );
 }
