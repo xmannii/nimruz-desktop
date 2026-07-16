@@ -20,6 +20,8 @@ Pre-built **Windows** and **macOS** installers are published automatically on ev
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes. **v0.3.1** adds **`fetch_url`**, auto chat titles, pin/export/delete-all chats, and message copy/regenerate.
 
+![Nimruz v0.3.1 release banner](public/release-v0.3.1-banner.png)
+
 ### macOS install
 
 1. Download the latest `.dmg` from [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest).
