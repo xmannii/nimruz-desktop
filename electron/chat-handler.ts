@@ -1,11 +1,23 @@
 import { isReasoningEffort, type ReasoningEffort } from "@/lib/models/reasoning";
-import { memoryTools } from "@/lib/ai/memory-tools";
+import {
+  buildChatTools,
+  createExpertTools,
+  expertToolName,
+} from "@/lib/ai/tools";
 import { sanitizeMemories } from "@/lib/settings/memories";
 import { buildSystemInstructions } from "@/lib/ai/system-prompt";
+import type { SkillCatalogEntry } from "@/lib/skills/catalog";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { APP_NAME } from "@/lib/branding";
 import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
+import {
+  findExplicitExpert,
+  resolveSelectedExpert,
+  sanitizeExperts,
+} from "@/lib/settings/experts";
+import { generateChatTitleWithModel } from "@/lib/ai/generate-chat-title-model";
+import { fallbackTitleFromMessage } from "@/lib/ai/chat-title";
 import type { CodexService } from "./codex/service";
 import { handleCodexChatRequest } from "./codex/chat-handler";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
@@ -18,6 +30,7 @@ import {
   streamText,
   toUIMessageStream,
   type LanguageModel,
+  type ToolSet,
 } from "ai";
 
 export type ChatRequestBody = {
@@ -28,6 +41,8 @@ export type ChatRequestBody = {
   reasoningEffort?: ReasoningEffort;
   personalization?: unknown;
   memories?: unknown;
+  experts?: unknown;
+  selectedExpertSlug?: string;
 };
 
 export type ResolvedChatModel = {
@@ -36,9 +51,18 @@ export type ResolvedChatModel = {
   apiKey: string | null;
 };
 
-function createLanguageModel(
-  resolved: ResolvedChatModel
-): LanguageModel {
+export type SkillsRuntime = {
+  getSkillsCatalog: () => Promise<SkillCatalogEntry[]>;
+  loadSkillContent: (name: string) => Promise<string | null>;
+};
+
+export type ChatRuntimeOptions = {
+  codex?: CodexService | null;
+  signal?: AbortSignal;
+  skillsRuntime?: SkillsRuntime;
+};
+
+function createLanguageModel(resolved: ResolvedChatModel): LanguageModel {
   const { provider, model, apiKey } = resolved;
 
   if (provider.kind === "openrouter") {
@@ -64,13 +88,120 @@ function createLanguageModel(
   return compatible.chatModel(model.modelId);
 }
 
+export type ChatTitleRequestBody = {
+  message: string;
+  providerId?: string;
+  model?: string;
+};
+
+function resolveModelOrError(
+  resolveModel: (
+    providerId?: string,
+    modelId?: string
+  ) => ResolvedChatModel | null,
+  providerId?: string,
+  modelId?: string
+): { resolved: ResolvedChatModel } | { error: Response } {
+  const resolved = resolveModel(providerId, modelId);
+  if (!resolved) {
+    return {
+      error: new Response(
+        JSON.stringify({
+          error:
+            "هیچ مدل فعالی در دسترس نیست. یک ارائه‌دهنده و مدل را در تنظیمات فعال کنید.",
+        }),
+        { status: 409, headers: { "Content-Type": "application/json" } }
+      ),
+    };
+  }
+
+  if (
+    resolved.provider.kind !== "codex" &&
+    resolved.provider.authRequired &&
+    !resolved.apiKey
+  ) {
+    return {
+      error: new Response(
+        JSON.stringify({
+          error:
+            resolved.provider.kind === "openrouter"
+              ? "کلید OpenRouter تنظیم نشده است. آن را در تنظیمات وارد کنید."
+              : `کلید API برای «${resolved.provider.name}» تنظیم نشده است.`,
+        }),
+        { status: 409, headers: { "Content-Type": "application/json" } }
+      ),
+    };
+  }
+
+  return { resolved };
+}
+
+function createLanguageModelOrError(
+  resolved: ResolvedChatModel
+): { languageModel: LanguageModel } | { error: Response } {
+  try {
+    return { languageModel: createLanguageModel(resolved) };
+  } catch (error) {
+    return {
+      error: new Response(
+        JSON.stringify({
+          error: error instanceof Error ? error.message : "پیکربندی مدل نامعتبر است.",
+        }),
+        { status: 409, headers: { "Content-Type": "application/json" } }
+      ),
+    };
+  }
+}
+
+export async function handleGenerateChatTitleRequest(
+  body: ChatTitleRequestBody,
+  resolveModel: (
+    providerId?: string,
+    modelId?: string
+  ) => ResolvedChatModel | null
+): Promise<Response> {
+  const message = typeof body.message === "string" ? body.message.trim() : "";
+  if (!message) {
+    return new Response(
+      JSON.stringify({ error: "پیام کاربر برای نام‌گذاری لازم است." }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const resolvedResult = resolveModelOrError(
+    resolveModel,
+    body.providerId,
+    body.model
+  );
+  if ("error" in resolvedResult) return resolvedResult.error;
+
+  try {
+    const title = await generateChatTitleWithModel(
+      resolvedResult.resolved,
+      message
+    );
+
+    return new Response(JSON.stringify({ title }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("Chat title generation failed:", error);
+    const title = fallbackTitleFromMessage(message);
+    return new Response(JSON.stringify({ title }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+}
+
 export async function handleChatRequest(
   body: ChatRequestBody,
   resolveModel: (
     providerId?: string,
     modelId?: string
   ) => ResolvedChatModel | null,
-  options?: { codex?: CodexService | null; signal?: AbortSignal }
+  options?: ChatRuntimeOptions
 ): Promise<Response> {
   const {
     messages,
@@ -79,18 +210,13 @@ export async function handleChatRequest(
     reasoningEffort,
     personalization,
     memories,
+    experts,
+    selectedExpertSlug,
   } = body;
 
-  const resolved = resolveModel(providerId, model);
-  if (!resolved) {
-    return new Response(
-      JSON.stringify({
-        error:
-          "هیچ مدل فعالی در دسترس نیست. یک ارائه‌دهنده و مدل را در تنظیمات فعال کنید.",
-      }),
-      { status: 409, headers: { "Content-Type": "application/json" } }
-    );
-  }
+  const resolvedResult = resolveModelOrError(resolveModel, providerId, model);
+  if ("error" in resolvedResult) return resolvedResult.error;
+  const resolved = resolvedResult.resolved;
 
   if (resolved.provider.kind === "codex") {
     return handleCodexChatRequest({
@@ -101,45 +227,82 @@ export async function handleChatRequest(
     });
   }
 
-  if (resolved.provider.authRequired && !resolved.apiKey) {
-    return new Response(
-      JSON.stringify({
-        error:
-          resolved.provider.kind === "openrouter"
-            ? "کلید OpenRouter تنظیم نشده است. آن را در تنظیمات وارد کنید."
-            : `کلید API برای «${resolved.provider.name}» تنظیم نشده است.`,
-      }),
-      { status: 409, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
-  let languageModel: LanguageModel;
-  try {
-    languageModel = createLanguageModel(resolved);
-  } catch (error) {
-    return new Response(
-      JSON.stringify({
-        error: error instanceof Error ? error.message : "پیکربندی مدل نامعتبر است.",
-      }),
-      { status: 409, headers: { "Content-Type": "application/json" } }
-    );
-  }
+  const modelResult = createLanguageModelOrError(resolved);
+  if ("error" in modelResult) return modelResult.error;
+  const languageModel = modelResult.languageModel;
 
   const selectedReasoningEffort =
     resolved.model.supportsReasoningEffort && isReasoningEffort(reasoningEffort)
       ? reasoningEffort
       : undefined;
 
+  const sanitizedExperts = sanitizeExperts(experts);
+  const enabledExperts = sanitizedExperts.filter((expert) => expert.enabled);
+  const lastUserText =
+    [...messages]
+      .reverse()
+      .find((message) => message.role === "user")
+      ?.parts?.filter(
+        (
+          part
+        ): part is Extract<
+          (typeof messages)[number]["parts"][number],
+          { type: "text" }
+        > => part.type === "text"
+      )
+      .map((part) => part.text)
+      .join("\n") ?? "";
+  const explicitExpert =
+    resolveSelectedExpert(sanitizedExperts, selectedExpertSlug) ??
+    findExplicitExpert(sanitizedExperts, lastUserText);
+  const skillsRuntime = options?.skillsRuntime;
+  const skillsCatalog = skillsRuntime
+    ? await skillsRuntime.getSkillsCatalog()
+    : [];
+  const hasSkills = skillsCatalog.length > 0;
+  const chatTools = buildChatTools({ skillsRuntime, includeSkills: hasSkills });
+  const availableTools: ToolSet | undefined = resolved.model.supportsTools
+    ? {
+        ...chatTools,
+        ...(enabledExperts.length > 0
+          ? createExpertTools(sanitizedExperts, languageModel)
+          : {}),
+      }
+    : undefined;
+
   const result = streamText({
     model: languageModel,
+    abortSignal: options?.signal,
     ...(selectedReasoningEffort ? { reasoning: selectedReasoningEffort } : {}),
     instructions: buildSystemInstructions(
       personalization,
-      sanitizeMemories(memories)
+      sanitizeMemories(memories),
+      sanitizedExperts,
+      skillsCatalog,
+      {
+        includeMemoryTools: Boolean(availableTools),
+        includeAgentTools: Boolean(availableTools),
+      }
     ),
     messages: await convertToModelMessages(messages),
-    ...(resolved.model.supportsTools
-      ? { tools: memoryTools, stopWhen: stepCountIs(5) }
+    ...(availableTools
+      ? {
+          tools: availableTools,
+          stopWhen: stepCountIs(8),
+          ...(explicitExpert
+            ? {
+                prepareStep: ({ stepNumber }: { stepNumber: number }) => ({
+                  toolChoice:
+                    stepNumber === 0
+                      ? {
+                          type: "tool" as const,
+                          toolName: expertToolName(explicitExpert),
+                        }
+                      : ("auto" as const),
+                }),
+              }
+            : {}),
+        }
       : {}),
     experimental_transform: smoothStream({
       delayInMs: 12,

@@ -27,6 +27,12 @@ import {
   sanitizeMemories,
   type MemoryEntry,
 } from "@/lib/settings/memories";
+import { sanitizeExperts, type Expert } from "@/lib/settings/experts";
+import {
+  DEFAULT_SKILLS_PREFERENCES,
+  sanitizeSkillsPreferences,
+  type SkillsPreferences,
+} from "@/lib/skills/index";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER_ID } from "@/lib/models";
 
 const LEGACY_MIGRATION_KEY = "legacy-browser-storage-v1";
@@ -59,6 +65,17 @@ function validateCodexThreadId(id: unknown): id is string {
     id.length <= 256 &&
     !/[\u0000-\u001f]/.test(id)
   );
+}
+
+function hasTableColumn(
+  database: DatabaseSync,
+  table: string,
+  column: string
+) {
+  return database
+    .prepare(`PRAGMA table_info(${table})`)
+    .all()
+    .some((row) => row.name === column);
 }
 
 function parseMessages(value: unknown): LocalChat["messages"] {
@@ -252,12 +269,25 @@ export class AppDatabase {
         this.seedBuiltinCatalog();
         this.database.exec("PRAGMA user_version = 2");
       });
-    } else {
+    }
+
+    if (currentVersion >= 2) {
       this.ensureBuiltinCatalog();
     }
 
-    if (currentVersion < 3) {
+    // Official v0.3.1 and the Codex feature branch both independently used
+    // schema version 3. Reconcile either lineage without assuming which set of
+    // version-3 objects already exists.
+    if (currentVersion < 4) {
       this.transaction(() => {
+        if (!hasTableColumn(this.database, "chats", "pinned")) {
+          this.database.exec(
+            "ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+          );
+        }
+        if (!hasTableColumn(this.database, "chats", "pinned_at")) {
+          this.database.exec("ALTER TABLE chats ADD COLUMN pinned_at INTEGER");
+        }
         this.database.exec(`
           CREATE TABLE IF NOT EXISTS codex_chat_threads (
             chat_id TEXT PRIMARY KEY,
@@ -270,7 +300,7 @@ export class AppDatabase {
           CREATE UNIQUE INDEX IF NOT EXISTS codex_chat_threads_thread_id_idx
             ON codex_chat_threads(thread_id);
 
-          PRAGMA user_version = 3;
+          PRAGMA user_version = 4;
         `);
       });
     }
@@ -381,9 +411,9 @@ export class AppDatabase {
     return this.database
       .prepare(
         `SELECT id, title, provider_id, model, messages_json, project_id, created_at,
-                updated_at, title_is_custom
+                updated_at, title_is_custom, pinned, pinned_at
            FROM chats
-          ORDER BY updated_at DESC`
+          ORDER BY pinned DESC, COALESCE(pinned_at, updated_at) DESC, updated_at DESC`
       )
       .all()
       .filter((row) => validateId(row.id))
@@ -400,6 +430,9 @@ export class AppDatabase {
         createdAt: asNumber(row.created_at),
         updatedAt: asNumber(row.updated_at),
         titleIsCustom: asBoolean(row.title_is_custom),
+        pinned: asBoolean(row.pinned),
+        pinnedAt:
+          row.pinned_at == null ? null : asNumber(row.pinned_at),
       }));
   }
 
@@ -407,8 +440,8 @@ export class AppDatabase {
     const statement = this.database.prepare(`
       INSERT INTO chats (
         id, title, provider_id, model, messages_json, project_id, created_at, updated_at,
-        title_is_custom
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        title_is_custom, pinned, pinned_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         provider_id = excluded.provider_id,
@@ -417,7 +450,9 @@ export class AppDatabase {
         project_id = excluded.project_id,
         created_at = excluded.created_at,
         updated_at = excluded.updated_at,
-        title_is_custom = excluded.title_is_custom
+        title_is_custom = excluded.title_is_custom,
+        pinned = excluded.pinned,
+        pinned_at = excluded.pinned_at
     `);
 
     this.transaction(() => {
@@ -432,7 +467,9 @@ export class AppDatabase {
           validateId(chat.projectId) ? chat.projectId : null,
           Number(chat.createdAt),
           Number(chat.updatedAt),
-          chat.titleIsCustom ? 1 : 0
+          chat.titleIsCustom ? 1 : 0,
+          chat.pinned ? 1 : 0,
+          chat.pinned ? Number(chat.pinnedAt ?? chat.updatedAt) : null
         );
       }
     });
@@ -445,6 +482,13 @@ export class AppDatabase {
         .prepare("DELETE FROM codex_chat_threads WHERE chat_id = ?")
         .run(id);
       this.database.prepare("DELETE FROM chats WHERE id = ?").run(id);
+    });
+  }
+
+  deleteAllChats(): void {
+    this.transaction(() => {
+      this.database.prepare("DELETE FROM codex_chat_threads").run();
+      this.database.prepare("DELETE FROM chats").run();
     });
   }
 
@@ -520,6 +564,34 @@ export class AppDatabase {
     return settings;
   }
 
+  loadSkillsPreferences(): SkillsPreferences {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("skills");
+    if (typeof row?.value_json !== "string") {
+      return { ...DEFAULT_SKILLS_PREFERENCES };
+    }
+    try {
+      return sanitizeSkillsPreferences(JSON.parse(row.value_json));
+    } catch {
+      return { ...DEFAULT_SKILLS_PREFERENCES };
+    }
+  }
+
+  saveSkillsPreferences(value: unknown): SkillsPreferences {
+    const settings = sanitizeSkillsPreferences(value);
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('skills', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(settings), Date.now());
+    return settings;
+  }
+
   loadMemories(): MemoryEntry[] {
     return sanitizeMemories(
       this.database
@@ -552,6 +624,32 @@ export class AppDatabase {
       }
     });
     return memories;
+  }
+
+  loadExperts(): Expert[] {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("experts");
+    if (typeof row?.value_json !== "string") return [];
+    try {
+      return sanitizeExperts(JSON.parse(row.value_json));
+    } catch {
+      return [];
+    }
+  }
+
+  saveExperts(value: unknown): Expert[] {
+    const experts = sanitizeExperts(value);
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('experts', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(experts), Date.now());
+    return experts;
   }
 
   getCredential(provider: string): CredentialRow | null {
@@ -655,6 +753,29 @@ export class AppDatabase {
       createdAt: asNumber(row.created_at),
       updatedAt: asNumber(row.updated_at),
     };
+  }
+
+  listCodexChatThreads(): CodexChatThread[] {
+    return this.database
+      .prepare(
+        `SELECT chat_id, thread_id, last_user_message_id, created_at, updated_at
+           FROM codex_chat_threads
+          ORDER BY created_at ASC, chat_id ASC`
+      )
+      .all()
+      .filter(
+        (row) => validateId(row.chat_id) && validateCodexThreadId(row.thread_id)
+      )
+      .map((row) => ({
+        chatId: String(row.chat_id),
+        threadId: String(row.thread_id),
+        lastUserMessageId:
+          typeof row.last_user_message_id === "string"
+            ? row.last_user_message_id
+            : null,
+        createdAt: asNumber(row.created_at),
+        updatedAt: asNumber(row.updated_at),
+      }));
   }
 
   saveCodexChatThread(input: {

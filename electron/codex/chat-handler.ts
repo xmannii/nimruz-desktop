@@ -3,6 +3,10 @@ import type { CodexTokenUsage, CodexService } from "./service";
 import { buildSystemInstructions } from "@/lib/ai/system-prompt";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { sanitizeMemories } from "@/lib/settings/memories";
+import {
+  resolveSelectedExpert,
+  sanitizeExperts,
+} from "@/lib/settings/experts";
 import { normalizeCodexReasoningEffort } from "@/lib/models/reasoning";
 import {
   createUIMessageStream,
@@ -71,19 +75,43 @@ export async function handleCodexChatRequest(options: {
     resolved.model.supportsReasoningEffort
       ? normalizeCodexReasoningEffort(body.reasoningEffort)
       : undefined;
+  const selectedExpert = resolveSelectedExpert(
+    sanitizeExperts(body.experts),
+    body.selectedExpertSlug
+  );
   const instructions = [
     buildSystemInstructions(
       body.personalization,
       sanitizeMemories(body.memories),
-      { includeMemoryTools: false }
+      undefined,
+      undefined,
+      {
+        includeMemoryTools: false,
+        includeAgentTools: false,
+      }
     ),
+    selectedExpert
+      ? [
+          "## Selected expert mode",
+          `Act as the selected expert "${selectedExpert.name}" for this conversation.`,
+          selectedExpert.description
+            ? `Description: ${selectedExpert.description}`
+            : "",
+          "Expert instructions:",
+          selectedExpert.instructions,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      : "",
     [
       "## Codex mode in Nimruz",
       "Respond as a conversational assistant inside Nimruz.",
       "Do not inspect files, run commands, modify the filesystem, or invoke tools unless the user explicitly asks for work that requires them.",
       "The runtime is intentionally read-only and non-interactive.",
     ].join("\n"),
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 
   const stream = createUIMessageStream({
     originalMessages: body.messages,

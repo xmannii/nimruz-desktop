@@ -3,7 +3,12 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { handleChatRequest, type ChatRequestBody } from "./chat-handler";
+import {
+  handleChatRequest,
+  handleGenerateChatTitleRequest,
+  type ChatRequestBody,
+  type ChatTitleRequestBody,
+} from "./chat-handler";
 import type { CodexService } from "./codex/service";
 import { resolveStaticPath } from "./static-path";
 
@@ -27,7 +32,9 @@ const MIME_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-function readJsonBody(req: http.IncomingMessage): Promise<ChatRequestBody> {
+function readJsonBody<T = ChatRequestBody>(
+  req: http.IncomingMessage
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -113,6 +120,10 @@ type StartServerOptions = {
     providerId?: string,
     modelId?: string
   ) => import("./chat-handler").ResolvedChatModel | null;
+  getSkillsCatalog?: () => Promise<
+    import("@/lib/skills/catalog").SkillCatalogEntry[]
+  >;
+  loadSkillContent?: (name: string) => Promise<string | null>;
   allowedOrigins?: string[];
   codex?: CodexService | null;
 };
@@ -131,7 +142,10 @@ function getAllowedOrigin(
   const origin = req.headers.origin;
   if (!origin) return null;
   if (allowedOrigins.has(origin)) return origin;
-  if (isLoopbackHost(req.headers.host) && origin === `http://${req.headers.host}`) {
+  if (
+    isLoopbackHost(req.headers.host) &&
+    origin === `http://${req.headers.host}`
+  ) {
     return origin;
   }
   return null;
@@ -145,10 +159,16 @@ export function startServer(
     rendererDir,
     sessionToken,
     resolveChatModel,
+    getSkillsCatalog,
+    loadSkillContent,
     allowedOrigins = [],
     codex = null,
   } = options;
   const originAllowlist = new Set(allowedOrigins);
+  const skillsRuntime =
+    getSkillsCatalog && loadSkillContent
+      ? { getSkillsCatalog, loadSkillContent }
+      : undefined;
 
   const server = http.createServer(async (req, res) => {
     if (!isLoopbackHost(req.headers.host)) {
@@ -183,6 +203,37 @@ export function startServer(
 
     const url = req.url ?? "/";
 
+    if (req.headers.authorization !== `Bearer ${sessionToken}`) {
+      if (
+        (url === "/api/chat/title" || url.startsWith("/api/chat")) &&
+        req.method === "POST"
+      ) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+    }
+
+    if (url === "/api/chat/title" && req.method === "POST") {
+      try {
+        const body = await readJsonBody<ChatTitleRequestBody>(req);
+        const webResponse = await handleGenerateChatTitleRequest(
+          body,
+          resolveChatModel
+        );
+        await pipeWebResponse(webResponse, res);
+      } catch (error) {
+        if (res.headersSent || res.destroyed) return;
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: error instanceof Error ? error.message : "Unknown error",
+          })
+        );
+      }
+      return;
+    }
+
     if (url.startsWith("/api/chat") && req.method === "POST") {
       if (req.headers.authorization !== `Bearer ${sessionToken}`) {
         res.writeHead(401, { "Content-Type": "application/json" });
@@ -202,6 +253,7 @@ export function startServer(
         const webResponse = await handleChatRequest(body, resolveChatModel, {
           codex,
           signal: abortController.signal,
+          skillsRuntime
         });
         await pipeWebResponse(webResponse, res);
       } catch (error) {

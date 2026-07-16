@@ -3,6 +3,12 @@ import { nanoid } from "nanoid";
 import type { LegacyImportResult } from "@/lib/desktop-api";
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import type {
+  SkillDocument,
+  SkillSummary,
+  SkillsPreferences,
+} from "@/lib/skills/index";
+import { normalizeSkillName, sanitizeSkillsPreferences } from "@/lib/skills/index";
 import {
   OPENROUTER_PROVIDER_ID,
   PROVIDER_LIMITS,
@@ -10,6 +16,7 @@ import {
 import { CredentialService } from "./credentials";
 import type { CodexService } from "./codex/service";
 import { AppDatabase } from "./storage/database";
+import { SkillStore } from "./skills/store";
 import { registerWindowControlHandlers } from "./window-controls";
 import { isTrustedRendererUrl } from "./renderer-security";
 import {
@@ -48,6 +55,7 @@ export function registerIpcHandlers(options: {
   database: AppDatabase;
   credentials: CredentialService;
   codex: CodexService;
+  skills: SkillStore;
   sessionToken: string;
   getMainWindow: () => import("electron").BrowserWindow | null;
   getRendererUrl: () => string;
@@ -56,6 +64,7 @@ export function registerIpcHandlers(options: {
     database,
     credentials,
     codex,
+    skills,
     sessionToken,
     getMainWindow,
     getRendererUrl,
@@ -257,6 +266,10 @@ export function registerIpcHandlers(options: {
     await codex.deleteChatThread(id);
     database.deleteChat(id);
   });
+  handle("storage:delete-all-chats", async () => {
+    await codex.deleteAllChatThreads();
+    database.deleteAllChats();
+  });
 
   handle("storage:load-projects", () => database.loadProjects());
   handle("storage:save-project", (value: unknown) =>
@@ -279,15 +292,82 @@ export function registerIpcHandlers(options: {
   handle("storage:save-memories", (value: unknown) =>
     database.saveMemories(value)
   );
+  handle("storage:load-experts", () => database.loadExperts());
+  handle("storage:save-experts", (value: unknown) => database.saveExperts(value));
   handle(
     "storage:import-legacy",
     (value: unknown): LegacyImportResult =>
       database.importLegacyData(validateLegacySnapshot(value))
   );
 
+  handle("skills:list", async (): Promise<SkillSummary[]> => {
+    const preferences = database.loadSkillsPreferences();
+    return skills.list(preferences);
+  });
+
+  handle(
+    "skills:set-enabled",
+    async (name: string, enabled: boolean): Promise<SkillSummary[]> => {
+      const normalized = normalizeSkillName(name);
+      if (!normalized) {
+        throw new Error("نام مهارت نامعتبر است.");
+      }
+
+      const preferences = database.loadSkillsPreferences();
+      const disabled = new Set(preferences.disabledSkillNames);
+      if (enabled) {
+        disabled.delete(normalized);
+      } else {
+        disabled.add(normalized);
+      }
+      database.saveSkillsPreferences({
+        disabledSkillNames: [...disabled],
+      } satisfies SkillsPreferences);
+
+      return skills.list(database.loadSkillsPreferences());
+    }
+  );
+
+  handle(
+    "skills:get-body",
+    async (name: string): Promise<SkillDocument | null> =>
+      skills.getSkillBody(name)
+  );
+
+  handle("skills:create", async (value: unknown): Promise<SkillSummary[]> => {
+    await skills.create(value);
+    return skills.list(database.loadSkillsPreferences());
+  });
+
+  handle(
+    "skills:update",
+    async (name: string, value: unknown): Promise<SkillSummary[]> => {
+      await skills.update(name, value);
+      return skills.list(database.loadSkillsPreferences());
+    }
+  );
+
+  handle("skills:delete", async (name: string): Promise<SkillSummary[]> => {
+    await skills.delete(name);
+    const preferences = sanitizeSkillsPreferences(
+      database.loadSkillsPreferences()
+    );
+    const normalized = normalizeSkillName(name);
+    if (normalized) {
+      database.saveSkillsPreferences({
+        disabledSkillNames: preferences.disabledSkillNames.filter(
+          (item) => item !== normalized
+        ),
+      });
+    }
+    return skills.list(database.loadSkillsPreferences());
+  });
+
   handle("updates:get-version", () => getAppVersion());
   handle("updates:check", () => checkForAppUpdate());
   handle("updates:open-url", (url: string) => openExternalUrl(url));
 
-  registerWindowControlHandlers(getMainWindow);
+  registerWindowControlHandlers(getMainWindow, (event) =>
+    assertTrustedSender(event, { getMainWindow, getRendererUrl })
+  );
 }

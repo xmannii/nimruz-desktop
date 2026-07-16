@@ -11,6 +11,7 @@ import type {
 } from "@/lib/models/catalog";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
 import type { MemoryEntry } from "@/lib/settings/memories";
+import type { Expert } from "@/lib/settings/experts";
 import {
   createContext,
   useContext,
@@ -29,6 +30,7 @@ export type AppShellContextValue = {
   isCatalogHydrated: boolean;
   personalization: PersonalizationSettings;
   memories: MemoryEntry[];
+  experts: Expert[];
   personalizationSaveState: "idle" | "saving" | "saved" | "error";
   credentialRefreshSignal: number;
   providers: ProviderConfig[];
@@ -46,7 +48,12 @@ export type AppShellContextValue = {
   selectChat: (id: string) => void;
   updateChat: (id: string, update: ChatUpdate) => void;
   renameChat: (id: string, title: string) => void;
+  lockChatTitle: (id: string) => void;
+  animateRenameChat: (id: string, title: string) => void;
+  typingTitles: Record<string, string>;
+  setChatPinned: (id: string, pinned: boolean) => void;
   removeChat: (id: string) => void;
+  removeAllChats: () => string;
   removeProjectFromChats: (projectId: string) => void;
   createProject: (input: ProjectInput) => void;
   updateProject: (id: string, input: ProjectInput) => void;
@@ -54,6 +61,7 @@ export type AppShellContextValue = {
   updatePersonalization: (settings: PersonalizationSettings) => void;
   handleMemoriesChange: (memories: MemoryEntry[]) => void;
   handleDeleteMemory: (id: string) => void;
+  handleExpertsChange: (experts: Expert[]) => void;
   bumpCredentialRefresh: () => void;
   refreshCatalog: () => Promise<ModelCatalogSnapshot>;
   setCatalog: (catalog: ModelCatalogSnapshot) => void;

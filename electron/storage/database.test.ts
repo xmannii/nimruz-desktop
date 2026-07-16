@@ -337,7 +337,23 @@ test("clears all Codex thread mappings on account logout support path", async ()
   });
 });
 
-test("migrates a version-2 database to the Codex provider and thread schema", async () => {
+test("deleting all chats also clears Codex thread mappings", async () => {
+  await withDatabase((database) => {
+    database.saveChats([{ ...chat, projectId: null }]);
+    database.saveCodexChatThread({
+      chatId: chat.id,
+      threadId: "thread-delete-all",
+      lastUserMessageId: "user-delete-all",
+    });
+
+    database.deleteAllChats();
+
+    assert.equal(database.loadChats().length, 0);
+    assert.equal(database.getCodexChatThread(chat.id), null);
+  });
+});
+
+test("migrates a version-2 database to the combined version-4 schema", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nimruz-db-v2-"));
   const databasePath = path.join(directory, "test.sqlite3");
   let database = new AppDatabase(databasePath);
@@ -359,7 +375,73 @@ test("migrates a version-2 database to the Codex provider and thread schema", as
     });
     assert.equal(mapping.threadId, "migrated-thread");
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 3);
+    assert.equal(version?.user_version, 4);
+  } finally {
+    database.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("migrates an official version-3 database to Codex schema version 4", async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "nimruz-db-official-v3-")
+  );
+  const databasePath = path.join(directory, "test.sqlite3");
+  let database = new AppDatabase(databasePath);
+  try {
+    database.database.exec(`
+      DELETE FROM provider_models WHERE provider_id = 'codex';
+      DELETE FROM providers WHERE id = 'codex';
+      DROP TABLE codex_chat_threads;
+      PRAGMA user_version = 3;
+    `);
+    database.close();
+
+    database = new AppDatabase(databasePath);
+    assert.equal(database.getProvider(CODEX_PROVIDER_ID)?.kind, "codex");
+    assert.equal(
+      database.saveCodexChatThread({
+        chatId: "official-v3-chat",
+        threadId: "official-v3-thread",
+        lastUserMessageId: "official-v3-user",
+      }).threadId,
+      "official-v3-thread"
+    );
+    const version = database.database.prepare("PRAGMA user_version").get();
+    assert.equal(version?.user_version, 4);
+  } finally {
+    database.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("migrates a Codex version-3 database to pinned schema version 4", async () => {
+  const directory = await mkdtemp(
+    path.join(os.tmpdir(), "nimruz-db-codex-v3-")
+  );
+  const databasePath = path.join(directory, "test.sqlite3");
+  let database = new AppDatabase(databasePath);
+  try {
+    database.database.exec(`
+      ALTER TABLE chats DROP COLUMN pinned_at;
+      ALTER TABLE chats DROP COLUMN pinned;
+      PRAGMA user_version = 3;
+    `);
+    database.close();
+
+    database = new AppDatabase(databasePath);
+    database.saveChats([
+      {
+        ...chat,
+        projectId: null,
+        pinned: true,
+        pinnedAt: 10,
+      },
+    ]);
+    assert.equal(database.loadChats()[0]?.pinned, true);
+    assert.equal(database.loadChats()[0]?.pinnedAt, 10);
+    const version = database.database.prepare("PRAGMA user_version").get();
+    assert.equal(version?.user_version, 4);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });

@@ -12,6 +12,7 @@ import {
   isTrustedRendererUrl,
 } from "./renderer-security";
 import { startServer } from "./server";
+import { SkillStore } from "./skills/store";
 import { AppDatabase } from "./storage/database";
 import { attachWindowStateEvents } from "./window-controls";
 import {
@@ -122,12 +123,14 @@ app.whenReady().then(async () => {
     workspace: path.join(app.getPath("userData"), "codex-workspace"),
     clientVersion: app.getVersion(),
   });
+  const skills = new SkillStore();
   const sessionToken = randomBytes(32).toString("base64url");
 
   registerIpcHandlers({
     database,
     credentials,
     codex,
+    skills,
     sessionToken,
     getMainWindow: () => mainWindow,
     getRendererUrl: () => rendererUrl,
@@ -150,6 +153,10 @@ app.whenReady().then(async () => {
         };
       },
       codex,
+      getSkillsCatalog: async () =>
+        skills.getEnabledCatalog(database!.loadSkillsPreferences()),
+      loadSkillContent: async (name) =>
+        skills.loadSkillContent(name, database!.loadSkillsPreferences()),
       allowedOrigins: [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -175,6 +182,10 @@ app.whenReady().then(async () => {
         };
       },
       codex,
+      getSkillsCatalog: async () =>
+        skills.getEnabledCatalog(database!.loadSkillsPreferences()),
+      loadSkillContent: async (name) =>
+        skills.loadSkillContent(name, database!.loadSkillsPreferences()),
     });
     localServer = result.server;
     rendererUrl = `http://127.0.0.1:${result.port}/`;

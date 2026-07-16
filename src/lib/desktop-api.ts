@@ -13,7 +13,9 @@ import type {
 } from "@/lib/models/catalog";
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
+import type { Expert } from "@/lib/settings/experts";
 
 export type CredentialStatus = {
   configured: boolean;
@@ -101,6 +103,7 @@ export type DesktopAPI = {
     loadChats: () => Promise<LocalChat[]>;
     saveChats: (chats: LocalChat[]) => Promise<void>;
     deleteChat: (id: string) => Promise<void>;
+    deleteAllChats: () => Promise<void>;
     loadProjects: () => Promise<LocalProject[]>;
     saveProject: (project: LocalProject) => Promise<void>;
     deleteProject: (id: string) => Promise<void>;
@@ -110,9 +113,19 @@ export type DesktopAPI = {
     ) => Promise<PersonalizationSettings>;
     loadMemories: () => Promise<MemoryEntry[]>;
     saveMemories: (memories: MemoryEntry[]) => Promise<MemoryEntry[]>;
+    loadExperts: () => Promise<Expert[]>;
+    saveExperts: (experts: Expert[]) => Promise<Expert[]>;
     importLegacyData: (
       snapshot: LegacyDataSnapshot
     ) => Promise<LegacyImportResult>;
+  };
+  skills: {
+    list: () => Promise<SkillSummary[]>;
+    setEnabled: (name: string, enabled: boolean) => Promise<SkillSummary[]>;
+    getBody: (name: string) => Promise<SkillDocument | null>;
+    create: (skill: SkillDocument) => Promise<SkillSummary[]>;
+    update: (name: string, skill: SkillDocument) => Promise<SkillSummary[]>;
+    delete: (name: string) => Promise<SkillSummary[]>;
   };
   updates: {
     getVersion: () => Promise<string>;

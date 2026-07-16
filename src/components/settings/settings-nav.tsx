@@ -1,22 +1,34 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import {
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  useSidebar,
+} from "@/components/ui/sidebar";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BrainIcon,
+  BotIcon,
   CpuIcon,
   InfoIcon,
   PaletteIcon,
+  SparklesIcon,
   UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
 
-const SETTINGS_NAV: Array<{
+export const SETTINGS_NAV: Array<{
   to:
     | "/settings"
     | "/settings/memories"
+    | "/settings/experts"
     | "/settings/models"
+    | "/settings/skills"
     | "/settings/appearance"
     | "/settings/about";
   label: string;
@@ -45,6 +57,18 @@ const SETTINGS_NAV: Array<{
     badgeKey: "memories",
   },
   {
+    to: "/settings/skills",
+    label: "مهارت‌ها",
+    icon: SparklesIcon,
+    match: (pathname) => pathname.startsWith("/settings/skills"),
+  },
+  {
+    to: "/settings/experts",
+    label: "متخصص‌ها",
+    icon: BotIcon,
+    match: (pathname) => pathname.startsWith("/settings/experts"),
+  },
+  {
     to: "/settings/appearance",
     label: "ظاهر",
     icon: PaletteIcon,
@@ -58,41 +82,58 @@ const SETTINGS_NAV: Array<{
   },
 ];
 
-export function SettingsNav({ memoryCount = 0 }: { memoryCount?: number }) {
+export function SettingsSidebarNav({ memoryCount = 0 }: { memoryCount?: number }) {
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   });
+  const { isMobile, setOpenMobile, state } = useSidebar();
+  const isIconMode = state === "collapsed" && !isMobile;
+
+  function closeMobileSidebar() {
+    if (isMobile) setOpenMobile(false);
+  }
 
   return (
-    <nav dir="rtl" className="flex flex-col gap-1 p-2">
-      {SETTINGS_NAV.map((item) => {
-        const active = item.match(pathname);
-        const Icon = item.icon;
+    <SidebarGroup className="flex min-h-0 flex-1 flex-col pt-0">
+      {!isIconMode ? (
+        <SidebarGroupLabel className="mb-1">تنظیمات</SidebarGroupLabel>
+      ) : null}
+      <SidebarGroupContent className="min-h-0 flex-1 overflow-y-auto">
+        <SidebarMenu className="gap-0.5">
+          {SETTINGS_NAV.map((item) => {
+            const active = item.match(pathname);
+            const Icon = item.icon;
 
-        return (
-          <Link
-            key={item.to}
-            to={item.to}
-            className={cn(
-              "flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-sm transition-colors",
-              active
-                ? "bg-muted font-medium text-foreground"
-                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-            )}
-          >
-            <Icon className="size-4 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{item.label}</span>
-            {item.badgeKey === "memories" && memoryCount > 0 ? (
-              <Badge
-                variant="secondary"
-                className="h-5 min-w-5 px-1.5 text-[10px] leading-none"
-              >
-                {memoryCount.toLocaleString("fa-IR")}
-              </Badge>
-            ) : null}
-          </Link>
-        );
-      })}
-    </nav>
+            return (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton
+                  isActive={active}
+                  tooltip={{ children: item.label, side: "left" }}
+                  className={
+                    isIconMode
+                      ? undefined
+                      : "h-auto rounded-md px-3 py-2.5 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  }
+                  render={
+                    <Link to={item.to} onClick={closeMobileSidebar} />
+                  }
+                >
+                  <Icon />
+                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                  {item.badgeKey === "memories" && memoryCount > 0 ? (
+                    <Badge
+                      variant="secondary"
+                      className="ms-auto h-5 min-w-5 px-1.5 text-[10px] leading-none group-data-[collapsible=icon]:hidden"
+                    >
+                      {memoryCount.toLocaleString("fa-IR")}
+                    </Badge>
+                  ) : null}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
   );
 }

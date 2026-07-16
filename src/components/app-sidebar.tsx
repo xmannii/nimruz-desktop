@@ -52,18 +52,25 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
+import { exportChatJson, exportChatMarkdown } from "@/lib/chat/export-chat";
 import type { ProjectInput } from "@/hooks/use-projects";
+import { SettingsSidebarNav } from "@/components/settings/settings-nav";
+import { ChatSidebarTitle } from "@/components/chat/chat-sidebar-title";
 import {
+  DownloadIcon,
   FolderIcon,
   HistoryIcon,
   MessageSquareIcon,
   MoreHorizontalIcon,
   PencilIcon,
+  PinIcon,
+  PinOffIcon,
   PlusIcon,
   SearchIcon,
   CogIcon,
   SquarePenIcon,
   Trash2Icon,
+  ArrowRightIcon,
 } from "lucide-react";
 
 type AppSidebarProps = {
@@ -78,8 +85,13 @@ type AppSidebarProps = {
   onSelectChat: (id: string) => void;
   onRenameChat: (id: string, title: string) => void;
   onDeleteChat: (id: string) => void;
+  onDeleteAllChats: () => void;
+  onPinChat: (id: string, pinned: boolean) => void;
+  typingTitles?: Record<string, string>;
   onOpenSettings: () => void;
+  onBackToChat: () => void;
   settingsActive?: boolean;
+  memoryCount?: number;
 };
 
 type ChatSectionKey = "today" | "yesterday" | "week" | "older";
@@ -136,10 +148,12 @@ function ChatItemMenu({
   chat,
   onRename,
   onDelete,
+  onPin,
 }: {
   chat: LocalChat;
   onRename: (chat: LocalChat) => void;
   onDelete: (chat: LocalChat) => void;
+  onPin: (chat: LocalChat, pinned: boolean) => void;
 }) {
   return (
     <DropdownMenu>
@@ -156,6 +170,18 @@ function ChatItemMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" dir="rtl">
         <DropdownMenuGroup>
+          <DropdownMenuItem onClick={() => onPin(chat, !chat.pinned)}>
+            {chat.pinned ? <PinOffIcon /> : <PinIcon />}
+            {chat.pinned ? "برداشتن سنجاق" : "سنجاق کردن"}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => exportChatMarkdown(chat)}>
+            <DownloadIcon />
+            خروجی Markdown
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => exportChatJson(chat)}>
+            <DownloadIcon />
+            خروجی JSON
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onRename(chat)}>
             <PencilIcon />
             تغییر نام
@@ -185,8 +211,13 @@ export function AppSidebar({
   onSelectChat,
   onRenameChat,
   onDeleteChat,
+  onDeleteAllChats,
+  onPinChat,
+  typingTitles = {},
   onOpenSettings,
+  onBackToChat,
   settingsActive = false,
+  memoryCount = 0,
 }: AppSidebarProps) {
   const { isMobile, setOpenMobile, state } = useSidebar();
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -199,15 +230,27 @@ export function AppSidebar({
   );
   const [chatToDelete, setChatToDelete] = useState<LocalChat | null>(null);
   const [chatToRename, setChatToRename] = useState<LocalChat | null>(null);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const isIconMode = state === "collapsed" && !isMobile;
   const projectIds = useMemo(
     () => new Set(projects.map((project) => project.id)),
     [projects]
   );
+  const pinnedUnassignedChats = useMemo(
+    () =>
+      chats.filter(
+        (chat) =>
+          chat.pinned &&
+          (!chat.projectId || !projectIds.has(chat.projectId))
+      ),
+    [chats, projectIds]
+  );
   const unassignedChats = useMemo(
     () =>
       chats.filter(
-        (chat) => !chat.projectId || !projectIds.has(chat.projectId)
+        (chat) =>
+          !chat.pinned &&
+          (!chat.projectId || !projectIds.has(chat.projectId))
       ),
     [chats, projectIds]
   );
@@ -279,210 +322,264 @@ export function AppSidebar({
           dir="rtl"
           className="pt-3 group-data-[collapsible=icon]:pt-4"
         >
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu className="gap-0.5">
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    variant={isIconMode ? "outline" : "default"}
-                    tooltip={{ children: "گفتگوی جدید", side: "left" }}
-                    className={
-                      isIconMode
-                        ? undefined
-                        : "h-auto rounded-md px-3 py-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    }
-                    onClick={() => {
-                      onNewChat();
-                      closeMobileSidebar();
-                    }}
-                  >
-                    <SquarePenIcon />
-                    <span>گفتگوی جدید</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+          {settingsActive ? (
+            <SettingsSidebarNav memoryCount={memoryCount} />
+          ) : (
+            <>
+              <SidebarGroup>
+                <SidebarGroupContent>
+                  <SidebarMenu className="gap-0.5">
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        variant={isIconMode ? "outline" : "default"}
+                        tooltip={{ children: "گفتگوی جدید", side: "left" }}
+                        className={
+                          isIconMode
+                            ? undefined
+                            : "h-auto rounded-md px-3 py-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        }
+                        onClick={() => {
+                          onNewChat();
+                          closeMobileSidebar();
+                        }}
+                      >
+                        <SquarePenIcon />
+                        <span>گفتگوی جدید</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
 
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    variant={isIconMode ? "outline" : "default"}
-                    tooltip={{ children: "جستجوی گفتگوها", side: "left" }}
-                    className={
-                      isIconMode
-                        ? undefined
-                        : "h-auto rounded-md px-3 py-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-                    }
-                    onClick={() => setHistoryOpen(true)}
-                  >
-                    {isIconMode ? <HistoryIcon /> : <SearchIcon />}
-                    <span>{isIconMode ? "تاریخچه گفتگوها" : "جستجوی گفتگوها"}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-
-          {!isIconMode ? (
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <SidebarGroup className="mt-2 pt-0">
-                <SidebarGroupLabel className="mb-1 pe-8">پروژه‌ها</SidebarGroupLabel>
-                <SidebarGroupAction
-                  type="button"
-                  className="top-2 size-7 bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]"
-                  aria-label="ساخت پروژه جدید"
-                  title="پروژه جدید"
-                  onClick={openCreateProjectDialog}
-                >
-                  <PlusIcon />
-                </SidebarGroupAction>
-                <SidebarGroupContent className="mt-2">
-                  {projects.length > 0 ? (
-                    <SidebarMenu>
-                      {projects.map((project) => {
-                        const projectChats =
-                          chatsByProject.get(project.id) ?? [];
-
-                        return (
-                          <Collapsible
-                            key={project.id}
-                            defaultOpen
-                            render={<SidebarMenuItem />}
-                          >
-                            <CollapsibleTrigger
-                              render={
-                                <SidebarMenuButton
-                                  title={project.description || undefined}
-                                />
-                              }
-                            >
-                              <FolderIcon />
-                              <span className="truncate">{project.title}</span>
-                            </CollapsibleTrigger>
-
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <SidebarMenuAction
-                                    showOnHover
-                                    aria-label={`گزینه‌های ${project.title}`}
-                                    title="گزینه‌های پروژه"
-                                  />
-                                }
-                              >
-                                <MoreHorizontalIcon />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" dir="rtl">
-                                <DropdownMenuGroup>
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      handleNewProjectChat(project.id)
-                                    }
-                                  >
-                                    <PlusIcon />
-                                    گفتگوی جدید
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      openEditProjectDialog(project)
-                                    }
-                                  >
-                                    <PencilIcon />
-                                    ویرایش پروژه
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    variant="destructive"
-                                    onClick={() => setProjectToDelete(project)}
-                                  >
-                                    <Trash2Icon />
-                                    حذف پروژه
-                                  </DropdownMenuItem>
-                                </DropdownMenuGroup>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-
-                            <CollapsibleContent>
-                              <SidebarMenuSub>
-                                <SidebarMenuSubItem className="group/menu-item">
-                                  <SidebarMenuButton
-                                    size="sm"
-                                    onClick={() =>
-                                      handleNewProjectChat(project.id)
-                                    }
-                                  >
-                                    <PlusIcon />
-                                    <span>گفتگوی جدید</span>
-                                  </SidebarMenuButton>
-                                </SidebarMenuSubItem>
-                                {projectChats.map((chat) => (
-                                  <SidebarMenuSubItem
-                                    key={chat.id}
-                                    className="group/menu-item"
-                                  >
-                                    <SidebarMenuButton
-                                      size="sm"
-                                      isActive={chat.id === activeChatId}
-                                      onClick={() => handleSelectChat(chat.id)}
-                                    >
-                                      <span>{chat.title}</span>
-                                    </SidebarMenuButton>
-                                    <ChatItemMenu
-                                      chat={chat}
-                                      onRename={setChatToRename}
-                                      onDelete={setChatToDelete}
-                                    />
-                                  </SidebarMenuSubItem>
-                                ))}
-                              </SidebarMenuSub>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        );
-                      })}
-                    </SidebarMenu>
-                  ) : null}
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        variant={isIconMode ? "outline" : "default"}
+                        tooltip={{ children: "جستجوی گفتگوها", side: "left" }}
+                        className={
+                          isIconMode
+                            ? undefined
+                            : "h-auto rounded-md px-3 py-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        }
+                        onClick={() => setHistoryOpen(true)}
+                      >
+                        {isIconMode ? <HistoryIcon /> : <SearchIcon />}
+                        <span>
+                          {isIconMode ? "تاریخچه گفتگوها" : "جستجوی گفتگوها"}
+                        </span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
 
-              {unassignedChats.length > 0 ? (
-                <SidebarGroup className="pt-0">
-                  <SidebarGroupLabel>گفتگوها</SidebarGroupLabel>
-                  <SidebarGroupContent className="flex flex-col gap-3">
-                    {unassignedChatGroups.map((group) => (
-                      <div key={group.key} className="flex flex-col gap-0.5">
-                        <p className="px-2 text-[11px] font-medium text-muted-foreground">
-                          {group.label}
-                        </p>
+              {!isIconMode ? (
+                <div className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
+                  <SidebarGroup className="mt-2 pt-0">
+                    <SidebarGroupLabel className="mb-1 pe-8">
+                      پروژه‌ها
+                    </SidebarGroupLabel>
+                    <SidebarGroupAction
+                      type="button"
+                      className="top-2 size-7 bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]"
+                      aria-label="ساخت پروژه جدید"
+                      title="پروژه جدید"
+                      onClick={openCreateProjectDialog}
+                    >
+                      <PlusIcon />
+                    </SidebarGroupAction>
+                    <SidebarGroupContent className="mt-2">
+                      {projects.length > 0 ? (
                         <SidebarMenu>
-                          {group.chats.map((chat) => (
+                          {projects.map((project) => {
+                            const projectChats =
+                              chatsByProject.get(project.id) ?? [];
+
+                            return (
+                              <Collapsible
+                                key={project.id}
+                                defaultOpen
+                                render={<SidebarMenuItem />}
+                              >
+                                <CollapsibleTrigger
+                                  render={
+                                    <SidebarMenuButton
+                                      title={project.description || undefined}
+                                    />
+                                  }
+                                >
+                                  <FolderIcon />
+                                  <span className="truncate">{project.title}</span>
+                                </CollapsibleTrigger>
+
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger
+                                    render={
+                                      <SidebarMenuAction
+                                        showOnHover
+                                        aria-label={`گزینه‌های ${project.title}`}
+                                        title="گزینه‌های پروژه"
+                                      />
+                                    }
+                                  >
+                                    <MoreHorizontalIcon />
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end" dir="rtl">
+                                    <DropdownMenuGroup>
+                                      <DropdownMenuItem
+                                        onClick={() =>
+                                          handleNewProjectChat(project.id)
+                                        }
+                                      >
+                                        <PlusIcon />
+                                        گفتگوی جدید
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        onClick={() =>
+                                          openEditProjectDialog(project)
+                                        }
+                                      >
+                                        <PencilIcon />
+                                        ویرایش پروژه
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem
+                                        variant="destructive"
+                                        onClick={() => setProjectToDelete(project)}
+                                      >
+                                        <Trash2Icon />
+                                        حذف پروژه
+                                      </DropdownMenuItem>
+                                    </DropdownMenuGroup>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+
+                                <CollapsibleContent>
+                                  <SidebarMenuSub>
+                                    <SidebarMenuSubItem className="group/menu-item">
+                                      <SidebarMenuButton
+                                        size="sm"
+                                        onClick={() =>
+                                          handleNewProjectChat(project.id)
+                                        }
+                                      >
+                                        <PlusIcon />
+                                        <span>گفتگوی جدید</span>
+                                      </SidebarMenuButton>
+                                    </SidebarMenuSubItem>
+                                    {projectChats.map((chat) => (
+                                      <SidebarMenuSubItem
+                                        key={chat.id}
+                                        className="group/menu-item"
+                                      >
+                                        <SidebarMenuButton
+                                          size="sm"
+                                          isActive={chat.id === activeChatId}
+                                          onClick={() => handleSelectChat(chat.id)}
+                                        >
+                                          <ChatSidebarTitle
+                                            title={chat.title}
+                                            typingTitle={typingTitles[chat.id]}
+                                          />
+                                        </SidebarMenuButton>
+                                        <ChatItemMenu
+                                          chat={chat}
+                                          onRename={setChatToRename}
+                                          onDelete={setChatToDelete}
+                                          onPin={(item, pinned) =>
+                                            onPinChat(item.id, pinned)
+                                          }
+                                        />
+                                      </SidebarMenuSubItem>
+                                    ))}
+                                  </SidebarMenuSub>
+                                </CollapsibleContent>
+                              </Collapsible>
+                            );
+                          })}
+                        </SidebarMenu>
+                      ) : null}
+                    </SidebarGroupContent>
+                  </SidebarGroup>
+
+                  {pinnedUnassignedChats.length > 0 ? (
+                    <SidebarGroup className="pt-0">
+                      <SidebarGroupLabel>سنجاق‌شده</SidebarGroupLabel>
+                      <SidebarGroupContent>
+                        <SidebarMenu>
+                          {pinnedUnassignedChats.map((chat) => (
                             <SidebarMenuItem key={chat.id}>
                               <SidebarMenuButton
                                 isActive={chat.id === activeChatId}
                                 onClick={() => handleSelectChat(chat.id)}
                               >
-                                <span>{chat.title}</span>
+                                <PinIcon className="size-3.5 shrink-0 opacity-70" />
+                                <ChatSidebarTitle
+                                  title={chat.title}
+                                  typingTitle={typingTitles[chat.id]}
+                                />
                               </SidebarMenuButton>
                               <ChatItemMenu
                                 chat={chat}
                                 onRename={setChatToRename}
                                 onDelete={setChatToDelete}
+                                onPin={(item, pinned) =>
+                                  onPinChat(item.id, pinned)
+                                }
                               />
                             </SidebarMenuItem>
                           ))}
                         </SidebarMenu>
-                      </div>
-                    ))}
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              ) : null}
+                      </SidebarGroupContent>
+                    </SidebarGroup>
+                  ) : null}
 
-              {projects.length === 0 && chats.length === 0 ? (
-                <SidebarGroup className="flex-1">
-                  <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 py-8 text-center">
-                    <p className="text-xs text-muted-foreground">
-                      هنوز گفتگویی ذخیره نشده
-                    </p>
-                  </div>
-                </SidebarGroup>
+                  {unassignedChats.length > 0 ? (
+                    <SidebarGroup className="pt-0">
+                      <SidebarGroupLabel>گفتگوها</SidebarGroupLabel>
+                      <SidebarGroupContent className="flex flex-col gap-3">
+                        {unassignedChatGroups.map((group) => (
+                          <div key={group.key} className="flex flex-col gap-0.5">
+                            <p className="px-2 text-[11px] font-medium text-muted-foreground">
+                              {group.label}
+                            </p>
+                            <SidebarMenu>
+                              {group.chats.map((chat) => (
+                                <SidebarMenuItem key={chat.id}>
+                                  <SidebarMenuButton
+                                    isActive={chat.id === activeChatId}
+                                    onClick={() => handleSelectChat(chat.id)}
+                                  >
+                                    <ChatSidebarTitle
+                                      title={chat.title}
+                                      typingTitle={typingTitles[chat.id]}
+                                    />
+                                  </SidebarMenuButton>
+                                  <ChatItemMenu
+                                    chat={chat}
+                                    onRename={setChatToRename}
+                                    onDelete={setChatToDelete}
+                                    onPin={(item, pinned) =>
+                                      onPinChat(item.id, pinned)
+                                    }
+                                  />
+                                </SidebarMenuItem>
+                              ))}
+                            </SidebarMenu>
+                          </div>
+                        ))}
+                      </SidebarGroupContent>
+                    </SidebarGroup>
+                  ) : null}
+
+                  {projects.length === 0 && chats.length === 0 ? (
+                    <SidebarGroup className="flex-1">
+                      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-3 py-8 text-center">
+                        <p className="text-xs text-muted-foreground">
+                          هنوز گفتگویی ذخیره نشده
+                        </p>
+                      </div>
+                    </SidebarGroup>
+                  ) : null}
+                </div>
               ) : null}
-            </div>
-          ) : null}
+            </>
+          )}
         </SidebarContent>
 
         <SidebarFooter
@@ -490,15 +587,47 @@ export function AppSidebar({
           className="border-t border-sidebar-border p-3 group-data-[collapsible=icon]:p-2"
         >
           <SidebarMenu>
+            {!settingsActive && chats.length > 0 ? (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip={{ children: "حذف همه گفتگوها", side: "left" }}
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => {
+                    setDeleteAllOpen(true);
+                    closeMobileSidebar();
+                  }}
+                >
+                  <Trash2Icon />
+                  <span className="group-data-[collapsible=icon]:sr-only">
+                    حذف همه گفتگوها
+                  </span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            ) : null}
             <SidebarMenuItem>
-              <SidebarMenuButton
-                tooltip={{ children: "تنظیمات", side: "left" }}
-                isActive={settingsActive}
-                onClick={() => onOpenSettings()}
-              >
-                <CogIcon />
-                <span>تنظیمات</span>
-              </SidebarMenuButton>
+              {settingsActive ? (
+                <SidebarMenuButton
+                  tooltip={{ children: "بازگشت به گفتگو", side: "left" }}
+                  onClick={() => {
+                    onBackToChat();
+                    closeMobileSidebar();
+                  }}
+                >
+                  <ArrowRightIcon />
+                  <span>بازگشت به گفتگو</span>
+                </SidebarMenuButton>
+              ) : (
+                <SidebarMenuButton
+                  tooltip={{ children: "تنظیمات", side: "left" }}
+                  onClick={() => {
+                    onOpenSettings();
+                    closeMobileSidebar();
+                  }}
+                >
+                  <CogIcon />
+                  <span>تنظیمات</span>
+                </SidebarMenuButton>
+              )}
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
@@ -532,7 +661,11 @@ export function AppSidebar({
                       onSelect={() => handleSelectChat(chat.id)}
                     >
                       <FolderIcon />
-                      <span className="truncate">{chat.title}</span>
+                      <ChatSidebarTitle
+                        title={chat.title}
+                        typingTitle={typingTitles[chat.id]}
+                        className="truncate"
+                      />
                     </CommandItem>
                   ))}
                 </CommandGroup>
@@ -548,7 +681,11 @@ export function AppSidebar({
                     onSelect={() => handleSelectChat(chat.id)}
                   >
                     <MessageSquareIcon />
-                    <span className="truncate">{chat.title}</span>
+                    <ChatSidebarTitle
+                      title={chat.title}
+                      typingTitle={typingTitles[chat.id]}
+                      className="truncate"
+                    />
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -604,6 +741,30 @@ export function AppSidebar({
               }}
             >
               حذف گفتگو
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={deleteAllOpen} onOpenChange={setDeleteAllOpen}>
+        <AlertDialogContent dir="rtl">
+          <AlertDialogHeader>
+            <AlertDialogTitle>حذف همه گفتگوها؟</AlertDialogTitle>
+            <AlertDialogDescription>
+              {chats.length} گفتگو برای همیشه حذف می‌شود و قابل بازیابی نیست.
+              یک گفتگوی خالی جدید باز می‌شود.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>انصراف</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                onDeleteAllChats();
+                setDeleteAllOpen(false);
+              }}
+            >
+              حذف همه
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

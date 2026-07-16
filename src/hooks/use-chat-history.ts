@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  deleteAllLocalChats,
   deleteLocalChat,
   loadLocalChats,
   saveLocalChats,
@@ -65,7 +66,28 @@ function normalizeChat(chat: LocalChat): LocalChat {
     messages: Array.isArray(chat.messages) ? chat.messages : [],
     projectId: typeof chat.projectId === "string" ? chat.projectId : null,
     titleIsCustom: Boolean(chat.titleIsCustom),
+    pinned: Boolean(chat.pinned),
+    pinnedAt:
+      chat.pinnedAt == null || !Number.isFinite(chat.pinnedAt)
+        ? null
+        : Number(chat.pinnedAt),
   };
+}
+
+function sortChats(chats: LocalChat[]): LocalChat[] {
+  return [...chats].sort((left, right) => {
+    if (left.pinned !== right.pinned) {
+      return left.pinned ? -1 : 1;
+    }
+
+    if (left.pinned && right.pinned) {
+      return (
+        (right.pinnedAt ?? right.updatedAt) - (left.pinnedAt ?? left.updatedAt)
+      );
+    }
+
+    return right.updatedAt - left.updatedAt;
+  });
 }
 
 export type ChatUpdate = {
@@ -217,7 +239,7 @@ export function useChatHistory(
   );
 
   const visibleChats = useMemo(
-    () => chats.filter((chat) => chat.messages.length > 0),
+    () => sortChats(chats.filter((chat) => chat.messages.length > 0)),
     [chats]
   );
 
@@ -296,10 +318,10 @@ export function useChatHistory(
         updatedAt: Date.now(),
       };
 
-      return [
+      return sortChats([
         updatedChat,
         ...current.filter((item) => item.id !== updatedChat.id),
-      ];
+      ]);
     });
   }, []);
 
@@ -308,14 +330,43 @@ export function useChatHistory(
     if (!trimmedTitle) return;
 
     setChats((current) =>
+      sortChats(
+        current.map((chat) =>
+          chat.id === id
+            ? {
+                ...chat,
+                title: trimmedTitle,
+                titleIsCustom: true,
+              }
+            : chat
+        )
+      )
+    );
+  }, []);
+
+  const lockChatTitle = useCallback((id: string) => {
+    setChats((current) =>
       current.map((chat) =>
-        chat.id === id
-          ? {
-              ...chat,
-              title: trimmedTitle,
-              titleIsCustom: true,
-            }
+        chat.id === id && !chat.titleIsCustom
+          ? { ...chat, titleIsCustom: true }
           : chat
+      )
+    );
+  }, []);
+
+  const setChatPinned = useCallback((id: string, pinned: boolean) => {
+    setChats((current) =>
+      sortChats(
+        current.map((chat) =>
+          chat.id === id
+            ? {
+                ...chat,
+                pinned,
+                pinnedAt: pinned ? Date.now() : null,
+                updatedAt: Date.now(),
+              }
+            : chat
+        )
       )
     );
   }, []);
@@ -345,6 +396,24 @@ export function useChatHistory(
     [activeChatId, chats]
   );
 
+  const removeAllChats = useCallback(() => {
+    const chat = createEmptyChat(
+      defaultModelRef?.modelId ?? DEFAULT_MODEL,
+      nanoid(),
+      null,
+      defaultModelRef?.providerId ?? DEFAULT_PROVIDER_ID
+    );
+
+    setChats([chat]);
+    setActiveChatId(chat.id);
+
+    void deleteAllLocalChats().catch((error) => {
+      console.error("Failed to delete all chats:", error);
+    });
+
+    return chat.id;
+  }, [defaultModelRef]);
+
   return {
     chats: visibleChats,
     activeChat,
@@ -355,7 +424,10 @@ export function useChatHistory(
     selectChat,
     updateChat,
     renameChat,
+    lockChatTitle,
+    setChatPinned,
     removeChat,
+    removeAllChats,
     removeProjectFromChats,
   };
 }

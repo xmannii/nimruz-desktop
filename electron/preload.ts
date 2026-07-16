@@ -75,6 +75,7 @@ const desktopApi: DesktopAPI = {
     loadChats: () => ipcRenderer.invoke("storage:load-chats"),
     saveChats: (chats) => ipcRenderer.invoke("storage:save-chats", chats),
     deleteChat: (id) => ipcRenderer.invoke("storage:delete-chat", id),
+    deleteAllChats: () => ipcRenderer.invoke("storage:delete-all-chats"),
     loadProjects: () => ipcRenderer.invoke("storage:load-projects"),
     saveProject: (project) =>
       ipcRenderer.invoke("storage:save-project", project),
@@ -86,8 +87,20 @@ const desktopApi: DesktopAPI = {
     loadMemories: () => ipcRenderer.invoke("storage:load-memories"),
     saveMemories: (memories) =>
       ipcRenderer.invoke("storage:save-memories", memories),
+    loadExperts: () => ipcRenderer.invoke("storage:load-experts"),
+    saveExperts: (experts) => ipcRenderer.invoke("storage:save-experts", experts),
     importLegacyData: (snapshot) =>
       ipcRenderer.invoke("storage:import-legacy", snapshot),
+  },
+  skills: {
+    list: () => ipcRenderer.invoke("skills:list"),
+    setEnabled: (name, enabled) =>
+      ipcRenderer.invoke("skills:set-enabled", name, enabled),
+    getBody: (name) => ipcRenderer.invoke("skills:get-body", name),
+    create: (skill) => ipcRenderer.invoke("skills:create", skill),
+    update: (name, skill) =>
+      ipcRenderer.invoke("skills:update", name, skill),
+    delete: (name) => ipcRenderer.invoke("skills:delete", name),
   },
   updates: {
     getVersion: () => ipcRenderer.invoke("updates:get-version"),

@@ -332,6 +332,16 @@ export class CodexService {
     for (const interrupt of this.activeTurnInterruptors.values()) interrupt();
   }
 
+  private async deleteNativeThread(threadId: string) {
+    try {
+      await this.client.request("thread/delete", { threadId }, 15_000);
+    } catch (error) {
+      // Treat an already-absent rollout as an idempotent deletion.
+      const message = error instanceof Error ? error.message : "";
+      if (!message.toLowerCase().includes("no rollout found")) throw error;
+    }
+  }
+
   async deleteChatThread(chatId: string) {
     if (!/^[\w-]{1,128}$/.test(chatId)) {
       throw new Error("Invalid chat id.");
@@ -342,20 +352,21 @@ export class CodexService {
 
     const stored = this.database.getCodexChatThread(chatId);
     if (!stored) return;
-    try {
-      await this.client.request(
-        "thread/delete",
-        { threadId: stored.threadId },
-        15_000
-      );
-    } catch (error) {
-      // Treat an already-absent rollout as an idempotent deletion. Other
-      // failures keep both the chat and mapping so the user can retry without
-      // leaving an unreachable native conversation behind.
-      const message = error instanceof Error ? error.message : "";
-      if (!message.toLowerCase().includes("no rollout found")) throw error;
-    }
+    await this.deleteNativeThread(stored.threadId);
     this.database.deleteCodexChatThread(chatId);
+  }
+
+  async deleteAllChatThreads() {
+    if (this.activeChats.size > 0) {
+      throw new Error(
+        "Stop active Codex responses before deleting all chats."
+      );
+    }
+
+    for (const stored of this.database.listCodexChatThreads()) {
+      await this.deleteNativeThread(stored.threadId);
+      this.database.deleteCodexChatThread(stored.chatId);
+    }
   }
 
   async syncModels(): Promise<CodexModelSyncResult> {
@@ -479,7 +490,7 @@ export class CodexService {
         throw new Error("The Codex account changed while starting this response.");
       }
 
-      const stored = this.database.getCodexChatThread(options.chatId);
+      let stored = this.database.getCodexChatThread(options.chatId);
       const canResume = Boolean(
         stored &&
           canContinueCodexThread(options.messages, stored.lastUserMessageId)
@@ -501,8 +512,14 @@ export class CodexService {
           threadId = asString(asRecord(resumed?.thread)?.id);
           if (threadId) bootstrap = false;
         } catch {
-          this.database.deleteCodexChatThread(options.chatId);
+          // A malformed or stale resume falls back to a clean native thread.
         }
+      }
+
+      if (stored && !threadId) {
+        await this.deleteNativeThread(stored.threadId);
+        this.database.deleteCodexChatThread(options.chatId);
+        stored = null;
       }
 
       if (!threadId) {

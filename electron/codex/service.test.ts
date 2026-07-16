@@ -702,6 +702,7 @@ test("bootstraps full visible history when a resume response has no thread id", 
     });
     client.handlers.set("account/read", () => connectedAccount());
     client.handlers.set("thread/resume", () => ({ thread: {} }));
+    client.handlers.set("thread/delete", () => ({}));
     client.handlers.set("thread/start", () => ({
       thread: { id: "thread-fresh" },
     }));
@@ -917,6 +918,84 @@ test("deletes durable Codex thread data before dropping its local mapping", asyn
       /runtime unavailable/
     );
     assert.notEqual(database.getCodexChatThread("chat-delete-retry"), null);
+  });
+});
+
+test("deletes every durable Codex thread before clearing all mappings", async () => {
+  await withService(async ({ service, client, database }) => {
+    database.saveCodexChatThread({
+      chatId: "chat-delete-all-a",
+      threadId: "thread-delete-all-a",
+      lastUserMessageId: "user-delete-all-a",
+    });
+    database.saveCodexChatThread({
+      chatId: "chat-delete-all-b",
+      threadId: "thread-delete-all-b",
+      lastUserMessageId: "user-delete-all-b",
+    });
+    client.handlers.set("thread/delete", () => ({}));
+
+    await service.deleteAllChatThreads();
+
+    assert.deepEqual(
+      client.requests
+        .filter((request) => request.method === "thread/delete")
+        .map((request) => request.params),
+      [
+        { threadId: "thread-delete-all-a" },
+        { threadId: "thread-delete-all-b" },
+      ]
+    );
+    assert.equal(database.listCodexChatThreads().length, 0);
+  });
+});
+
+test("deletes an abandoned Codex thread before regenerating on a new thread", async () => {
+  await withService(async ({ service, client, database }) => {
+    database.saveCodexChatThread({
+      chatId: "chat-regenerate",
+      threadId: "thread-original",
+      lastUserMessageId: "user-original",
+    });
+    client.handlers.set("account/read", () => connectedAccount());
+    client.handlers.set("thread/delete", () => ({}));
+    client.handlers.set("thread/start", () => ({
+      thread: { id: "thread-regenerated" },
+    }));
+    client.handlers.set("turn/start", () => ({
+      turn: { id: "turn-regenerated" },
+    }));
+
+    const pending = service.runTurn({
+      chatId: "chat-regenerate",
+      model: "gpt-5-codex",
+      instructions: "",
+      messages: [
+        chatMessage("user-original", "user", "Regenerate this answer"),
+      ],
+      onEvent: () => undefined,
+    });
+    await waitForRequest(client, "turn/start");
+    client.emitNotification("turn/completed", {
+      threadId: "thread-regenerated",
+      turn: { id: "turn-regenerated", status: "completed" },
+    });
+    await pending;
+
+    const lifecycle = client.requests
+      .filter((request) =>
+        ["thread/delete", "thread/start", "turn/start"].includes(request.method)
+      )
+      .map((request) => request.method);
+    assert.deepEqual(lifecycle, [
+      "thread/delete",
+      "thread/start",
+      "turn/start",
+    ]);
+    assert.equal(
+      database.getCodexChatThread("chat-regenerate")?.threadId,
+      "thread-regenerated"
+    );
   });
 });
 
