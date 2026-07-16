@@ -1,7 +1,9 @@
 import { isReasoningEffort, type ReasoningEffort } from "@/lib/models/reasoning";
 import { memoryTools } from "@/lib/ai/memory-tools";
+import { skillTools } from "@/lib/ai/skill-tools";
 import { sanitizeMemories } from "@/lib/settings/memories";
 import { buildSystemInstructions } from "@/lib/ai/system-prompt";
+import type { SkillCatalogEntry } from "@/lib/skills/catalog";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { APP_NAME } from "@/lib/branding";
@@ -37,6 +39,11 @@ export type ResolvedChatModel = {
   apiKey: string | null;
 };
 
+export type SkillsRuntime = {
+  getSkillsCatalog: () => Promise<SkillCatalogEntry[]>;
+  loadSkillContent: (name: string) => Promise<string | null>;
+};
+
 function createLanguageModel(
   resolved: ResolvedChatModel
 ): LanguageModel {
@@ -65,12 +72,44 @@ function createLanguageModel(
   return compatible.chatModel(model.modelId);
 }
 
+function createChatTools(skillsRuntime?: SkillsRuntime) {
+  return {
+    ...memoryTools,
+    load_skill: {
+      ...skillTools.load_skill,
+      execute: async ({ name }: { name: string }) => {
+        if (!skillsRuntime) {
+          return {
+            success: false,
+            error: "Skills are not available in this session.",
+          };
+        }
+
+        const content = await skillsRuntime.loadSkillContent(name);
+        if (!content) {
+          return {
+            success: false,
+            error: `Skill "${name}" was not found or is disabled.`,
+          };
+        }
+
+        return {
+          success: true,
+          name,
+          content,
+        };
+      },
+    },
+  };
+}
+
 export async function handleChatRequest(
   body: ChatRequestBody,
   resolveModel: (
     providerId?: string,
     modelId?: string
-  ) => ResolvedChatModel | null
+  ) => ResolvedChatModel | null,
+  skillsRuntime?: SkillsRuntime
 ): Promise<Response> {
   const {
     messages,
@@ -128,8 +167,14 @@ export async function handleChatRequest(
     .map((part) => part.text).join("\n") ?? "";
   const explicitExpert = findExplicitExpert(sanitizedExperts, lastUserText);
   const availableTools: ToolSet | undefined = resolved.model.supportsTools
-    ? { ...memoryTools, ...createExpertTools(sanitizedExperts, languageModel) }
+    ? {
+        ...createChatTools(skillsRuntime),
+        ...createExpertTools(sanitizedExperts, languageModel),
+      }
     : undefined;
+  const skillsCatalog = skillsRuntime
+    ? await skillsRuntime.getSkillsCatalog()
+    : [];
 
   const result = streamText({
     model: languageModel,
@@ -137,13 +182,14 @@ export async function handleChatRequest(
     instructions: buildSystemInstructions(
       personalization,
       sanitizeMemories(memories),
-      sanitizedExperts
+      sanitizedExperts,
+      skillsCatalog,
     ),
     messages: await convertToModelMessages(messages),
     ...(availableTools
       ? {
           tools: availableTools,
-          stopWhen: stepCountIs(5),
+          stopWhen: stepCountIs(8),
           ...(explicitExpert
             ? {
                 prepareStep: ({ stepNumber }: { stepNumber: number }) => ({

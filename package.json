@@ -35,7 +35,7 @@
     "build": "npm run build:renderer && npm run build:electron",
     "start": "npm run build && node scripts/run-electron.mjs",
     "dist": "npm run build && electron-builder",
-    "test": "tsx --test electron/**/*.test.ts src/**/*.test.ts",
+    "test": "tsx --test $(find electron src -name '*.test.ts' | sort)",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

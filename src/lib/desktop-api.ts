@@ -8,6 +8,7 @@ import type {
 } from "@/lib/models/catalog";
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
 import type { Expert } from "@/lib/settings/experts";
 
@@ -103,6 +104,14 @@ export type DesktopAPI = {
     importLegacyData: (
       snapshot: LegacyDataSnapshot
     ) => Promise<LegacyImportResult>;
+  };
+  skills: {
+    list: () => Promise<SkillSummary[]>;
+    setEnabled: (name: string, enabled: boolean) => Promise<SkillSummary[]>;
+    getBody: (name: string) => Promise<SkillDocument | null>;
+    create: (skill: SkillDocument) => Promise<SkillSummary[]>;
+    update: (name: string, skill: SkillDocument) => Promise<SkillSummary[]>;
+    delete: (name: string) => Promise<SkillSummary[]>;
   };
   updates: {
     getVersion: () => Promise<string>;

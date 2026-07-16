@@ -27,6 +27,11 @@ import {
   type MemoryEntry,
 } from "@/lib/settings/memories";
 import { sanitizeExperts, type Expert } from "@/lib/settings/experts";
+import {
+  DEFAULT_SKILLS_PREFERENCES,
+  sanitizeSkillsPreferences,
+  type SkillsPreferences,
+} from "@/lib/skills/index";
 import { DEFAULT_MODEL, DEFAULT_PROVIDER_ID } from "@/lib/models";
 
 const LEGACY_MIGRATION_KEY = "legacy-browser-storage-v1";
@@ -475,6 +480,34 @@ export class AppDatabase {
       .prepare(
         `INSERT INTO settings (key, value_json, updated_at)
          VALUES ('personalization', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(settings), Date.now());
+    return settings;
+  }
+
+  loadSkillsPreferences(): SkillsPreferences {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("skills");
+    if (typeof row?.value_json !== "string") {
+      return { ...DEFAULT_SKILLS_PREFERENCES };
+    }
+    try {
+      return sanitizeSkillsPreferences(JSON.parse(row.value_json));
+    } catch {
+      return { ...DEFAULT_SKILLS_PREFERENCES };
+    }
+  }
+
+  saveSkillsPreferences(value: unknown): SkillsPreferences {
+    const settings = sanitizeSkillsPreferences(value);
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('skills', ?, ?)
          ON CONFLICT(key) DO UPDATE SET
            value_json = excluded.value_json,
            updated_at = excluded.updated_at`

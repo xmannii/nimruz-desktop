@@ -71,6 +71,16 @@ const desktopApi: DesktopAPI = {
     importLegacyData: (snapshot) =>
       ipcRenderer.invoke("storage:import-legacy", snapshot),
   },
+  skills: {
+    list: () => ipcRenderer.invoke("skills:list"),
+    setEnabled: (name, enabled) =>
+      ipcRenderer.invoke("skills:set-enabled", name, enabled),
+    getBody: (name) => ipcRenderer.invoke("skills:get-body", name),
+    create: (skill) => ipcRenderer.invoke("skills:create", skill),
+    update: (name, skill) =>
+      ipcRenderer.invoke("skills:update", name, skill),
+    delete: (name) => ipcRenderer.invoke("skills:delete", name),
+  },
   updates: {
     getVersion: () => ipcRenderer.invoke("updates:get-version"),
     check: () => ipcRenderer.invoke("updates:check"),

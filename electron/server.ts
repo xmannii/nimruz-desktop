@@ -113,6 +113,10 @@ type StartServerOptions = {
     providerId?: string,
     modelId?: string
   ) => import("./chat-handler").ResolvedChatModel | null;
+  getSkillsCatalog?: () => Promise<
+    import("@/lib/skills/catalog").SkillCatalogEntry[]
+  >;
+  loadSkillContent?: (name: string) => Promise<string | null>;
   allowedOrigins?: string[];
 };
 
@@ -144,9 +148,15 @@ export function startServer(
     rendererDir,
     sessionToken,
     resolveChatModel,
+    getSkillsCatalog,
+    loadSkillContent,
     allowedOrigins = [],
   } = options;
   const originAllowlist = new Set(allowedOrigins);
+  const skillsRuntime =
+    getSkillsCatalog && loadSkillContent
+      ? { getSkillsCatalog, loadSkillContent }
+      : undefined;
 
   const server = http.createServer(async (req, res) => {
     if (!isLoopbackHost(req.headers.host)) {
@@ -190,7 +200,11 @@ export function startServer(
 
       try {
         const body = await readJsonBody(req);
-        const webResponse = await handleChatRequest(body, resolveChatModel);
+        const webResponse = await handleChatRequest(
+          body,
+          resolveChatModel,
+          skillsRuntime
+        );
         await pipeWebResponse(webResponse, res);
       } catch (error) {
         res.writeHead(500, { "Content-Type": "application/json" });

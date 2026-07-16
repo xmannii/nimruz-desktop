@@ -3,12 +3,19 @@ import { nanoid } from "nanoid";
 import type { LegacyImportResult } from "@/lib/desktop-api";
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import type {
+  SkillDocument,
+  SkillSummary,
+  SkillsPreferences,
+} from "@/lib/skills/index";
+import { normalizeSkillName, sanitizeSkillsPreferences } from "@/lib/skills/index";
 import {
   OPENROUTER_PROVIDER_ID,
   PROVIDER_LIMITS,
 } from "@/lib/models/catalog";
 import { CredentialService } from "./credentials";
 import { AppDatabase } from "./storage/database";
+import { SkillStore } from "./skills/store";
 import { registerWindowControlHandlers } from "./window-controls";
 import {
   validateChatsPayload,
@@ -34,10 +41,11 @@ function assertTrustedSender(event: IpcMainInvokeEvent) {
 export function registerIpcHandlers(options: {
   database: AppDatabase;
   credentials: CredentialService;
+  skills: SkillStore;
   sessionToken: string;
   getMainWindow: () => import("electron").BrowserWindow | null;
 }) {
-  const { database, credentials, sessionToken, getMainWindow } = options;
+  const { database, credentials, skills, sessionToken, getMainWindow } = options;
 
   function handle<TArgs extends unknown[], TResult>(
     channel: string,
@@ -224,6 +232,69 @@ export function registerIpcHandlers(options: {
     (value: unknown): LegacyImportResult =>
       database.importLegacyData(validateLegacySnapshot(value))
   );
+
+  handle("skills:list", async (): Promise<SkillSummary[]> => {
+    const preferences = database.loadSkillsPreferences();
+    return skills.list(preferences);
+  });
+
+  handle(
+    "skills:set-enabled",
+    async (name: string, enabled: boolean): Promise<SkillSummary[]> => {
+      const normalized = normalizeSkillName(name);
+      if (!normalized) {
+        throw new Error("نام مهارت نامعتبر است.");
+      }
+
+      const preferences = database.loadSkillsPreferences();
+      const disabled = new Set(preferences.disabledSkillNames);
+      if (enabled) {
+        disabled.delete(normalized);
+      } else {
+        disabled.add(normalized);
+      }
+      database.saveSkillsPreferences({
+        disabledSkillNames: [...disabled],
+      } satisfies SkillsPreferences);
+
+      return skills.list(database.loadSkillsPreferences());
+    }
+  );
+
+  handle(
+    "skills:get-body",
+    async (name: string): Promise<SkillDocument | null> =>
+      skills.getSkillBody(name)
+  );
+
+  handle("skills:create", async (value: unknown): Promise<SkillSummary[]> => {
+    await skills.create(value);
+    return skills.list(database.loadSkillsPreferences());
+  });
+
+  handle(
+    "skills:update",
+    async (name: string, value: unknown): Promise<SkillSummary[]> => {
+      await skills.update(name, value);
+      return skills.list(database.loadSkillsPreferences());
+    }
+  );
+
+  handle("skills:delete", async (name: string): Promise<SkillSummary[]> => {
+    await skills.delete(name);
+    const preferences = sanitizeSkillsPreferences(
+      database.loadSkillsPreferences()
+    );
+    const normalized = normalizeSkillName(name);
+    if (normalized) {
+      database.saveSkillsPreferences({
+        disabledSkillNames: preferences.disabledSkillNames.filter(
+          (item) => item !== normalized
+        ),
+      });
+    }
+    return skills.list(database.loadSkillsPreferences());
+  });
 
   handle("updates:get-version", () => getAppVersion());
   handle("updates:check", () => checkForAppUpdate());

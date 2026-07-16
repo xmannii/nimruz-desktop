@@ -229,6 +229,17 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     void navigate({ to: "/settings/models" });
   }
 
+  function handleBackToChat() {
+    if (activeChatId) {
+      void navigate({
+        to: "/chat/$chatId",
+        params: { chatId: activeChatId },
+      });
+      return;
+    }
+    void navigate({ to: "/" });
+  }
+
   return (
     <AppShellProvider value={shellValue}>
       <SidebarProvider
@@ -259,6 +270,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
             projects={projects}
             activeChatId={isSettingsRoute ? null : activeChatId}
             settingsActive={isSettingsRoute}
+            memoryCount={memories.length}
             onNewChat={handleNewChat}
             onNewProjectChat={handleNewProjectChat}
             onCreateProject={handleCreateProject}
@@ -268,6 +280,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
             onRenameChat={renameChat}
             onDeleteChat={handleDeleteChat}
             onOpenSettings={handleOpenSettings}
+            onBackToChat={handleBackToChat}
           />
         </div>
       </SidebarProvider>
