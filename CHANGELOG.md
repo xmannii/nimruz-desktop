@@ -2,6 +2,26 @@
 
 All notable changes to Nimruz Desktop are documented here.
 
+## [1.0.0] — 2026-07-17
+
+Nimruz graduates from a chat client to an **agentic workspace** product.
+
+### Highlights
+
+- **Agentic workspaces** — the assistant can work inside linked project folders with filesystem, search, shell, artifact, and task tools under an approval policy.
+- **Workspace side panel** — files, artifacts, tasks, activity, and settings for the active workspace.
+- **Tool timeline** — connected tool/reasoning steps in chat, with compaction for long exploration runs.
+- **Composer context** — workspace picker, context chips, and `@`-mentions for files/artifacts.
+- **Appearance** — color themes, system font picker, نیمروز midday accent, and first-run onboarding that includes appearance.
+- **Projects → workspaces** — storage, routing, and UI migrated to the workspace model (with a home workspace).
+
+### Notes
+
+- This is a major product shift from v0.3.x. Prefer a fresh review of trust/approvals and workspace roots before day-to-day use.
+- Installer/release publishing still triggers only when this version lands on `main`.
+
+---
+
 ## [0.3.1] — 2026-07-16
 
 ### Highlights
@@ -81,6 +101,7 @@ Thanks to [**@mshojaei77**](https://github.com/mshojaei77) for the original expe
 
 - Initial public release — streaming Persian chat, OpenRouter, projects, memories, personalization, local SQLite storage.
 
+[1.0.0]: https://github.com/xmannii/nimruz-desktop/compare/v0.3.1...v1.0.0
 [0.3.1]: https://github.com/xmannii/nimruz-desktop/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/xmannii/nimruz-desktop/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/xmannii/nimruz-desktop/compare/v0.1.3...v0.2.0
