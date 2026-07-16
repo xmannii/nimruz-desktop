@@ -2,15 +2,19 @@
 
 # Nimruz Desktop
 
-**نیمروز** — an open-source Persian AI chat desktop app built with Electron, React, and the [Vercel AI SDK](https://github.com/vercel/ai).
+**نیمروز** — an open-source Persian AI **workspace agent** for the desktop. Built with Electron, React, and the [Vercel AI SDK](https://github.com/vercel/ai).
 
-> **Experimental software** — Nimruz is early-stage and may contain bugs or rough edges. Please test it, expect occasional issues, and [report problems on GitHub](https://github.com/xmannii/nimruz-desktop/issues) so we can fix them.
+[فارسی](README.fa.md)
 
-Nimruz connects to [OpenRouter](https://openrouter.ai/) (and custom OpenAI-compatible providers) so you can chat with many models from one native app. Chats, projects, memories, experts, skills, and personalization settings are stored locally on your machine.
+> **v1.0.0** — Nimruz is no longer “just a chat app.” It is an agentic workspace: chat plus tools that can work inside your project folders, with approvals, artifacts, and local-first storage.
+
+> **Experimental software** — expect rough edges. Please test it and [report issues on GitHub](https://github.com/xmannii/nimruz-desktop/issues).
+
+Connect [OpenRouter](https://openrouter.ai/) or any OpenAI-compatible provider, then give the assistant a workspace folder so it can read files, search, run commands (with approval), and produce previewable artifacts — all stored locally on your machine.
 
 ## Download
 
-Pre-built **Windows** and **macOS** installers are published automatically on every [release](https://github.com/xmannii/nimruz-desktop/releases).
+Pre-built **Windows** and **macOS** installers are published on every [release](https://github.com/xmannii/nimruz-desktop/releases).
 
 | Platform | Installer | Latest |
 | --- | --- | --- |
@@ -18,9 +22,7 @@ Pre-built **Windows** and **macOS** installers are published automatically on ev
 | **Windows** | `.exe` (NSIS) | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Linux** | AppImage | Build locally with `pnpm dist` |
 
-See [CHANGELOG.md](CHANGELOG.md) for release notes. **v0.3.1** adds **`fetch_url`**, auto chat titles, pin/export/delete-all chats, and message copy/regenerate.
-
-![Nimruz v0.3.1 release banner](public/release-v0.3.1-banner.png)
+See [CHANGELOG.md](CHANGELOG.md) for **v1.0.0** release notes (agentic workspaces, tool timeline, appearance, onboarding).
 
 ### macOS install
 
@@ -47,23 +49,40 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 
 ## Features
 
-- **Streaming chat** — markdown, code blocks, math (KaTeX), Mermaid diagrams, and CJK support
-- **OpenRouter integration** — browse, favorite, and switch models; optional reasoning effort controls
-- **Custom providers** — add OpenAI-compatible endpoints with your own API keys
-- **Web fetch** — the assistant can read public URLs with `fetch_url` (safe HTML-to-text extraction)
-- **Auto chat titles** — conversations are named automatically from the first message
-- **Projects** — organize conversations by topic or workflow
-- **Memories** — the assistant can save and forget durable facts about you over time
-- **Experts (متخصص‌ها)** — define reusable specialists (e.g. LinkedIn writer, code reviewer); pick one with `/` in chat and delegate work via expert tools
-- **Skills (مهارت‌ها)** — install and author `SKILL.md` agent skills; the assistant loads instructions on demand with `load_skill`
-- **Chat management** — pin chats, export as Markdown/JSON, copy/regenerate assistant replies, delete all chats
-- **Personalization** — response style, custom instructions, and profile context
-- **Local-first storage** — SQLite database in Electron `userData`; API keys encrypted with the OS keychain
-- **Automated releases** — GitHub Actions builds and publishes Windows + macOS installers when the version in `package.json` changes on `main`
+### Agentic workspace
+
+- **Workspaces** — link project folders; chats live under a workspace (with a default home workspace)
+- **Agent tools** — read/list/search files, write and patch, shell commands, artifacts, and tasks
+- **Approvals** — risky tools ask before running; optional “always allow” per workspace
+- **Side panel** — files, artifacts, tasks, activity, and workspace settings
+- **Composer context** — attach files/artifacts, workspace picker, and `@`-mentions
+
+### Chat & models
+
+- **Streaming chat** — markdown, code, math (KaTeX), Mermaid, RTL-first Persian UI
+- **Tool timeline** — connected reasoning + tool steps; long runs compact into one expandable summary
+- **OpenRouter & custom providers** — browse models, set defaults, optional reasoning effort
+- **Web fetch** — `fetch_url` for public pages (SSRF-safe HTML → text)
+- **Auto titles** — conversations named from the first message
+- **Chat management** — pin, export Markdown/JSON, copy/regenerate, search history
+
+### Personalization & skills
+
+- **Memories** — durable facts the assistant can save and forget
+- **Experts (متخصص‌ها)** — reusable specialists via `/` in chat
+- **Skills (مهارت‌ها)** — `SKILL.md` packs loaded on demand with `load_skill`
+- **Personalization** — response style, custom instructions, profile context
+
+### App polish
+
+- **Appearance** — light/dark/system, color themes (including نیمروز), system font picker
+- **Onboarding** — first-run tour (appearance, models, workspaces, chat basics)
+- **Local-first** — SQLite in Electron `userData`; API keys in the OS keychain
+- **Automated releases** — GitHub Actions publishes Windows + macOS installers when the version on `main` changes
 
 ## Screenshots
 
-_Add screenshots here after publishing the repository._
+_Add screenshots here after publishing the 1.0 release._
 
 ## Getting started
 
@@ -81,7 +100,13 @@ pnpm install
 pnpm dev
 ```
 
-On first launch, open **Settings → Models** to add your OpenRouter API key. The key is encrypted through macOS Keychain, Windows DPAPI, or a Linux libsecret/KWallet keyring. On Linux, storage is refused when only Electron's insecure `basic_text` backend is available.
+On first launch:
+
+1. Complete the short onboarding tour (or skip it).
+2. Open **Settings → Models** and add your OpenRouter (or other) API key.
+3. Create or open a **workspace** and link a project folder when you want the agent to touch files.
+
+The key is encrypted through macOS Keychain, Windows DPAPI, or a Linux libsecret/KWallet keyring. On Linux, storage is refused when only Electron's insecure `basic_text` backend is available.
 
 No `.env` file is required for normal use — credentials are managed inside the app.
 
@@ -101,11 +126,11 @@ When you bump the version in `package.json` and push to `main`, GitHub Actions a
 2. Creates a GitHub Release with both artifacts attached
 
 ```bash
-# 1. Change "version" in package.json (e.g. 0.3.0 → 0.3.1)
+# 1. Change "version" in package.json (e.g. 1.0.0 → 1.0.1)
 # 2. Update CHANGELOG.md
 # 3. Commit and push:
 git add package.json CHANGELOG.md
-git commit -m "Bump version to 0.3.1"
+git commit -m "Bump version to 1.0.1"
 git push origin main
 ```
 
@@ -116,17 +141,19 @@ You can also run the **Release** workflow manually from the Actions tab (`workfl
 ```
 Electron main (Node)
 ├─ authenticated local HTTP server
-│  ├─ POST /api/chat       → streamText + tools (memory, skills, experts, fetch_url)
-│  ├─ POST /api/chat/title → auto title generation (OpenAI-compatible)
-│  └─ GET  /*              → static renderer (production only)
-├─ SQLite database    → chats, projects, memories, experts, settings
-├─ Skills store       → ~/.nimruz/skills and standard agent skill paths
-├─ safeStorage        → encrypted API keys
+│  ├─ POST /api/chat        → streamText + tools (memory, skills, experts, web)
+│  ├─ POST /api/agent       → ToolLoopAgent workspace runtime (FS, shell, artifacts, tasks)
+│  ├─ POST /api/chat/title  → auto title generation
+│  └─ GET  /*               → static renderer (production only)
+├─ SQLite database     → chats, workspaces, roots, artifacts, tasks, runs, memories, experts, settings
+├─ Workspace files     → scoped paths under linked/managed roots
+├─ Skills store        → ~/.nimruz/skills and standard agent skill paths
+├─ safeStorage         → encrypted API keys
 └─ BrowserWindow → sandboxed Vite renderer
 ```
 
 - **Dev:** Vite serves the renderer on `:5173` and proxies `/api` to the main-process server on `:43117`.
-- **Prod:** the main-process server serves both the static renderer and the chat API on one random localhost port.
+- **Prod:** the main-process server serves both the static renderer and the API on one random localhost port.
 
 ## Tech stack
 
@@ -134,8 +161,8 @@ Electron main (Node)
 | --- | --- |
 | Desktop shell | Electron |
 | UI | React 19, TanStack Router, Tailwind CSS 4, shadcn/ui |
-| AI | Vercel AI SDK, OpenRouter provider |
-| Storage | better-sqlite3 (via Electron main), OS keychain |
+| AI | Vercel AI SDK, OpenRouter / OpenAI-compatible providers |
+| Storage | Node SQLite (`node:sqlite`), OS keychain |
 | Build | Vite, esbuild, electron-builder |
 
 ## Scripts
@@ -153,11 +180,7 @@ Electron main (Node)
 
 Application data lives in Electron's platform-specific `userData` directory (folder name **Nimruz**) as `nimruz.sqlite3`. Legacy IndexedDB/localStorage data is imported once and kept as a rollback copy. Saved API keys are not portable between machines or OS users.
 
-Skills are stored under `~/.nimruz/skills` (and other standard agent skill directories).
-
-## Relationship to the web app
-
-This repository is an independent desktop app. UI code under `src/components`, `src/lib`, and `src/hooks` was originally copied from a Next.js web client. The two apps can diverge; port UI changes manually when you want them in both places.
+Skills are stored under `~/.nimruz/skills` (and other standard agent skill directories). Workspace-linked folders stay on disk where you pointed them; managed roots and artifacts are stored under app data.
 
 ## Contributing
 
