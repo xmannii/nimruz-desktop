@@ -122,6 +122,9 @@ export type DesktopAPI = {
     confirmPlan: (id: string) => Promise<Mission[]>;
     start: (id: string) => Promise<Mission[]>;
     advance: (id: string) => Promise<Mission[]>;
+    executeStep: (id: string) => Promise<Mission[]>;
+    approveStep: (id: string) => Promise<Mission[]>;
+    retry: (id: string) => Promise<Mission[]>;
     delete: (id: string) => Promise<Mission[]>;
   };
   updates: {

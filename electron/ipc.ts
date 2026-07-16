@@ -17,6 +17,7 @@ import {
 import { CredentialService } from "./credentials";
 import { AppDatabase } from "./storage/database";
 import { SkillStore } from "./skills/store";
+import { executeWorkspaceTool } from "./missions/workspace-tools";
 import { registerWindowControlHandlers } from "./window-controls";
 import {
   validateChatsPayload,
@@ -260,6 +261,41 @@ export function registerIpcHandlers(options: {
     const mission = database.loadMissions().find((item) => item.id === id);
     if (!mission) throw new Error("Mission not found.");
     database.saveMissionSnapshot(advanceMission(mission));
+    return database.loadMissions();
+  });
+  handle("missions:execute-step", async (id: string): Promise<Mission[]> => {
+    const mission = database.loadMissions().find((item) => item.id === id);
+    if (!mission) throw new Error("Mission not found.");
+    const current = mission.steps.find((step) => step.status === "running");
+    if (!current) throw new Error("مراحل در حال اجرا پیدا نشد.");
+    if (current.requiresApproval) {
+      database.updateMissionStatus(id, "waiting_for_approval");
+      return database.loadMissions();
+    }
+    try {
+      const result = current.tool
+        ? await executeWorkspaceTool(current.tool, current.input, mission.workspacePath)
+        : { success: true, summary: "این مرحله برای ابزار مشخصی تنظیم نشده بود." };
+      const nextPending = mission.steps.find((step) => step.status === "pending");
+      const now = Date.now();
+      const updated = { ...mission, steps: mission.steps.map((step) => step.id === current.id ? { ...step, status: result.success ? "completed" as const : "failed" as const, output: { summary: result.summary, ...(result.data ? { data: result.data } : {}) }, error: result.error ?? null, completedAt: result.success ? now : null } : result.success && nextPending && step.id === nextPending.id ? { ...step, status: "running" as const, startedAt: now } : step), status: result.success ? nextPending ? "running" as const : "completed" as const : "failed" as const, updatedAt: now };
+      database.saveMissionSnapshot(updated);
+      return database.loadMissions();
+    } catch (error) {
+      database.saveMissionSnapshot({ ...mission, status: "failed", steps: mission.steps.map((step) => step.id === current.id ? { ...step, status: "failed", error: error instanceof Error ? error.message : "اجرای ابزار ناموفق بود." } : step), updatedAt: Date.now() });
+      throw error;
+    }
+  });
+  handle("missions:approve-step", (id: string): Mission[] => {
+    if (!database.updateMissionStatus(id, "running")) throw new Error("Mission not found.");
+    return database.loadMissions();
+  });
+  handle("missions:retry", (id: string): Mission[] => {
+    const mission = database.loadMissions().find((item) => item.id === id);
+    if (!mission) throw new Error("Mission not found.");
+    const failed = mission.steps.find((step) => step.status === "failed");
+    if (!failed) throw new Error("مرحله ناموفق پیدا نشد.");
+    database.saveMissionSnapshot({ ...mission, status: "running", steps: mission.steps.map((step) => step.id === failed.id ? { ...step, status: "running", error: null, startedAt: Date.now() } : step), updatedAt: Date.now() });
     return database.loadMissions();
   });
   handle("missions:delete", (id: string): Mission[] => {

@@ -15,6 +15,9 @@ export const MISSION_STATUSES = [
 
 export type MissionStatus = (typeof MISSION_STATUSES)[number];
 export type MissionStepStatus = "pending" | "running" | "completed" | "failed" | "skipped";
+export const MISSION_TOOLS = ["list_files", "read_file", "search_files", "write_file", "create_directory", "fetch_url"] as const;
+export type MissionTool = (typeof MISSION_TOOLS)[number];
+export type MissionRisk = "read_only" | "workspace_write" | "external_action";
 
 export type MissionStep = {
   id: string;
@@ -27,6 +30,11 @@ export type MissionStep = {
   error: string | null;
   startedAt: number | null;
   completedAt: number | null;
+  tool: MissionTool | null;
+  input: Record<string, unknown>;
+  output: Record<string, unknown> | null;
+  risk: MissionRisk;
+  requiresApproval: boolean;
 };
 
 export type Mission = {
@@ -115,7 +123,8 @@ export function createMission(value: unknown): Mission {
     steps: (input.steps ?? []).map((step, index) => ({
       id: nanoid(), missionId: id, position: index, title: step.title,
       description: step.description ?? "", status: "pending", dependsOn: [],
-      error: null, startedAt: null, completedAt: null,
+      error: null, startedAt: null, completedAt: null, tool: null, input: {}, output: null,
+      risk: "read_only", requiresApproval: false,
     })),
   };
 }
@@ -145,6 +154,11 @@ export function planMission(mission: Pick<Mission, "id" | "goal" | "workspacePat
     error: null,
     startedAt: null,
     completedAt: null,
+    tool: position === 1 ? "list_files" : position === 4 ? "write_file" : null,
+    input: position === 1 ? { path: ".", recursive: true } : position === 4 ? { path: "mission-report.md", content: "" } : {},
+    output: null,
+    risk: position === 4 ? "workspace_write" : "read_only",
+    requiresApproval: position === 4,
   }));
 }
 
