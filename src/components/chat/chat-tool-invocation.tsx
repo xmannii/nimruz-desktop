@@ -7,6 +7,7 @@ import {
   createContext,
   useContext,
   useMemo,
+  useState,
   type ReactNode,
 } from "react";
 
@@ -77,12 +78,92 @@ export function ChatToolStepGroup({
   );
 }
 
+function ToolInvocationRow({
+  label,
+  icon,
+  isLoading,
+  isError,
+  stepLabel,
+  clickable,
+  expanded,
+  onToggle,
+}: {
+  label: ReactNode;
+  icon?: ReactNode;
+  isLoading: boolean;
+  isError: boolean;
+  stepLabel: string | null;
+  clickable: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const rowClassName = cn(
+    "flex w-full min-h-7 items-center gap-2 py-1 pe-1 text-right",
+    isLoading && "opacity-90",
+    clickable && "cursor-pointer"
+  );
+
+  const rowBody = (
+    <>
+      <span
+        className={cn(
+          "flex size-4 shrink-0 items-center justify-center text-muted-foreground transition-colors",
+          "[&_svg:not([class*='size-'])]:size-3.5",
+          "group-hover/tool:text-foreground/80",
+          isError && "text-destructive"
+        )}
+      >
+        {isLoading ? <Spinner className="size-3.5" /> : icon}
+      </span>
+
+      <div
+        className={cn(
+          "min-w-0 flex-1 truncate text-right text-xs leading-5 text-muted-foreground transition-colors",
+          "group-hover/tool:text-foreground/90",
+          isLoading && "shimmer text-muted-foreground",
+          isError && "text-destructive/90"
+        )}
+      >
+        {label}
+      </div>
+
+      {stepLabel ? (
+        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60 opacity-0 transition-opacity group-hover/tool:opacity-100">
+          {stepLabel}
+        </span>
+      ) : null}
+    </>
+  );
+
+  if (clickable) {
+    return (
+      <button
+        type="button"
+        aria-expanded={expanded}
+        onClick={onToggle}
+        className={rowClassName}
+      >
+        {rowBody}
+      </button>
+    );
+  }
+
+  return (
+    <div className={rowClassName} role={isLoading ? "status" : undefined}>
+      {rowBody}
+    </div>
+  );
+}
+
 type ChatToolInvocationProps = {
   label: ReactNode;
   icon?: ReactNode;
   isLoading?: boolean;
   isError?: boolean;
   expandable?: boolean;
+  /** Hover expands by default; click is better for compact batches. */
+  expandMode?: "hover" | "click";
+  defaultExpanded?: boolean;
   panelTitle?: string;
   children?: ReactNode;
 };
@@ -93,13 +174,18 @@ export function ChatToolInvocation({
   isLoading = false,
   isError = false,
   expandable = false,
+  expandMode = "hover",
+  defaultExpanded = false,
   panelTitle,
   children,
 }: ChatToolInvocationProps) {
   const step = useContext(ToolStepContext);
   const position = step?.position ?? "single";
-  const showDetails = expandable && !isLoading && Boolean(children);
+  const canExpand = expandable && !isLoading && Boolean(children);
   const inStack = position !== "single";
+  const [clickExpanded, setClickExpanded] = useState(defaultExpanded);
+  const detailsOpen =
+    canExpand && (expandMode === "click" ? clickExpanded : true);
 
   const stepLabel = useMemo(() => {
     if (!step || step.total <= 1) return null;
@@ -144,60 +230,42 @@ export function ChatToolInvocation({
         className={cn(
           "min-w-0 flex-1 rounded-lg transition-[background-color,box-shadow,padding] duration-200",
           "hover:bg-muted/45 focus-within:bg-muted/45",
-          showDetails && "hover:shadow-sm focus-within:shadow-sm",
-          position === "single" && "border border-transparent hover:border-border/50 px-1.5"
+          canExpand && "hover:shadow-sm focus-within:shadow-sm",
+          position === "single" &&
+            "border border-transparent hover:border-border/50 px-1.5"
         )}
       >
-        <div
-          className={cn(
-            "flex min-h-7 items-center gap-2 py-1 pe-1",
-            isLoading && "opacity-90"
-          )}
-          role={isLoading ? "status" : undefined}
-        >
-          <span
-            className={cn(
-              "flex size-4 shrink-0 items-center justify-center text-muted-foreground transition-colors",
-              "[&_svg:not([class*='size-'])]:size-3.5",
-              "group-hover/tool:text-foreground/80",
-              isError && "text-destructive"
-            )}
-          >
-            {isLoading ? <Spinner className="size-3.5" /> : icon}
-          </span>
+        <ToolInvocationRow
+          label={label}
+          icon={icon}
+          isLoading={isLoading}
+          isError={isError}
+          stepLabel={stepLabel}
+          clickable={expandMode === "click" && canExpand}
+          expanded={clickExpanded}
+          onToggle={() => setClickExpanded((open) => !open)}
+        />
 
-          <div
-            className={cn(
-              "min-w-0 flex-1 truncate text-right text-xs leading-5 text-muted-foreground transition-colors",
-              "group-hover/tool:text-foreground/90",
-              isLoading && "shimmer text-muted-foreground",
-              isError && "text-destructive/90"
-            )}
-          >
-            {label}
-          </div>
-
-          {stepLabel ? (
-            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/60 opacity-0 transition-opacity group-hover/tool:opacity-100">
-              {stepLabel}
-            </span>
-          ) : null}
-        </div>
-
-        {showDetails ? (
+        {canExpand ? (
           <div
             className={cn(
               "grid transition-[grid-template-rows,opacity] duration-200 ease-out",
-              "grid-rows-[0fr] opacity-0",
-              "group-hover/tool:grid-rows-[1fr] group-hover/tool:opacity-100",
-              "group-focus-within/tool:grid-rows-[1fr] group-focus-within/tool:opacity-100"
+              expandMode === "hover" && [
+                "grid-rows-[0fr] opacity-0",
+                "group-hover/tool:grid-rows-[1fr] group-hover/tool:opacity-100",
+                "group-focus-within/tool:grid-rows-[1fr] group-focus-within/tool:opacity-100",
+              ],
+              expandMode === "click" &&
+                (detailsOpen
+                  ? "grid-rows-[1fr] opacity-100"
+                  : "grid-rows-[0fr] opacity-0")
             )}
           >
             <div className="min-h-0 overflow-hidden">
               <div
                 dir="rtl"
                 tabIndex={0}
-                className="mb-1.5 max-h-40 overflow-y-auto overscroll-contain rounded-lg border border-border/50 bg-background/60 px-2.5 py-2 text-right text-xs leading-5 text-foreground outline-none"
+                className="mb-1.5 max-h-48 overflow-y-auto overscroll-contain rounded-lg border border-border/50 bg-background/60 px-2.5 py-2 text-right text-xs leading-5 text-foreground outline-none"
               >
                 {panelTitle ? (
                   <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">

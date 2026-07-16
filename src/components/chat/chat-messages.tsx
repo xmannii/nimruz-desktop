@@ -10,6 +10,11 @@ import { ChatMemoryToolPart } from "@/components/chat/chat-memory-tool-part";
 import { ChatExpertToolPart } from "@/components/chat/chat-expert-tool-part";
 import { ChatSkillToolPart } from "@/components/chat/chat-skill-tool-part";
 import {
+  ChatCompactToolBatch,
+  COMPACT_TOOL_THRESHOLD,
+  type CompactableToolPart,
+} from "@/components/chat/chat-compact-tool-batch";
+import {
   ChatToolInvocation,
   ChatToolStepGroup,
 } from "@/components/chat/chat-tool-invocation";
@@ -433,6 +438,30 @@ function isStackableToolPart(part: UIMessage["parts"][number]): boolean {
   return true;
 }
 
+function renderCompactedToolRun(
+  parts: UIMessage["parts"][number][],
+  messageId: string,
+  startIndex: number,
+  workspaceId?: string | null
+): ReactNode[] {
+  if (parts.length >= COMPACT_TOOL_THRESHOLD) {
+    return [
+      <ChatCompactToolBatch
+        key={`${messageId}-compact-${startIndex}`}
+        parts={parts as CompactableToolPart[]}
+      />,
+    ];
+  }
+
+  return parts.map((part, offset) =>
+    renderStackableToolPart(
+      part,
+      `${messageId}-${startIndex + offset}`,
+      workspaceId
+    )
+  );
+}
+
 function renderStackableToolPart(
   part: UIMessage["parts"][number],
   key: string,
@@ -520,6 +549,54 @@ function renderStackableToolPart(
   );
 }
 
+type TimelineReasoningSegment = {
+  kind: "reasoning";
+  index: number;
+  text: string;
+};
+
+type TimelineToolsSegment = {
+  kind: "tools";
+  startIndex: number;
+  parts: UIMessage["parts"][number][];
+};
+
+type TimelineSegment = TimelineReasoningSegment | TimelineToolsSegment;
+
+function renderReasoningStep({
+  messageId,
+  index,
+  text,
+  isLoading,
+  durationSeconds,
+}: {
+  messageId: string;
+  index: number;
+  text: string;
+  isLoading: boolean;
+  durationSeconds?: number;
+}) {
+  const hasText = text.trim().length > 0;
+
+  return (
+    <ChatToolInvocation
+      key={`${messageId}-reasoning-${index}`}
+      icon={<BrainIcon />}
+      label={getReasoningThinkingMessage(isLoading, durationSeconds)}
+      isLoading={isLoading}
+      expandable={hasText && !isLoading}
+      panelTitle="استدلال"
+    >
+      <pre
+        dir="ltr"
+        className="max-h-36 overflow-auto whitespace-pre-wrap break-words text-left text-[11px] leading-5 text-muted-foreground"
+      >
+        {text}
+      </pre>
+    </ChatToolInvocation>
+  );
+}
+
 function AssistantMessageParts({
   message,
   isStreaming,
@@ -531,81 +608,104 @@ function AssistantMessageParts({
   onToolApprovalResponse?: ToolApprovalResponder;
   workspaceId?: string | null;
 }) {
-  const reasoningParts = message.parts.filter((part) => part.type === "reasoning");
-  const reasoningText = reasoningParts
-    .map((part) => part.text)
-    .filter(Boolean)
-    .join("\n\n");
-  const hasReasoning = reasoningParts.length > 0;
-  const hasReasoningText = reasoningText.trim().length > 0;
   const lastPart = message.parts.at(-1);
+  const lastPartIndex = message.parts.length - 1;
   const isReasoningStreaming =
     isStreaming && lastPart?.type === "reasoning";
 
-  const [reasoningDuration, setReasoningDuration] = useState<
-    number | undefined
-  >(undefined);
-  const reasoningStartRef = useRef<number | null>(null);
+  const [reasoningDurations, setReasoningDurations] = useState<
+    Record<number, number>
+  >({});
+  const reasoningStartRef = useRef<{ index: number; startedAt: number } | null>(
+    null
+  );
 
   useEffect(() => {
-    if (isReasoningStreaming) {
-      if (reasoningStartRef.current === null) {
-        reasoningStartRef.current = Date.now();
+    if (isReasoningStreaming && lastPartIndex >= 0) {
+      if (
+        reasoningStartRef.current === null ||
+        reasoningStartRef.current.index !== lastPartIndex
+      ) {
+        reasoningStartRef.current = {
+          index: lastPartIndex,
+          startedAt: Date.now(),
+        };
       }
       return;
     }
+
     if (reasoningStartRef.current !== null) {
-      setReasoningDuration(
-        Math.max(1, Math.ceil((Date.now() - reasoningStartRef.current) / 1000))
+      const { index, startedAt } = reasoningStartRef.current;
+      const seconds = Math.max(1, Math.ceil((Date.now() - startedAt) / 1000));
+      setReasoningDurations((current) =>
+        current[index] === seconds ? current : { ...current, [index]: seconds }
       );
       reasoningStartRef.current = null;
     }
-  }, [isReasoningStreaming]);
-
-  const reasoningStep = hasReasoning ? (
-    <ChatToolInvocation
-      icon={<BrainIcon />}
-      label={getReasoningThinkingMessage(
-        isReasoningStreaming,
-        reasoningDuration
-      )}
-      isLoading={isReasoningStreaming}
-      expandable={hasReasoningText && !isReasoningStreaming}
-      panelTitle="استدلال"
-    >
-      <pre
-        dir="ltr"
-        className="max-h-36 overflow-auto whitespace-pre-wrap break-words text-left text-[11px] leading-5 text-muted-foreground"
-      >
-        {reasoningText}
-      </pre>
-    </ChatToolInvocation>
-  ) : null;
+  }, [isReasoningStreaming, lastPartIndex]);
 
   const renderedParts: ReactNode[] = [];
-  let toolRun: ReactNode[] = [];
-  let toolRunKey = "";
-  let reasoningAttached = false;
+  let timeline: TimelineSegment[] = [];
+  let toolBuffer: UIMessage["parts"][number][] = [];
+  let toolBufferStartIndex = 0;
+  let timelineKey = "";
 
-  const flushToolRun = () => {
-    if (toolRun.length === 0) return;
-    const leading =
-      reasoningStep && !reasoningAttached ? reasoningStep : undefined;
-    if (leading) reasoningAttached = true;
+  const flushToolBuffer = () => {
+    if (toolBuffer.length === 0) return;
+    timeline.push({
+      kind: "tools",
+      startIndex: toolBufferStartIndex,
+      parts: toolBuffer,
+    });
+    toolBuffer = [];
+    toolBufferStartIndex = 0;
+  };
+
+  const flushTimeline = () => {
+    flushToolBuffer();
+    if (timeline.length === 0) return;
+
+    const steps: ReactNode[] = [];
+    for (const segment of timeline) {
+      if (segment.kind === "reasoning") {
+        const isLoading =
+          isReasoningStreaming && segment.index === lastPartIndex;
+        steps.push(
+          renderReasoningStep({
+            messageId: message.id,
+            index: segment.index,
+            text: segment.text,
+            isLoading,
+            durationSeconds: reasoningDurations[segment.index],
+          })
+        );
+        continue;
+      }
+
+      steps.push(
+        ...renderCompactedToolRun(
+          segment.parts,
+          message.id,
+          segment.startIndex,
+          workspaceId
+        )
+      );
+    }
+
     renderedParts.push(
-      <ChatToolStepGroup key={toolRunKey} leading={leading}>
-        {toolRun}
+      <ChatToolStepGroup key={timelineKey || `${message.id}-timeline`}>
+        {steps}
       </ChatToolStepGroup>
     );
-    toolRun = [];
-    toolRunKey = "";
+    timeline = [];
+    timelineKey = "";
   };
 
   message.parts.forEach((part, index) => {
     const key = `${message.id}-${index}`;
 
     if (isManualApprovalPart(part)) {
-      flushToolRun();
+      flushTimeline();
       const approvalPart = part as unknown as {
         type: string;
         toolCallId: string;
@@ -644,15 +744,37 @@ function AssistantMessageParts({
       return;
     }
 
-    if (isStackableToolPart(part)) {
-      if (toolRun.length === 0) toolRunKey = `tools-${key}`;
-      toolRun.push(renderStackableToolPart(part, key, workspaceId));
+    if (part.type === "reasoning") {
+      flushToolBuffer();
+      if (!timelineKey) timelineKey = `timeline-${key}`;
+      timeline.push({
+        kind: "reasoning",
+        index,
+        text: part.text ?? "",
+      });
       return;
     }
 
-    if (part.type === "reasoning") return;
+    if (isStackableToolPart(part)) {
+      if (toolBuffer.length === 0) {
+        if (!timelineKey) timelineKey = `timeline-${key}`;
+        toolBufferStartIndex = index;
+      }
+      toolBuffer.push(part);
+      return;
+    }
 
-    flushToolRun();
+    // Structural / non-visual parts should not break a connected timeline.
+    if (
+      part.type === "step-start" ||
+      part.type === "source-url" ||
+      part.type === "source-document" ||
+      part.type === "file"
+    ) {
+      return;
+    }
+
+    flushTimeline();
 
     if (part.type !== "text") return;
 
@@ -679,16 +801,7 @@ function AssistantMessageParts({
     );
   });
 
-  flushToolRun();
-
-  // Reasoning with no tools below — still use the same compact step chrome.
-  if (reasoningStep && !reasoningAttached) {
-    renderedParts.unshift(
-      <ChatToolStepGroup key={`${message.id}-reasoning-only`}>
-        {reasoningStep}
-      </ChatToolStepGroup>
-    );
-  }
+  flushTimeline();
 
   return <>{renderedParts}</>;
 }
