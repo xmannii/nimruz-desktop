@@ -4,12 +4,17 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import type { LegacyDataSnapshot } from "@/lib/desktop-api";
-import type { LocalChat, LocalProject } from "@/lib/chat/storage";
+import type { LocalChat, LocalWorkspace } from "@/lib/chat/storage";
+import {
+  DEFAULT_WORKSPACE_TRUST,
+  HOME_WORKSPACE_ID,
+  HOME_WORKSPACE_TITLE,
+} from "@/lib/workspace";
 import { DEFAULT_PERSONALIZATION_SETTINGS } from "@/lib/settings/personalization";
 import { groupEnabledModels } from "@/lib/models/catalog";
 import {
   validateChatsPayload,
-  validateProjectPayload,
+  validateWorkspacePayload,
 } from "./validation";
 import { AppDatabase } from "./database";
 
@@ -26,10 +31,12 @@ async function withDatabase(
   }
 }
 
-const project: LocalProject = {
+const project: LocalWorkspace = {
   id: "project-1",
   title: "Project",
   description: "Description",
+  instructions: "",
+  trust: DEFAULT_WORKSPACE_TRUST,
   createdAt: 1,
   updatedAt: 2,
 };
@@ -46,7 +53,7 @@ const chat: LocalChat = {
       parts: [{ type: "text", text: "Hello" }],
     },
   ],
-  projectId: project.id,
+  workspaceId: project.id,
   createdAt: 3,
   updatedAt: 4,
   titleIsCustom: true,
@@ -54,7 +61,7 @@ const chat: LocalChat = {
 
 test("persists chats, projects, settings, memories, and credentials", async () => {
   await withDatabase((database) => {
-    database.saveProject(project);
+    database.saveWorkspace(project);
     database.saveChats([chat]);
     database.savePersonalization({
       ...DEFAULT_PERSONALIZATION_SETTINGS,
@@ -71,14 +78,26 @@ test("persists chats, projects, settings, memories, and credentials", async () =
     ]);
     database.setCredential("openrouter", Buffer.from("encrypted"), "••••1234");
 
-    assert.equal(database.loadProjects()[0]?.title, "Project");
+    assert.ok(
+      database.loadWorkspaces().some((workspace) => workspace.id === project.id)
+    );
+    assert.ok(
+      database
+        .loadWorkspaces()
+        .some((workspace) => workspace.id === HOME_WORKSPACE_ID)
+    );
     assert.equal(database.loadChats()[0]?.messages[0]?.role, "user");
     assert.equal(database.loadPersonalization().nickname, "مانی");
     assert.equal(database.loadMemories()[0]?.id, "memory-1");
     assert.equal(database.getCredential("openrouter")?.hint, "••••1234");
 
-    database.deleteProject(project.id);
-    assert.equal(database.loadChats()[0]?.projectId, null);
+    database.deleteWorkspace(project.id);
+    assert.equal(database.loadChats()[0]?.workspaceId, null);
+    assert.throws(() => database.deleteWorkspace(HOME_WORKSPACE_ID));
+    assert.equal(
+      database.getWorkspace(HOME_WORKSPACE_ID)?.title,
+      HOME_WORKSPACE_TITLE
+    );
   });
 });
 
@@ -98,7 +117,7 @@ test("imports legacy data only once", async () => {
 
 test("rolls back a failed legacy import transaction", async () => {
   await withDatabase((database) => {
-    const invalidChat = { ...chat, projectId: "missing-project" };
+    const invalidChat = { ...chat, workspaceId: "missing-workspace" };
     assert.throws(() =>
       database.importLegacyData({
         chats: [invalidChat],
@@ -107,16 +126,20 @@ test("rolls back a failed legacy import transaction", async () => {
         memories: [],
       })
     );
-    assert.equal(database.loadProjects().length, 0);
+    // Home is bootstrapped on open; a failed import must not leave project rows.
+    assert.deepEqual(
+      database.loadWorkspaces().map((workspace) => workspace.id),
+      [HOME_WORKSPACE_ID]
+    );
     assert.equal(database.loadChats().length, 0);
   });
 });
 
 test("rejects malformed IPC storage payloads", () => {
   assert.throws(() => validateChatsPayload([{ id: "../escape" }]));
-  assert.throws(() => validateProjectPayload({ id: "invalid/id" }));
+  assert.throws(() => validateWorkspacePayload({ id: "invalid/id" }));
   assert.equal(validateChatsPayload([chat]).length, 1);
-  assert.equal(validateProjectPayload(project).id, project.id);
+  assert.equal(validateWorkspacePayload(project).id, project.id);
 });
 
 test("seeds OpenRouter catalog and supports custom providers", async () => {

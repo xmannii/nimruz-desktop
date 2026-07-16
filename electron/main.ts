@@ -4,6 +4,8 @@ import { existsSync } from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { WorkspaceFilesStore } from "./agent/workspace-files";
+import { WorkspaceEventBus } from "./agent/events";
 import { CredentialService } from "./credentials";
 import { registerIpcHandlers } from "./ipc";
 import { startServer } from "./server";
@@ -15,6 +17,7 @@ import {
   APP_NAME_FA,
   DATABASE_FILE,
 } from "@/lib/branding";
+import { HOME_WORKSPACE_ID } from "@/lib/workspace";
 
 app.setName(APP_NAME);
 
@@ -95,38 +98,54 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  database = new AppDatabase(
-    path.join(app.getPath("userData"), DATABASE_FILE)
-  );
+  const userDataPath = app.getPath("userData");
+  database = new AppDatabase(path.join(userDataPath, DATABASE_FILE));
   const credentials = new CredentialService(database);
   const skills = new SkillStore();
+  const workspaceEvents = new WorkspaceEventBus(() => mainWindow);
+  const workspaceFiles = new WorkspaceFilesStore(
+    database,
+    userDataPath,
+    workspaceEvents
+  );
+  database.ensureHomeWorkspace();
+  workspaceFiles.ensureManagedRoot(HOME_WORKSPACE_ID);
   const sessionToken = randomBytes(32).toString("base64url");
 
   registerIpcHandlers({
     database,
     credentials,
     skills,
+    workspaceFiles,
+    workspaceEvents,
     sessionToken,
     getMainWindow: () => mainWindow,
   });
+
+  const agentDeps = {
+    database,
+    files: workspaceFiles,
+    events: workspaceEvents,
+    resolveModel: (providerId?: string, modelId?: string) => {
+      const resolved = database?.resolveChatModel(providerId, modelId);
+      if (!resolved) return null;
+      const auth = credentials.resolveProviderAuth(resolved.provider);
+      return {
+        ...resolved,
+        apiKey: auth.apiKey,
+      };
+    },
+    getSkillsCatalog: async () =>
+      skills.getEnabledCatalog(database!.loadSkillsPreferences()),
+    loadSkillContent: async (name: string) =>
+      skills.loadSkillContent(name, database!.loadSkillsPreferences()),
+  };
 
   if (isDev && RENDERER_DEV_URL) {
     const result = await startServer({
       port: DEV_API_PORT,
       sessionToken,
-      resolveChatModel: (providerId, modelId) => {
-        const resolved = database?.resolveChatModel(providerId, modelId);
-        if (!resolved) return null;
-        const auth = credentials.resolveProviderAuth(resolved.provider);
-        return {
-          ...resolved,
-          apiKey: auth.apiKey,
-        };
-      },
-      getSkillsCatalog: async () =>
-        skills.getEnabledCatalog(database!.loadSkillsPreferences()),
-      loadSkillContent: async (name) =>
-        skills.loadSkillContent(name, database!.loadSkillsPreferences()),
+      agentDeps,
       allowedOrigins: [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -139,19 +158,7 @@ app.whenReady().then(async () => {
     const result = await startServer({
       rendererDir,
       sessionToken,
-      resolveChatModel: (providerId, modelId) => {
-        const resolved = database?.resolveChatModel(providerId, modelId);
-        if (!resolved) return null;
-        const auth = credentials.resolveProviderAuth(resolved.provider);
-        return {
-          ...resolved,
-          apiKey: auth.apiKey,
-        };
-      },
-      getSkillsCatalog: async () =>
-        skills.getEnabledCatalog(database!.loadSkillsPreferences()),
-      loadSkillContent: async (name) =>
-        skills.loadSkillContent(name, database!.loadSkillsPreferences()),
+      agentDeps,
     });
     localServer = result.server;
     rendererUrl = `http://127.0.0.1:${result.port}/`;

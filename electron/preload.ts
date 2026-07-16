@@ -56,10 +56,94 @@ const desktopApi: DesktopAPI = {
     saveChats: (chats) => ipcRenderer.invoke("storage:save-chats", chats),
     deleteChat: (id) => ipcRenderer.invoke("storage:delete-chat", id),
     deleteAllChats: () => ipcRenderer.invoke("storage:delete-all-chats"),
+    loadWorkspaces: () => ipcRenderer.invoke("storage:load-workspaces"),
+    saveWorkspace: (workspace) =>
+      ipcRenderer.invoke("storage:save-workspace", workspace),
+    deleteWorkspace: (id) =>
+      ipcRenderer.invoke("storage:delete-workspace", id),
     loadProjects: () => ipcRenderer.invoke("storage:load-projects"),
     saveProject: (project) =>
       ipcRenderer.invoke("storage:save-project", project),
     deleteProject: (id) => ipcRenderer.invoke("storage:delete-project", id),
+    loadWorkspaceRoots: (workspaceId) =>
+      ipcRenderer.invoke("storage:load-workspace-roots", workspaceId),
+    pickDirectory: () => ipcRenderer.invoke("storage:pick-directory"),
+    addLinkedWorkspaceRoot: (workspaceId, options) =>
+      ipcRenderer.invoke(
+        "storage:add-linked-workspace-root",
+        workspaceId,
+        options
+      ),
+    setPrimaryWorkspaceRoot: (workspaceId, rootId) =>
+      ipcRenderer.invoke(
+        "storage:set-primary-workspace-root",
+        workspaceId,
+        rootId
+      ),
+    removeWorkspaceRoot: (rootId) =>
+      ipcRenderer.invoke("storage:remove-workspace-root", rootId),
+    updateWorkspaceTrust: (workspaceId, trust) =>
+      ipcRenderer.invoke("storage:update-workspace-trust", workspaceId, trust),
+    listWorkspaceFiles: (workspaceId, path) =>
+      ipcRenderer.invoke("storage:list-workspace-files", workspaceId, path),
+    readWorkspaceFile: (workspaceId, path) =>
+      ipcRenderer.invoke("storage:read-workspace-file", workspaceId, path),
+    readWorkspaceFileBinary: (workspaceId, path) =>
+      ipcRenderer.invoke(
+        "storage:read-workspace-file-binary",
+        workspaceId,
+        path
+      ),
+    searchWorkspaceFiles: (workspaceId, query, options) =>
+      ipcRenderer.invoke(
+        "storage:search-workspace-files",
+        workspaceId,
+        query,
+        options
+      ),
+    importWorkspaceFiles: (workspaceId, files) =>
+      ipcRenderer.invoke(
+        "storage:import-workspace-files",
+        workspaceId,
+        files
+      ),
+    createWorkspaceDirectory: (workspaceId, path) =>
+      ipcRenderer.invoke(
+        "storage:create-workspace-directory",
+        workspaceId,
+        path
+      ),
+    createWorkspaceFile: (workspaceId, path, content) =>
+      ipcRenderer.invoke(
+        "storage:create-workspace-file",
+        workspaceId,
+        path,
+        content
+      ),
+    renameWorkspaceEntry: (workspaceId, from, to) =>
+      ipcRenderer.invoke(
+        "storage:rename-workspace-entry",
+        workspaceId,
+        from,
+        to
+      ),
+    deleteWorkspaceEntry: (workspaceId, path) =>
+      ipcRenderer.invoke("storage:delete-workspace-entry", workspaceId, path),
+    revealWorkspacePath: (workspaceId, path) =>
+      ipcRenderer.invoke("storage:reveal-workspace-path", workspaceId, path),
+    listArtifacts: (workspaceId) =>
+      ipcRenderer.invoke("storage:list-artifacts", workspaceId),
+    readArtifact: (workspaceId, artifactId) =>
+      ipcRenderer.invoke("storage:read-artifact", workspaceId, artifactId),
+    deleteArtifact: (artifactId) =>
+      ipcRenderer.invoke("storage:delete-artifact", artifactId),
+    listTasks: (workspaceId) =>
+      ipcRenderer.invoke("storage:list-tasks", workspaceId),
+    saveTask: (task) => ipcRenderer.invoke("storage:save-task", task),
+    deleteTask: (taskId) => ipcRenderer.invoke("storage:delete-task", taskId),
+    listAgentRuns: (options) =>
+      ipcRenderer.invoke("storage:list-agent-runs", options),
+    getAgentRun: (runId) => ipcRenderer.invoke("storage:get-agent-run", runId),
     loadPersonalization: () =>
       ipcRenderer.invoke("storage:load-personalization"),
     savePersonalization: (settings) =>
@@ -86,6 +170,18 @@ const desktopApi: DesktopAPI = {
     getVersion: () => ipcRenderer.invoke("updates:get-version"),
     check: () => ipcRenderer.invoke("updates:check"),
     openUrl: (url) => ipcRenderer.invoke("updates:open-url", url),
+  },
+  workspaceEvents: {
+    subscribe: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: import("@/lib/workspace").WorkspaceEvent
+      ) => callback(payload);
+      ipcRenderer.on("workspace:event", handler);
+      return () => {
+        ipcRenderer.removeListener("workspace:event", handler);
+      };
+    },
   },
 };
 

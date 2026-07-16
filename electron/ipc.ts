@@ -1,4 +1,5 @@
-import { ipcMain, type IpcMainInvokeEvent } from "electron";
+import { dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
+import { realpathSync, statSync } from "node:fs";
 import { nanoid } from "nanoid";
 import type { LegacyImportResult } from "@/lib/desktop-api";
 import type { MemoryEntry } from "@/lib/settings/memories";
@@ -13,6 +14,14 @@ import {
   OPENROUTER_PROVIDER_ID,
   PROVIDER_LIMITS,
 } from "@/lib/models/catalog";
+import {
+  normalizeWorkspaceTrust,
+  sanitizeWorkspace,
+  type TaskRecord,
+  type WorkspaceRoot,
+} from "@/lib/workspace";
+import type { WorkspaceFilesStore } from "./agent/workspace-files";
+import type { WorkspaceEventBus } from "./agent/events";
 import { CredentialService } from "./credentials";
 import { AppDatabase } from "./storage/database";
 import { SkillStore } from "./skills/store";
@@ -20,7 +29,7 @@ import { registerWindowControlHandlers } from "./window-controls";
 import {
   validateChatsPayload,
   validateLegacySnapshot,
-  validateProjectPayload,
+  validateWorkspacePayload,
 } from "./storage/validation";
 import {
   checkForAppUpdate,
@@ -42,10 +51,20 @@ export function registerIpcHandlers(options: {
   database: AppDatabase;
   credentials: CredentialService;
   skills: SkillStore;
+  workspaceFiles: WorkspaceFilesStore;
+  workspaceEvents: WorkspaceEventBus;
   sessionToken: string;
   getMainWindow: () => import("electron").BrowserWindow | null;
 }) {
-  const { database, credentials, skills, sessionToken, getMainWindow } = options;
+  const {
+    database,
+    credentials,
+    skills,
+    workspaceFiles,
+    workspaceEvents,
+    sessionToken,
+    getMainWindow,
+  } = options;
 
   function handle<TArgs extends unknown[], TResult>(
     channel: string,
@@ -205,13 +224,271 @@ export function registerIpcHandlers(options: {
   handle("storage:delete-chat", (id: string) => database.deleteChat(id));
   handle("storage:delete-all-chats", () => database.deleteAllChats());
 
-  handle("storage:load-projects", () => database.loadProjects());
-  handle("storage:save-project", (value: unknown) =>
-    database.saveProject(validateProjectPayload(value))
+  handle("storage:load-workspaces", () => database.loadWorkspaces());
+  handle("storage:save-workspace", (value: unknown) => {
+    const workspace = validateWorkspacePayload(value);
+    database.saveWorkspace(workspace);
+    workspaceFiles.ensureManagedRoot(workspace.id);
+  });
+  handle("storage:delete-workspace", (id: string) =>
+    database.deleteWorkspace(id)
   );
+  handle("storage:load-projects", () => database.loadWorkspaces());
+  handle("storage:save-project", (value: unknown) => {
+    const workspace = validateWorkspacePayload(value);
+    database.saveWorkspace(workspace);
+    workspaceFiles.ensureManagedRoot(workspace.id);
+  });
   handle("storage:delete-project", (id: string) =>
-    database.deleteProject(id)
+    database.deleteWorkspace(id)
   );
+
+  handle("storage:load-workspace-roots", (workspaceId: string) => {
+    workspaceFiles.ensureManagedRoot(workspaceId);
+    return database.loadWorkspaceRoots(workspaceId);
+  });
+
+  handle("storage:pick-directory", async () => {
+    const window = getMainWindow();
+    const result = await dialog.showOpenDialog(window ?? undefined!, {
+      properties: ["openDirectory"],
+      title: "انتخاب پوشه",
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    return { path: result.filePaths[0] };
+  });
+
+  handle(
+    "storage:add-linked-workspace-root",
+    async (
+      workspaceId: string,
+      options?: { path?: string; makePrimary?: boolean }
+    ) => {
+      if (!/^[\w-]{1,128}$/.test(workspaceId)) {
+        throw new Error("Invalid workspace id.");
+      }
+      if (!database.getWorkspace(workspaceId)) {
+        throw new Error("Workspace not found.");
+      }
+
+      let rootPath = options?.path;
+      if (!rootPath) {
+        const window = getMainWindow();
+        const result = await dialog.showOpenDialog(window ?? undefined!, {
+          properties: ["openDirectory"],
+          title: "انتخاب پوشه فضای کاری",
+        });
+        if (result.canceled || !result.filePaths[0]) return null;
+        rootPath = result.filePaths[0];
+      }
+
+      // Canonicalize and validate the selected folder before persisting.
+      let canonicalPath: string;
+      try {
+        canonicalPath = realpathSync.native(rootPath);
+        const stats = statSync(canonicalPath);
+        if (!stats.isDirectory()) {
+          throw new Error("انتخاب باید یک پوشه باشد.");
+        }
+      } catch (error) {
+        throw new Error(
+          error instanceof Error && error.message.includes("پوشه")
+            ? error.message
+            : "پوشه انتخاب‌شده در دسترس نیست."
+        );
+      }
+
+      const existingRoots = database.loadWorkspaceRoots(workspaceId);
+      const duplicate = existingRoots.find(
+        (item) => item.path === canonicalPath
+      );
+      if (duplicate) {
+        if (options?.makePrimary) {
+          return database
+            .setPrimaryWorkspaceRoot(workspaceId, duplicate.id)
+            .find((item) => item.id === duplicate.id);
+        }
+        return duplicate;
+      }
+
+      const root: WorkspaceRoot = {
+        id: nanoid(),
+        workspaceId,
+        kind: "linked",
+        path: canonicalPath,
+        label:
+          canonicalPath.split(/[/\\]/).filter(Boolean).at(-1) ?? canonicalPath,
+        isPrimary: false,
+        createdAt: Date.now(),
+      };
+      database.saveWorkspaceRoot(root);
+      if (options?.makePrimary) {
+        const updated = database
+          .setPrimaryWorkspaceRoot(workspaceId, root.id)
+          .find((item) => item.id === root.id);
+        workspaceEvents.emit({ type: "root-changed", workspaceId });
+        return updated;
+      }
+      workspaceEvents.emit({ type: "root-changed", workspaceId });
+      return root;
+    }
+  );
+
+  handle(
+    "storage:set-primary-workspace-root",
+    (workspaceId: string, rootId: string) => {
+      if (!database.getWorkspace(workspaceId)) {
+        throw new Error("Workspace not found.");
+      }
+      const roots = database.setPrimaryWorkspaceRoot(workspaceId, rootId);
+      workspaceEvents.emit({ type: "root-changed", workspaceId });
+      return roots;
+    }
+  );
+
+  handle("storage:remove-workspace-root", (rootId: string) => {
+    const roots = database.loadWorkspaceRoots();
+    const root = roots.find((item) => item.id === rootId);
+    if (!root) return;
+    if (root.kind === "managed") {
+      throw new Error("Managed workspace root cannot be removed.");
+    }
+    database.deleteWorkspaceRoot(rootId);
+    workspaceEvents.emit({
+      type: "root-changed",
+      workspaceId: root.workspaceId,
+    });
+  });
+
+  handle(
+    "storage:update-workspace-trust",
+    (workspaceId: string, trust: unknown) => {
+      const workspace = database.getWorkspace(workspaceId);
+      if (!workspace) throw new Error("Workspace not found.");
+      const updated = sanitizeWorkspace({
+        ...workspace,
+        trust: normalizeWorkspaceTrust(trust),
+        updatedAt: Date.now(),
+      });
+      database.saveWorkspace(updated);
+      return updated;
+    }
+  );
+
+  handle(
+    "storage:list-workspace-files",
+    (workspaceId: string, dirPath?: string) =>
+      workspaceFiles.listDirectory(workspaceId, dirPath ?? ".")
+  );
+  handle("storage:read-workspace-file", (workspaceId: string, filePath: string) =>
+    workspaceFiles.readFileText(workspaceId, filePath)
+  );
+  handle(
+    "storage:read-workspace-file-binary",
+    (workspaceId: string, filePath: string) =>
+      workspaceFiles.readBinaryFile(workspaceId, filePath)
+  );
+  handle(
+    "storage:search-workspace-files",
+    (
+      workspaceId: string,
+      query: string,
+      options?: { glob?: string; maxMatches?: number }
+    ) => workspaceFiles.searchFiles(workspaceId, query, options)
+  );
+  handle(
+    "storage:import-workspace-files",
+    (
+      workspaceId: string,
+      files: Array<{ name: string; base64: string; mimeType?: string }>
+    ) => workspaceFiles.importFiles(workspaceId, files)
+  );
+  handle(
+    "storage:create-workspace-directory",
+    (workspaceId: string, dirPath: string) =>
+      workspaceFiles.createDirectory(workspaceId, dirPath)
+  );
+  handle(
+    "storage:create-workspace-file",
+    (workspaceId: string, filePath: string, content?: string) =>
+      workspaceFiles.writeFile(workspaceId, filePath, content ?? "")
+  );
+  handle(
+    "storage:rename-workspace-entry",
+    (workspaceId: string, fromPath: string, toPath: string) =>
+      workspaceFiles.moveFile(workspaceId, fromPath, toPath)
+  );
+  handle(
+    "storage:delete-workspace-entry",
+    (workspaceId: string, targetPath: string) =>
+      workspaceFiles.deleteFile(workspaceId, targetPath)
+  );
+  handle(
+    "storage:reveal-workspace-path",
+    async (workspaceId: string, targetPath: string) => {
+      // Confirm the path is inside an approved root before revealing it.
+      const resolved = workspaceFiles.assertInsideRoots(workspaceId, targetPath);
+      const { shell } = await import("electron");
+      shell.showItemInFolder(resolved);
+    }
+  );
+
+  handle("storage:list-artifacts", (workspaceId: string) =>
+    database.listArtifacts(workspaceId)
+  );
+  handle("storage:read-artifact", (workspaceId: string, artifactId: string) => {
+    const artifact = database
+      .listArtifacts(workspaceId)
+      .find((item) => item.id === artifactId);
+    if (!artifact) throw new Error("Artifact not found.");
+    return workspaceFiles.readArtifactByRecord(artifact);
+  });
+  handle("storage:delete-artifact", (artifactId: string) => {
+    const workspaceId = database.getArtifactWorkspaceId(artifactId);
+    database.deleteArtifact(artifactId);
+    if (workspaceId) {
+      workspaceEvents.emit({ type: "artifact-changed", workspaceId, artifactId });
+    }
+  });
+
+  handle("storage:list-tasks", (workspaceId: string) =>
+    database.listTasks(workspaceId)
+  );
+  handle("storage:save-task", (value: unknown) => {
+    const task = value as TaskRecord;
+    database.saveTask(task);
+    if (task.workspaceId) {
+      workspaceEvents.emit({
+        type: "task-changed",
+        workspaceId: task.workspaceId,
+        taskId: task.id,
+      });
+    }
+    return task;
+  });
+  handle("storage:delete-task", (taskId: string) => {
+    const workspaceId = database.getTaskWorkspaceId(taskId);
+    database.deleteTask(taskId);
+    if (workspaceId) {
+      workspaceEvents.emit({ type: "task-changed", workspaceId, taskId });
+    }
+  });
+
+  handle(
+    "storage:list-agent-runs",
+    (options?: { workspaceId?: string; chatId?: string; limit?: number }) =>
+      database.listAgentRuns(options)
+  );
+  handle("storage:get-agent-run", (runId: string) => {
+    const run = database.getAgentRun(runId);
+    if (!run) return null;
+    return {
+      run,
+      steps: database.listAgentRunSteps(runId),
+      toolCalls: database.listToolCalls(runId),
+      approvals: database.listApprovals(runId),
+    };
+  });
 
   handle(
     "storage:load-personalization",
