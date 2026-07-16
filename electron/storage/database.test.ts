@@ -6,7 +6,11 @@ import test from "node:test";
 import type { LegacyDataSnapshot } from "@/lib/desktop-api";
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
 import { DEFAULT_PERSONALIZATION_SETTINGS } from "@/lib/settings/personalization";
-import { groupEnabledModels } from "@/lib/models/catalog";
+import {
+  CODEX_BASE_URL,
+  CODEX_PROVIDER_ID,
+  groupEnabledModels,
+} from "@/lib/models/catalog";
 import {
   validateChatsPayload,
   validateProjectPayload,
@@ -119,10 +123,23 @@ test("rejects malformed IPC storage payloads", () => {
   assert.equal(validateProjectPayload(project).id, project.id);
 });
 
-test("seeds OpenRouter catalog and supports custom providers", async () => {
+test("seeds OpenRouter and Codex providers and supports custom providers", async () => {
   await withDatabase((database) => {
     const catalog = database.loadCatalog();
     assert.ok(catalog.providers.some((provider) => provider.id === "openrouter"));
+    assert.deepEqual(database.getProvider(CODEX_PROVIDER_ID), {
+      id: CODEX_PROVIDER_ID,
+      name: "OpenAI Codex",
+      kind: "codex",
+      baseUrl: CODEX_BASE_URL,
+      enabled: true,
+      includeUsage: true,
+      isBuiltin: true,
+      authRequired: true,
+      createdAt: database.getProvider(CODEX_PROVIDER_ID)?.createdAt,
+      updatedAt: database.getProvider(CODEX_PROVIDER_ID)?.updatedAt,
+    });
+    assert.equal(database.listModels(CODEX_PROVIDER_ID).length, 0);
     assert.ok(catalog.models.length >= 7);
     assert.equal(database.loadChats()[0]?.providerId ?? "openrouter", "openrouter");
 
@@ -162,7 +179,191 @@ test("seeds OpenRouter catalog and supports custom providers", async () => {
     assert.equal(database.getProvider("lmstudio"), null);
 
     assert.throws(() => database.deleteProvider("openrouter"));
+    assert.throws(() => database.deleteProvider(CODEX_PROVIDER_ID));
   });
+});
+
+test("synchronizes the Codex model catalog atomically and preserves local preferences", async () => {
+  await withDatabase((database) => {
+    const initial = database.syncCodexModels([
+      {
+        id: "server-a",
+        model: "gpt-5-codex",
+        displayName: "GPT-5 Codex",
+        description: "Main model",
+        isDefault: true,
+        inputModalities: ["text", "image"],
+        supportedReasoningEfforts: ["low", "high"],
+      },
+      {
+        id: "server-b",
+        model: "codex-mini-latest",
+        displayName: "Codex Mini",
+        description: "Fast model",
+        isDefault: false,
+        inputModalities: ["text"],
+        supportedReasoningEfforts: ["medium"],
+      },
+      {
+        id: "duplicate-b",
+        model: " codex-mini-latest ",
+        displayName: "Codex Mini Updated",
+        description: "Duplicate descriptor wins",
+        isDefault: false,
+        inputModalities: ["text"],
+        supportedReasoningEfforts: ["medium"],
+      },
+      {
+        id: "invalid",
+        model: "",
+        displayName: "Invalid",
+        description: "",
+        isDefault: false,
+        inputModalities: [],
+        supportedReasoningEfforts: [],
+      },
+    ]);
+
+    assert.equal(initial.length, 2);
+    const full = database.getModelByRef(CODEX_PROVIDER_ID, "gpt-5-codex");
+    assert.equal(full?.source, "builtin");
+    assert.equal(full?.supportsImages, true);
+    assert.equal(full?.supportsTools, false);
+    assert.equal(full?.supportsReasoningEffort, true);
+    assert.equal(full?.inputPricePerM, 0);
+    assert.equal(full?.outputPricePerM, 0);
+    assert.equal(
+      database.getModelByRef(CODEX_PROVIDER_ID, "codex-mini-latest")?.name,
+      "Codex Mini Updated"
+    );
+
+    const disabled = database.saveModel({ ...full!, enabled: false });
+    const refreshed = database.syncCodexModels([
+      {
+        id: "server-a-new",
+        model: "gpt-5-codex",
+        displayName: "GPT-5.1 Codex",
+        description: "Refreshed metadata",
+        isDefault: true,
+        inputModalities: ["text"],
+        supportedReasoningEfforts: [],
+      },
+    ]);
+
+    assert.equal(refreshed.length, 1);
+    assert.equal(refreshed[0]?.id, disabled.id);
+    assert.equal(refreshed[0]?.enabled, false);
+    assert.equal(refreshed[0]?.name, "GPT-5.1 Codex");
+    assert.equal(refreshed[0]?.supportsImages, false);
+    assert.equal(refreshed[0]?.supportsReasoningEffort, false);
+    assert.equal(
+      database.getModelByRef(CODEX_PROVIDER_ID, "codex-mini-latest"),
+      null
+    );
+
+    assert.throws(() => database.syncCodexModels([]), /did not return any/);
+    assert.equal(database.listModels(CODEX_PROVIDER_ID).length, 1);
+  });
+});
+
+test("persists Codex thread continuity and deletes it with its chat", async () => {
+  await withDatabase((database) => {
+    const first = database.saveCodexChatThread({
+      chatId: "chat-1",
+      threadId: "thread-1",
+      lastUserMessageId: "user-1",
+    });
+    assert.equal(first.chatId, "chat-1");
+    assert.equal(first.threadId, "thread-1");
+    assert.equal(first.lastUserMessageId, "user-1");
+    assert.deepEqual(database.getCodexChatThread("chat-1"), first);
+
+    const updated = database.saveCodexChatThread({
+      chatId: "chat-1",
+      threadId: "thread-2",
+      lastUserMessageId: "user-2",
+    });
+    assert.equal(updated.threadId, "thread-2");
+    assert.equal(updated.lastUserMessageId, "user-2");
+    assert.equal(updated.createdAt, first.createdAt);
+    assert.ok(updated.updatedAt >= first.updatedAt);
+
+    const sanitized = database.saveCodexChatThread({
+      chatId: "chat-1",
+      threadId: "thread-2",
+      lastUserMessageId: "bad\nmessage-id",
+    });
+    assert.equal(sanitized.lastUserMessageId, null);
+    assert.throws(
+      () =>
+        database.saveCodexChatThread({
+          chatId: "bad/chat",
+          threadId: "thread-3",
+          lastUserMessageId: null,
+        }),
+      /Invalid chat id/
+    );
+    assert.throws(
+      () =>
+        database.saveCodexChatThread({
+          chatId: "chat-2",
+          threadId: "bad\nthread",
+          lastUserMessageId: null,
+        }),
+      /Invalid Codex thread id/
+    );
+
+    database.saveChats([{ ...chat, projectId: null }]);
+    database.deleteChat(chat.id);
+    assert.equal(database.getCodexChatThread(chat.id), null);
+  });
+});
+
+test("clears all Codex thread mappings on account logout support path", async () => {
+  await withDatabase((database) => {
+    database.saveCodexChatThread({
+      chatId: "chat-a",
+      threadId: "thread-a",
+      lastUserMessageId: "user-a",
+    });
+    database.saveCodexChatThread({
+      chatId: "chat-b",
+      threadId: "thread-b",
+      lastUserMessageId: "user-b",
+    });
+    database.clearCodexChatThreads();
+    assert.equal(database.getCodexChatThread("chat-a"), null);
+    assert.equal(database.getCodexChatThread("chat-b"), null);
+  });
+});
+
+test("migrates a version-2 database to the Codex provider and thread schema", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "nimruz-db-v2-"));
+  const databasePath = path.join(directory, "test.sqlite3");
+  let database = new AppDatabase(databasePath);
+  try {
+    database.database.exec(`
+      DELETE FROM provider_models WHERE provider_id = 'codex';
+      DELETE FROM providers WHERE id = 'codex';
+      DROP TABLE codex_chat_threads;
+      PRAGMA user_version = 2;
+    `);
+    database.close();
+
+    database = new AppDatabase(databasePath);
+    assert.equal(database.getProvider(CODEX_PROVIDER_ID)?.kind, "codex");
+    const mapping = database.saveCodexChatThread({
+      chatId: "migrated-chat",
+      threadId: "migrated-thread",
+      lastUserMessageId: "migrated-user",
+    });
+    assert.equal(mapping.threadId, "migrated-thread");
+    const version = database.database.prepare("PRAGMA user_version").get();
+    assert.equal(version?.user_version, 3);
+  } finally {
+    database.close();
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("disabling OpenRouter removes its models from picker groups", async () => {

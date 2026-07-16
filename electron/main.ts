@@ -5,7 +5,12 @@ import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CredentialService } from "./credentials";
+import { CodexService } from "./codex/service";
 import { registerIpcHandlers } from "./ipc";
+import {
+  isSafeExternalHttpUrl,
+  isTrustedRendererUrl,
+} from "./renderer-security";
 import { startServer } from "./server";
 import { AppDatabase } from "./storage/database";
 import { attachWindowStateEvents } from "./window-controls";
@@ -43,6 +48,7 @@ function resolveAppIcon(): Electron.NativeImage | undefined {
 let mainWindow: BrowserWindow | null = null;
 let localServer: http.Server | null = null;
 let database: AppDatabase | null = null;
+let codex: CodexService | null = null;
 let rendererUrl = "";
 
 async function createWindow() {
@@ -74,11 +80,23 @@ async function createWindow() {
 
   attachWindowStateEvents(mainWindow);
 
+  const openExternalLink = (url: string) => {
+    if (!isSafeExternalHttpUrl(url)) return;
+    void shell.openExternal(url).catch(() => undefined);
+  };
+
+  // Never give a navigated third-party page access to the preload bridge.
+  const guardNavigation = (event: Electron.Event, url: string) => {
+    if (isTrustedRendererUrl(url, rendererUrl)) return;
+    event.preventDefault();
+    openExternalLink(url);
+  };
+  mainWindow.webContents.on("will-navigate", guardNavigation);
+  mainWindow.webContents.on("will-redirect", guardNavigation);
+
   // Open external links in the user's browser, not inside the app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("http://") || url.startsWith("https://")) {
-      shell.openExternal(url);
-    }
+    openExternalLink(url);
     return { action: "deny" };
   });
 
@@ -98,13 +116,21 @@ app.whenReady().then(async () => {
     path.join(app.getPath("userData"), DATABASE_FILE)
   );
   const credentials = new CredentialService(database);
+  codex = new CodexService({
+    database,
+    codexHome: path.join(app.getPath("userData"), "codex"),
+    workspace: path.join(app.getPath("userData"), "codex-workspace"),
+    clientVersion: app.getVersion(),
+  });
   const sessionToken = randomBytes(32).toString("base64url");
 
   registerIpcHandlers({
     database,
     credentials,
+    codex,
     sessionToken,
     getMainWindow: () => mainWindow,
+    getRendererUrl: () => rendererUrl,
   });
 
   if (isDev && RENDERER_DEV_URL) {
@@ -114,12 +140,16 @@ app.whenReady().then(async () => {
       resolveChatModel: (providerId, modelId) => {
         const resolved = database?.resolveChatModel(providerId, modelId);
         if (!resolved) return null;
-        const auth = credentials.resolveProviderAuth(resolved.provider);
+        const auth =
+          resolved.provider.kind === "codex"
+            ? { apiKey: null }
+            : credentials.resolveProviderAuth(resolved.provider);
         return {
           ...resolved,
           apiKey: auth.apiKey,
         };
       },
+      codex,
       allowedOrigins: [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -135,12 +165,16 @@ app.whenReady().then(async () => {
       resolveChatModel: (providerId, modelId) => {
         const resolved = database?.resolveChatModel(providerId, modelId);
         if (!resolved) return null;
-        const auth = credentials.resolveProviderAuth(resolved.provider);
+        const auth =
+          resolved.provider.kind === "codex"
+            ? { apiKey: null }
+            : credentials.resolveProviderAuth(resolved.provider);
         return {
           ...resolved,
           apiKey: auth.apiKey,
         };
       },
+      codex,
     });
     localServer = result.server;
     rendererUrl = `http://127.0.0.1:${result.port}/`;
@@ -156,10 +190,12 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+  codex?.dispose();
   localServer?.close();
   database?.close();
   localServer = null;
   database = null;
+  codex = null;
 });
 
 app.on("window-all-closed", () => {

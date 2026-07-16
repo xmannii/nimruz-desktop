@@ -13,11 +13,12 @@ export function getMemoryToolsPrompt() {
 
 export function buildSystemInstructions(
   personalization?: unknown,
-  memories?: unknown
+  memories?: unknown,
+  options?: { includeMemoryTools?: boolean }
 ) {
   const sections = [
     getBaseSystemPrompt(),
-    getMemoryToolsPrompt(),
+    options?.includeMemoryTools === false ? "" : getMemoryToolsPrompt(),
     buildPersonalizationAppendix(personalization),
     buildMemoriesAppendix(memories),
   ].filter(Boolean);

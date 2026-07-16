@@ -14,8 +14,14 @@ import {
 } from "@/components/ui/input-group";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import type { ProviderModelRef } from "@/lib/models/catalog";
-import type { ReasoningEffort } from "@/lib/models/reasoning";
+import {
+  CODEX_PROVIDER_ID,
+  type ProviderModelRef,
+} from "@/lib/models/catalog";
+import {
+  CODEX_REASONING_EFFORT_LEVELS,
+  type ReasoningEffort,
+} from "@/lib/models/reasoning";
 import type { ChatStatus } from "ai";
 import { ArrowUpIcon, PlusIcon, SquareIcon } from "lucide-react";
 import {
@@ -65,6 +71,10 @@ export function ChatComposer({
   const modelConfig = resolveModel(model);
   const canAttach = modelConfig?.supportsImages ?? false;
   const showReasoningEffort = modelConfig?.supportsReasoningEffort ?? false;
+  const reasoningEffortLevels =
+    model.providerId === CODEX_PROVIDER_ID
+      ? CODEX_REASONING_EFFORT_LEVELS
+      : undefined;
 
   useEffect(() => {
     if (!text) setIsExpanded(false);
@@ -130,6 +140,7 @@ export function ChatComposer({
         reasoningEffort={reasoningEffort}
         onReasoningEffortChange={onReasoningEffortChange}
         showReasoningEffort={showReasoningEffort}
+        reasoningEffortLevels={reasoningEffortLevels}
         isBusy={isBusy}
         canAttach={canAttach}
         text={text}
@@ -145,6 +156,7 @@ export function ChatComposer({
         reasoningEffort={reasoningEffort}
         onReasoningEffortChange={onReasoningEffortChange}
         showReasoningEffort={showReasoningEffort}
+        reasoningEffortLevels={reasoningEffortLevels}
         isBusy={isBusy}
         canAttach={canAttach}
         isExpanded={centered || isExpanded}
@@ -205,6 +217,7 @@ type ComposerSharedProps = {
   reasoningEffort: ReasoningEffort;
   onReasoningEffortChange: (effort: ReasoningEffort) => void;
   showReasoningEffort: boolean;
+  reasoningEffortLevels?: readonly ReasoningEffort[];
   isBusy: boolean;
   canAttach: boolean;
   text: string;
@@ -219,6 +232,7 @@ function MobileComposer({
   reasoningEffort,
   onReasoningEffortChange,
   showReasoningEffort,
+  reasoningEffortLevels,
   isBusy,
   canAttach,
   text,
@@ -267,6 +281,7 @@ function MobileComposer({
             <ReasoningEffortSlider
               value={reasoningEffort}
               onValueChange={onReasoningEffortChange}
+              levels={reasoningEffortLevels}
               disabled={isBusy}
               compact
             />
@@ -307,6 +322,7 @@ function DesktopComposer({
   reasoningEffort,
   onReasoningEffortChange,
   showReasoningEffort,
+  reasoningEffortLevels,
   isBusy,
   canAttach,
   isExpanded,
@@ -364,6 +380,7 @@ function DesktopComposer({
             <ReasoningEffortSlider
               value={reasoningEffort}
               onValueChange={onReasoningEffortChange}
+              levels={reasoningEffortLevels}
               disabled={isBusy}
             />
           ) : null}

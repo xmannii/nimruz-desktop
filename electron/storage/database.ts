@@ -1,12 +1,13 @@
 import { DatabaseSync } from "node:sqlite";
-import type {
-  LegacyDataSnapshot,
-  LegacyImportResult,
-} from "@/lib/desktop-api";
+import type { LegacyDataSnapshot, LegacyImportResult } from "@/lib/desktop-api";
+import type { CodexChatThread, CodexModelDescriptor } from "@/lib/codex";
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
 import {
+  CODEX_PROVIDER_ID,
+  createBuiltinCodexProvider,
   createBuiltinOpenRouterModels,
   createBuiltinOpenRouterProvider,
+  createCodexModelConfig,
   OPENROUTER_PROVIDER_ID,
   PROVIDER_LIMITS,
   type ModelConfig,
@@ -51,6 +52,15 @@ function validateModelRowId(id: unknown): id is string {
   return typeof id === "string" && /^[\w.:/-]{1,256}$/.test(id);
 }
 
+function validateCodexThreadId(id: unknown): id is string {
+  return (
+    typeof id === "string" &&
+    id.length > 0 &&
+    id.length <= 256 &&
+    !/[\u0000-\u001f]/.test(id)
+  );
+}
+
 function parseMessages(value: unknown): LocalChat["messages"] {
   if (typeof value !== "string") return [];
   try {
@@ -65,7 +75,10 @@ function mapProviderRow(row: Record<string, unknown>): ProviderConfig {
   return {
     id: String(row.id),
     name: String(row.name),
-    kind: row.kind === "openrouter" ? "openrouter" : "openai-compatible",
+    kind:
+      row.kind === "openrouter" || row.kind === "codex"
+        ? row.kind
+        : "openai-compatible",
     baseUrl: String(row.base_url),
     enabled: asBoolean(row.enabled),
     includeUsage: asBoolean(row.include_usage),
@@ -242,25 +255,45 @@ export class AppDatabase {
     } else {
       this.ensureBuiltinCatalog();
     }
+
+    if (currentVersion < 3) {
+      this.transaction(() => {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS codex_chat_threads (
+            chat_id TEXT PRIMARY KEY,
+            thread_id TEXT NOT NULL,
+            last_user_message_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+
+          CREATE UNIQUE INDEX IF NOT EXISTS codex_chat_threads_thread_id_idx
+            ON codex_chat_threads(thread_id);
+
+          PRAGMA user_version = 3;
+        `);
+      });
+    }
   }
 
   private seedBuiltinCatalog() {
     const now = Date.now();
     const provider = createBuiltinOpenRouterProvider(now);
     this.insertProviderRow(provider);
+    this.insertProviderRow(createBuiltinCodexProvider(now + 1));
     for (const model of createBuiltinOpenRouterModels(now)) {
       this.insertModelRow(model);
     }
   }
 
   private ensureBuiltinCatalog() {
-    const existing = this.getProvider(OPENROUTER_PROVIDER_ID);
-    if (!existing) {
-      this.transaction(() => this.seedBuiltinCatalog());
-      return;
-    }
-
     const now = Date.now();
+    if (!this.getProvider(OPENROUTER_PROVIDER_ID)) {
+      this.insertProviderRow(createBuiltinOpenRouterProvider(now));
+    }
+    if (!this.getProvider(CODEX_PROVIDER_ID)) {
+      this.insertProviderRow(createBuiltinCodexProvider(now + 1));
+    }
     for (const model of createBuiltinOpenRouterModels(now)) {
       const row = this.getModelByRowId(model.id);
       if (!row) {
@@ -407,7 +440,12 @@ export class AppDatabase {
 
   deleteChat(id: string): void {
     if (!validateId(id)) throw new Error("Invalid chat id.");
-    this.database.prepare("DELETE FROM chats WHERE id = ?").run(id);
+    this.transaction(() => {
+      this.database
+        .prepare("DELETE FROM codex_chat_threads WHERE chat_id = ?")
+        .run(id);
+      this.database.prepare("DELETE FROM chats WHERE id = ?").run(id);
+    });
   }
 
   loadProjects(): LocalProject[] {
@@ -555,6 +593,116 @@ export class AppDatabase {
       providers: this.listProviders(),
       models: this.listModels(),
     };
+  }
+
+  syncCodexModels(descriptors: CodexModelDescriptor[]): ModelConfig[] {
+    const unique = new Map<string, CodexModelDescriptor>();
+    for (const descriptor of descriptors) {
+      const modelId = descriptor?.model?.trim();
+      if (!modelId || modelId.length > PROVIDER_LIMITS.modelId) continue;
+      if (unique.size >= PROVIDER_LIMITS.maxModelsPerProvider) break;
+      unique.set(modelId, { ...descriptor, model: modelId });
+    }
+
+    if (unique.size === 0) {
+      throw new Error("Codex did not return any available models.");
+    }
+
+    this.transaction(() => {
+      const existing = new Map(
+        this.listModels(CODEX_PROVIDER_ID).map((model) => [model.modelId, model])
+      );
+
+      for (const descriptor of unique.values()) {
+        this.saveModel(
+          createCodexModelConfig(descriptor, {
+            existing: existing.get(descriptor.model) ?? null,
+          })
+        );
+      }
+
+      for (const model of existing.values()) {
+        if (!unique.has(model.modelId)) {
+          this.database
+            .prepare("DELETE FROM provider_models WHERE id = ? AND provider_id = ?")
+            .run(model.id, CODEX_PROVIDER_ID);
+        }
+      }
+
+      this.ensureDefaultModelExists();
+    });
+
+    return this.listModels(CODEX_PROVIDER_ID);
+  }
+
+  getCodexChatThread(chatId: string): CodexChatThread | null {
+    if (!validateId(chatId)) return null;
+    const row = this.database
+      .prepare(
+        `SELECT chat_id, thread_id, last_user_message_id, created_at, updated_at
+           FROM codex_chat_threads
+          WHERE chat_id = ?`
+      )
+      .get(chatId);
+    if (!row || !validateCodexThreadId(row.thread_id)) return null;
+    return {
+      chatId: String(row.chat_id),
+      threadId: String(row.thread_id),
+      lastUserMessageId:
+        typeof row.last_user_message_id === "string"
+          ? row.last_user_message_id
+          : null,
+      createdAt: asNumber(row.created_at),
+      updatedAt: asNumber(row.updated_at),
+    };
+  }
+
+  saveCodexChatThread(input: {
+    chatId: string;
+    threadId: string;
+    lastUserMessageId: string | null;
+  }): CodexChatThread {
+    if (!validateId(input.chatId)) throw new Error("Invalid chat id.");
+    if (!validateCodexThreadId(input.threadId)) {
+      throw new Error("Invalid Codex thread id.");
+    }
+    const lastUserMessageId =
+      typeof input.lastUserMessageId === "string" &&
+      input.lastUserMessageId.length <= 256 &&
+      !/[\u0000-\u001f]/.test(input.lastUserMessageId)
+        ? input.lastUserMessageId
+        : null;
+    const existing = this.getCodexChatThread(input.chatId);
+    const now = Date.now();
+    this.database
+      .prepare(
+        `INSERT INTO codex_chat_threads (
+           chat_id, thread_id, last_user_message_id, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(chat_id) DO UPDATE SET
+           thread_id = excluded.thread_id,
+           last_user_message_id = excluded.last_user_message_id,
+           updated_at = excluded.updated_at`
+      )
+      .run(
+        input.chatId,
+        input.threadId,
+        lastUserMessageId,
+        existing?.createdAt ?? now,
+        now
+      );
+    return this.getCodexChatThread(input.chatId)!;
+  }
+
+  deleteCodexChatThread(chatId: string): void {
+    if (!validateId(chatId)) return;
+    this.database
+      .prepare("DELETE FROM codex_chat_threads WHERE chat_id = ?")
+      .run(chatId);
+  }
+
+  clearCodexChatThreads(): void {
+    this.database.prepare("DELETE FROM codex_chat_threads").run();
   }
 
   listProviders(): ProviderConfig[] {

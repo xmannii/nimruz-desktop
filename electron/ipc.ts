@@ -8,8 +8,10 @@ import {
   PROVIDER_LIMITS,
 } from "@/lib/models/catalog";
 import { CredentialService } from "./credentials";
+import type { CodexService } from "./codex/service";
 import { AppDatabase } from "./storage/database";
 import { registerWindowControlHandlers } from "./window-controls";
+import { isTrustedRendererUrl } from "./renderer-security";
 import {
   validateChatsPayload,
   validateLegacySnapshot,
@@ -21,11 +23,22 @@ import {
   openExternalUrl,
 } from "./updates";
 
-function assertTrustedSender(event: IpcMainInvokeEvent) {
-  const url = event.senderFrame?.url ?? "";
+function assertTrustedSender(
+  event: IpcMainInvokeEvent,
+  options: {
+    getMainWindow: () => import("electron").BrowserWindow | null;
+    getRendererUrl: () => string;
+  }
+) {
+  const window = options.getMainWindow();
+  const frame = event.senderFrame;
   if (
-    !url.startsWith("http://127.0.0.1:") &&
-    !url.startsWith("http://localhost:")
+    !window ||
+    window.isDestroyed() ||
+    event.sender !== window.webContents ||
+    !frame ||
+    frame !== window.webContents.mainFrame ||
+    !isTrustedRendererUrl(frame.url, options.getRendererUrl())
   ) {
     throw new Error("Untrusted IPC sender.");
   }
@@ -34,17 +47,26 @@ function assertTrustedSender(event: IpcMainInvokeEvent) {
 export function registerIpcHandlers(options: {
   database: AppDatabase;
   credentials: CredentialService;
+  codex: CodexService;
   sessionToken: string;
   getMainWindow: () => import("electron").BrowserWindow | null;
+  getRendererUrl: () => string;
 }) {
-  const { database, credentials, sessionToken, getMainWindow } = options;
+  const {
+    database,
+    credentials,
+    codex,
+    sessionToken,
+    getMainWindow,
+    getRendererUrl,
+  } = options;
 
   function handle<TArgs extends unknown[], TResult>(
     channel: string,
     callback: (...args: TArgs) => TResult | Promise<TResult>
   ) {
     ipcMain.handle(channel, (event, ...args: unknown[]) => {
-      assertTrustedSender(event);
+      assertTrustedSender(event, { getMainWindow, getRendererUrl });
       return callback(...(args as TArgs));
     });
   }
@@ -74,6 +96,43 @@ export function registerIpcHandlers(options: {
   handle("credentials:test-openrouter", (key?: string) =>
     credentials.testOpenRouterKey(key)
   );
+
+  handle("codex:status", (refreshToken?: boolean) =>
+    codex.getAccountStatus(refreshToken === true)
+  );
+  handle(
+    "codex:login",
+    async (flow?: "browser" | "device-code") => {
+      const selectedFlow = flow === "device-code" ? "device-code" : "browser";
+      const result = await codex.startLogin(selectedFlow);
+      try {
+        await openExternalUrl(
+          result.type === "browser" ? result.authUrl : result.verificationUrl
+        );
+      } catch (error) {
+        // The app-server login already exists. If the OS cannot open the
+        // browser, cancel it so the renderer is not left with an unreachable
+        // pending flow whose login id it never received.
+        await codex.cancelLogin(result.loginId).catch(() => undefined);
+        throw error;
+      }
+      return result;
+    }
+  );
+  handle("codex:login-cancel", (loginId: string) =>
+    codex.cancelLogin(loginId)
+  );
+  handle("codex:logout", () => codex.logout());
+  handle("codex:sync-models", () => codex.syncModels());
+
+  codex.onStatusChanged(() => {
+    void codex.getAccountStatus().then((status) => {
+      const window = getMainWindow();
+      if (window && !window.isDestroyed()) {
+        window.webContents.send("codex:status-changed", status);
+      }
+    });
+  });
 
   handle("providers:list-catalog", () => database.loadCatalog());
   handle("providers:save-provider", (value: unknown) =>
@@ -194,7 +253,10 @@ export function registerIpcHandlers(options: {
   handle("storage:save-chats", (value: unknown) =>
     database.saveChats(validateChatsPayload(value))
   );
-  handle("storage:delete-chat", (id: string) => database.deleteChat(id));
+  handle("storage:delete-chat", async (id: string) => {
+    await codex.deleteChatThread(id);
+    database.deleteChat(id);
+  });
 
   handle("storage:load-projects", () => database.loadProjects());
   handle("storage:save-project", (value: unknown) =>

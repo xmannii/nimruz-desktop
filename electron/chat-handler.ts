@@ -6,6 +6,8 @@ import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { APP_NAME } from "@/lib/branding";
 import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
+import type { CodexService } from "./codex/service";
+import { handleCodexChatRequest } from "./codex/chat-handler";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
@@ -19,6 +21,7 @@ import {
 } from "ai";
 
 export type ChatRequestBody = {
+  id?: string;
   messages: ChatUIMessage[];
   providerId?: string;
   model?: string;
@@ -66,7 +69,8 @@ export async function handleChatRequest(
   resolveModel: (
     providerId?: string,
     modelId?: string
-  ) => ResolvedChatModel | null
+  ) => ResolvedChatModel | null,
+  options?: { codex?: CodexService | null; signal?: AbortSignal }
 ): Promise<Response> {
   const {
     messages,
@@ -86,6 +90,15 @@ export async function handleChatRequest(
       }),
       { status: 409, headers: { "Content-Type": "application/json" } }
     );
+  }
+
+  if (resolved.provider.kind === "codex") {
+    return handleCodexChatRequest({
+      body,
+      resolved,
+      codex: options?.codex ?? null,
+      signal: options?.signal,
+    });
   }
 
   if (resolved.provider.authRequired && !resolved.apiKey) {

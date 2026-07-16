@@ -6,7 +6,7 @@
 
 > **Experimental software** — Nimruz is early-stage and may contain bugs or rough edges. Please test it, expect occasional issues, and [report problems on GitHub](https://github.com/xmannii/nimruz-desktop/issues) so we can fix them.
 
-Nimruz connects to [OpenRouter](https://openrouter.ai/) (and custom OpenAI-compatible providers) so you can chat with many models from one native app. Chats, projects, memories, and personalization settings are stored locally on your machine.
+Nimruz connects to Codex through your ChatGPT account, [OpenRouter](https://openrouter.ai/), and custom OpenAI-compatible providers so you can chat with multiple models from one native app. Chats, projects, memories, and personalization settings are stored locally on your machine.
 
 ## Download
 
@@ -38,6 +38,7 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 ## Features
 
 - **Streaming chat** with markdown, code blocks, math, Mermaid diagrams, and CJK support
+- **Codex with ChatGPT sign-in** — use the Codex access included with an eligible ChatGPT account; available models are synced from that account
 - **OpenRouter integration** — browse, favorite, and switch models; optional reasoning effort controls
 - **Custom providers** — add OpenAI-compatible endpoints with your own API keys
 - **Projects** — organize conversations by topic or workflow
@@ -66,9 +67,21 @@ pnpm install
 pnpm dev
 ```
 
-On first launch, open **Settings → Models** to add your OpenRouter API key. The key is encrypted through macOS Keychain, Windows DPAPI, or a Linux libsecret/KWallet keyring. On Linux, storage is refused when only Electron's insecure `basic_text` backend is available.
+On first launch, open **Settings → Models**. You can connect a ChatGPT account for Codex, add an OpenRouter API key, or configure another OpenAI-compatible provider. API keys are encrypted through macOS Keychain, Windows DPAPI, or a Linux libsecret/KWallet keyring. On Linux, credential storage is refused when a secure OS backend is unavailable.
 
 No `.env` file is required for normal use — credentials are managed inside the app.
+
+### Use a ChatGPT account with Codex
+
+1. Open **Settings → Models → Codex** and select **Connect ChatGPT**.
+2. Complete the OpenAI sign-in in your browser. A device-code flow is available as a fallback.
+3. Return to Nimruz. The app syncs the Codex models currently available to the signed-in account; select one and start a chat.
+
+Codex availability, model access, credits, and rate limits follow the signed-in account's ChatGPT plan and workspace policy. OpenAI currently documents Codex access across eligible Free, Go, Plus, Pro, Business, Enterprise, and Edu offerings; see [Codex pricing and plan availability](https://learn.chatgpt.com/docs/pricing) for the current details. Business, Enterprise, and Edu accounts also remain subject to their workspace administrator's permissions.
+
+Nimruz uses Codex's supported ChatGPT browser sign-in and experimental app-server interface. Codex owns token refresh and stores the session in the operating-system keyring; Nimruz does not copy the session tokens into SQLite or a plaintext `auth.json` file. See OpenAI's [Codex authentication documentation](https://learn.chatgpt.com/docs/auth) for how ChatGPT sign-in, workspace controls, and credential storage work. Logging out from the Codex card clears the Codex session and Nimruz's local Codex thread mappings.
+
+For local safety, Nimruz starts Codex with a least-privilege permission profile: commands can read only Codex's minimal runtime files and Nimruz's dedicated empty workspace, cannot write there, and have no network access. Shell, web-search, browser, connector, plugin, computer-use, and multi-agent tool surfaces are disabled, and no parent-process environment variables are exposed to model-run commands. This integration exposes Codex as a coding model inside Nimruz; it does **not** convert a ChatGPT subscription into general OpenAI API credit or replace an API key for custom providers. Codex usage is counted under the user's ChatGPT plan.
 
 ### Build a distributable
 
@@ -97,10 +110,11 @@ You can also run the **Release** workflow manually from the Actions tab.
 ```
 Electron main (Node)
 ├─ authenticated local HTTP server
-│  ├─ POST /api/chat  → streamText + OpenRouter
+│  ├─ POST /api/chat  → AI SDK providers or Codex app-server
 │  └─ GET  /*         → static renderer (production only)
 ├─ SQLite database    → chats, projects, memories, personalization
-├─ safeStorage        → encrypted API keys
+├─ safeStorage        → encrypted provider API keys
+├─ Codex app-server   → managed ChatGPT auth, model sync, native threads
 └─ BrowserWindow → sandboxed Vite renderer
 ```
 
@@ -113,7 +127,7 @@ Electron main (Node)
 | --- | --- |
 | Desktop shell | Electron |
 | UI | React 19, TanStack Router, Tailwind CSS 4, shadcn/ui |
-| AI | Vercel AI SDK, OpenRouter provider |
+| AI | Codex app-server, Vercel AI SDK, OpenRouter provider |
 | Storage | better-sqlite3 (via Electron main), OS keychain |
 | Build | Vite, esbuild, electron-builder |
 
@@ -130,7 +144,7 @@ Electron main (Node)
 
 ## Local data
 
-Application data lives in Electron's platform-specific `userData` directory (folder name **Nimruz**) as `nimruz.sqlite3`. Legacy IndexedDB/localStorage data is imported once and kept as a rollback copy. Saved API keys are not portable between machines or OS users.
+Application data lives in Electron's platform-specific `userData` directory (folder name **Nimruz**) as `nimruz.sqlite3`. Codex keeps its app state in a separate `codex/` directory and operates in a dedicated `codex-workspace/`; authentication secrets remain in the OS credential store. Legacy IndexedDB/localStorage data is imported once and kept as a rollback copy. Saved API keys and Codex sessions are not portable between machines or OS users.
 
 ## Relationship to the web app
 

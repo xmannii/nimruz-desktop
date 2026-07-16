@@ -220,7 +220,10 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   function handleOpenSettings() {
     stopCurrentChatRef.current?.();
-    void navigate({ to: "/settings/models" });
+    void navigate({
+      to: "/settings/models",
+      search: { provider: undefined },
+    });
   }
 
   return (

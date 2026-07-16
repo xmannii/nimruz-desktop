@@ -49,7 +49,12 @@ export function ChatView({ chatId }: ChatViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <OpenRouterApiKeyAlert refreshSignal={credentialRefreshSignal} />
+      {resolvedChat ? (
+        <OpenRouterApiKeyAlert
+          refreshSignal={credentialRefreshSignal}
+          providerId={resolvedChat.providerId}
+        />
+      ) : null}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {isHydrated &&
