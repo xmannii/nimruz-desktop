@@ -19,17 +19,7 @@ export async function fetchPage(url: string): Promise<FetchPageResult> {
   const parsed = assertPublicHttpUrl(url);
 
   try {
-    const response = await fetch(parsed.toString(), {
-      method: "GET",
-      redirect: "follow",
-      signal: AbortSignal.timeout(WEB_LIMITS.fetchTimeoutMs),
-      headers: {
-        Accept:
-          "text/html,application/xhtml+xml,text/plain;q=0.9,application/json;q=0.8,*/*;q=0.5",
-        "Accept-Language": "en-US,en;q=0.9,fa;q=0.8",
-        "User-Agent": WEB_USER_AGENT,
-      },
-    });
+    const response = await fetchFollowingValidatedRedirects(parsed);
 
     if (!response.ok) {
       return {
@@ -108,4 +98,44 @@ async function readLimitedBody(
 
 function looksLikeHtml(text: string): boolean {
   return /<\s*(?:!doctype|html|head|body|div|p|article|main)\b/i.test(text);
+}
+
+// Redirects must be followed manually (not via `redirect: "follow"`) so every
+// hop can be re-validated with `assertPublicHttpUrl`. Otherwise a public URL
+// could redirect to a private/internal address (e.g. cloud metadata,
+// localhost) and bypass the SSRF guard entirely.
+async function fetchFollowingValidatedRedirects(
+  initialUrl: URL,
+  maxRedirects = WEB_LIMITS.maxRedirects
+): Promise<Response> {
+  let currentUrl = initialUrl;
+
+  for (let redirectCount = 0; redirectCount <= maxRedirects; redirectCount += 1) {
+    const response = await fetch(currentUrl.toString(), {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(WEB_LIMITS.fetchTimeoutMs),
+      headers: {
+        Accept:
+          "text/html,application/xhtml+xml,text/plain;q=0.9,application/json;q=0.8,*/*;q=0.5",
+        "Accept-Language": "en-US,en;q=0.9,fa;q=0.8",
+        "User-Agent": WEB_USER_AGENT,
+      },
+    });
+
+    const isRedirect = response.status >= 300 && response.status < 400;
+    const location = response.headers.get("location");
+
+    if (!isRedirect || !location) {
+      return response;
+    }
+
+    if (redirectCount === maxRedirects) {
+      throw new Error("Too many redirects.");
+    }
+
+    currentUrl = assertPublicHttpUrl(new URL(location, currentUrl).toString());
+  }
+
+  throw new Error("Too many redirects.");
 }
