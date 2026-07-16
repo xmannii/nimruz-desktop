@@ -11,6 +11,7 @@ import createExpertToolsMd from "@/lib/ai/prompts/create-expert-tools.md";
 import expertToolsMd from "@/lib/ai/prompts/expert-tools.md";
 import skillToolsMd from "@/lib/ai/prompts/skill-tools.md";
 import webToolsMd from "@/lib/ai/prompts/web-tools.md";
+import workspaceToolsMd from "@/lib/ai/prompts/workspace-tools.md";
 
 export function getBaseSystemPrompt() {
   return systemPromptMd.trim();
@@ -36,6 +37,37 @@ export function getWebToolsPrompt() {
   return webToolsMd.trim();
 }
 
+export function getWorkspaceToolsPrompt() {
+  return workspaceToolsMd.trim();
+}
+
+/** Current date appendix in Gregorian (English) and Jalali (Persian). */
+export function buildCurrentDateAppendix(now: Date = new Date()): string {
+  const english = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZoneName: "short",
+  }).format(now);
+
+  const persian = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZoneName: "short",
+  }).format(now);
+
+  const isoDate = now.toISOString().slice(0, 10);
+
+  return [
+    "## Current date",
+    `- Gregorian: ${english} (${isoDate})`,
+    `- Persian (Jalali): ${persian}`,
+  ].join("\n");
+}
+
 export function buildSystemInstructions(
   personalization?: unknown,
   memories?: unknown,
@@ -47,6 +79,7 @@ export function buildSystemInstructions(
 
   const sections = [
     getBaseSystemPrompt(),
+    buildCurrentDateAppendix(),
     getMemoryToolsPrompt(),
     getCreateExpertToolsPrompt(),
     hasExperts ? getExpertToolsPrompt() : "",

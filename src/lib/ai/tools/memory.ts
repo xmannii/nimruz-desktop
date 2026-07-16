@@ -4,7 +4,7 @@ import { z } from "zod";
 export const memoryTools = {
   save_memory: {
     description:
-      "Save a durable fact about the user for future conversations. Use for stable preferences, lasting personal context, ongoing goals, or when the user explicitly asks you to remember something. Write one concise third-person fact in the user's language.",
+      "Save a durable user fact for future chats. Use for stable preferences, lasting context, ongoing goals, or explicit remember requests. One concise third-person fact in the user's language.",
     inputSchema: z.object({
       content: z
         .string()
@@ -19,7 +19,7 @@ export const memoryTools = {
   },
   delete_memory: {
     description:
-      "Delete a previously saved memory by id when it is wrong, outdated, or the user asks to forget it.",
+      "Delete a saved memory by id when wrong, outdated, or the user asks to forget it.",
     inputSchema: z.object({
       id: z.string().describe("The id of the memory to delete"),
     }),

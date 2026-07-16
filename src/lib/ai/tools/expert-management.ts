@@ -4,7 +4,7 @@ import { z } from "zod";
 export const expertManagementTools = {
   create_expert: {
     description:
-      "Create a reusable specialist when the user explicitly asks to create, add, or configure an expert/sub-agent. Do not use merely because a task could benefit from an expert.",
+      "Create a specialist only when the user explicitly asks to create/add/configure an expert. Do not invent experts unprompted.",
     inputSchema: z.object({
       name: z
         .string()
