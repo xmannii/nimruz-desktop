@@ -28,8 +28,6 @@ export function buildSkillsAppendix(
   return [
     "## Available skills",
     "",
-    "These skills are installed and enabled. Use `load_skill` with the skill name when the task matches a skill description. Only name and description are listed here — load the full instructions before following a skill.",
-    "",
     ...lines,
   ].join("\n");
 }

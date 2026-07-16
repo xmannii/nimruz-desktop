@@ -10,6 +10,7 @@ import type { MemoryEntry } from "@/lib/settings/memories";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
+import type { Expert } from "@/lib/settings/experts";
 
 export type CredentialStatus = {
   configured: boolean;
@@ -98,6 +99,8 @@ export type DesktopAPI = {
     ) => Promise<PersonalizationSettings>;
     loadMemories: () => Promise<MemoryEntry[]>;
     saveMemories: (memories: MemoryEntry[]) => Promise<MemoryEntry[]>;
+    loadExperts: () => Promise<Expert[]>;
+    saveExperts: (experts: Expert[]) => Promise<Expert[]>;
     importLegacyData: (
       snapshot: LegacyDataSnapshot
     ) => Promise<LegacyImportResult>;

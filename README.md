@@ -54,7 +54,7 @@ _Add screenshots here after publishing the repository._
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 20 or newer
+- [Node.js](https://nodejs.org/) 22.12.0 or newer
 - [pnpm](https://pnpm.io/) 9 or newer
 
 ### Install and run

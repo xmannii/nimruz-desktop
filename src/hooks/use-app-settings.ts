@@ -14,6 +14,7 @@ import {
   type MemoryEntry,
 } from "@/lib/settings/memories";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { sanitizeExperts, type Expert } from "@/lib/settings/experts";
 
 const PERSONALIZATION_SAVE_DEBOUNCE_MS = 400;
 
@@ -21,6 +22,7 @@ export function useAppSettings() {
   const [personalization, setPersonalization] =
     useState<PersonalizationSettings>(DEFAULT_PERSONALIZATION_SETTINGS);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
+  const [experts, setExperts] = useState<Expert[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
     "idle"
@@ -33,12 +35,17 @@ export function useAppSettings() {
 
     void ensureLegacyMigration()
       .then(() =>
-        Promise.all([loadPersonalizationSettings(), loadMemories()])
+        Promise.all([
+          loadPersonalizationSettings(),
+          loadMemories(),
+          window.desktop.storage.loadExperts(),
+        ])
       )
-      .then(([loadedPersonalization, loadedMemories]) => {
+      .then(([loadedPersonalization, loadedMemories, loadedExperts]) => {
         if (cancelled) return;
         setPersonalization(loadedPersonalization);
         setMemories(loadedMemories);
+        setExperts(loadedExperts);
       })
       .catch((error) => {
         console.error("Failed to load app settings:", error);
@@ -117,13 +124,23 @@ export function useAppSettings() {
     });
   }, []);
 
+  const handleExpertsChange = useCallback((nextExperts: Expert[]) => {
+    const sanitized = sanitizeExperts(nextExperts);
+    setExperts(sanitized);
+    void window.desktop.storage.saveExperts(sanitized).then(setExperts).catch((error) => {
+      console.error("Failed to save experts:", error);
+    });
+  }, []);
+
   return {
     personalization,
     memories,
+    experts,
     isHydrated,
     saveState,
     updatePersonalization,
     handleMemoriesChange,
     handleDeleteMemory,
+    handleExpertsChange,
   };
 }

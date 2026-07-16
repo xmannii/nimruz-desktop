@@ -1,0 +1,178 @@
+import { nanoid } from "nanoid";
+
+export type Expert = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  instructions: string;
+  triggers: string[];
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export const EXPERT_LIMITS = {
+  maxEntries: 30,
+  name: 60,
+  slug: 40,
+  description: 240,
+  instructions: 8_000,
+  triggers: 12,
+  trigger: 80,
+} as const;
+
+export function normalizeExpertSlug(value: unknown): string {
+  return typeof value === "string"
+    ? value
+        .trim()
+        .toLowerCase()
+        .replace(/^[/@]+/, "")
+        .replace(/[^a-z0-9-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .replace(/-{2,}/g, "-")
+        .slice(0, EXPERT_LIMITS.slug)
+    : "";
+}
+function cleanText(value: unknown, max: number) {
+  return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+export function sanitizeExpert(value: unknown): Expert | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<Expert>;
+  const name = cleanText(candidate.name, EXPERT_LIMITS.name);
+  const slug = normalizeExpertSlug(candidate.slug || name);
+  const description = cleanText(candidate.description, EXPERT_LIMITS.description);
+  const instructions = cleanText(candidate.instructions, EXPERT_LIMITS.instructions);
+  if (!name || !slug || !description || !instructions) return null;
+
+  const now = Date.now();
+  const triggers = Array.isArray(candidate.triggers)
+    ? [...new Set(candidate.triggers.map((item) => cleanText(item, EXPERT_LIMITS.trigger)).filter(Boolean))].slice(0, EXPERT_LIMITS.triggers)
+    : [];
+
+  return {
+    id: typeof candidate.id === "string" && /^[\w-]{1,128}$/.test(candidate.id)
+      ? candidate.id
+      : nanoid(),
+    name,
+    slug,
+    description,
+    instructions,
+    triggers,
+    enabled: candidate.enabled !== false,
+    createdAt: Number.isFinite(candidate.createdAt) ? Number(candidate.createdAt) : now,
+    updatedAt: Number.isFinite(candidate.updatedAt) ? Number(candidate.updatedAt) : now,
+  };
+}
+
+export function sanitizeExperts(value: unknown): Expert[] {
+  if (!Array.isArray(value)) return [];
+  const result: Expert[] = [];
+  const ids = new Set<string>();
+  const slugs = new Set<string>();
+  for (const item of value) {
+    const expert = sanitizeExpert(item);
+    if (!expert || ids.has(expert.id) || slugs.has(expert.slug)) continue;
+    ids.add(expert.id);
+    slugs.add(expert.slug);
+    result.push(expert);
+    if (result.length >= EXPERT_LIMITS.maxEntries) break;
+  }
+  return result.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export function upsertExpert(experts: Expert[], value: Partial<Expert>): Expert[] {
+  const existing = experts.find((item) => item.id === value.id);
+  const expert = sanitizeExpert({
+    ...existing,
+    ...value,
+    id: existing?.id ?? value.id ?? nanoid(),
+    createdAt: existing?.createdAt ?? Date.now(),
+    updatedAt: Date.now(),
+  });
+  if (!expert) return experts;
+  return sanitizeExperts([expert, ...experts.filter((item) => item.id !== expert.id && item.slug !== expert.slug)]);
+}
+
+export function findExplicitExpert(experts: Expert[], text: string): Expert | null {
+  const command = text.trim().match(/^[/@]([a-z0-9-]+)(?:\s|$)/i)?.[1]?.toLowerCase();
+  return command ? experts.find((item) => item.enabled && item.slug === command) ?? null : null;
+}
+
+export function resolveSelectedExpert(
+  experts: Expert[],
+  slug?: string | null
+): Expert | null {
+  if (!slug) return null;
+  const normalized = normalizeExpertSlug(slug);
+  if (!normalized) return null;
+  return experts.find((item) => item.enabled && item.slug === normalized) ?? null;
+}
+
+/** Partial slug after leading `/` while the user is still picking a command. */
+export function getExpertSlashQuery(text: string): string | null {
+  const trimmed = text.trimStart();
+  const match = trimmed.match(/^\/([^\s]*)$/i);
+  return match ? match[1].toLowerCase() : null;
+}
+
+export function filterExpertSuggestions(
+  experts: Expert[],
+  query: string | null,
+  limit = 6
+): Expert[] {
+  const enabled = experts.filter((expert) => expert.enabled);
+  if (query === null) return [];
+
+  return enabled
+    .filter(
+      (expert) =>
+        !query ||
+        expert.slug.includes(query) ||
+        expert.name.toLowerCase().includes(query)
+    )
+    .slice(0, limit);
+}
+
+export function expertDelegationToolName(slug: string) {
+  return `expert_${slug.replace(/-/g, "_")}`;
+}
+
+export function buildExpertsAppendix(experts: Expert[] | unknown): string {
+  const enabled = sanitizeExperts(experts).filter((expert) => expert.enabled);
+  if (!enabled.length) return "";
+
+  const lines = enabled.map((expert) => {
+    const toolName = expertDelegationToolName(expert.slug);
+    const triggers = expert.triggers.length
+      ? ` — signals: ${expert.triggers.join(", ")}`
+      : "";
+    return `- \`${toolName}\` (/${expert.slug}): ${expert.description}${triggers}`;
+  });
+
+  return [
+    "## Available experts",
+    "",
+    ...lines,
+  ].join("\n");
+}
+
+export function getExpertValidationErrors(value: Partial<Expert>, experts: Expert[] = []): string[] {
+  const errors: string[] = [];
+  const slug = normalizeExpertSlug(value.slug || value.name);
+  const isNewExpert = !value.id;
+
+  if (isNewExpert && experts.length >= EXPERT_LIMITS.maxEntries) {
+    errors.push(`حداکثر ${EXPERT_LIMITS.maxEntries.toLocaleString("fa-IR")} متخصص ذخیره شده است.`);
+  }
+  if (!value.name?.trim()) errors.push("نام متخصص را وارد کنید.");
+  if (!slug) errors.push("یک دستور انگلیسی معتبر وارد کنید.");
+  if (!value.description?.trim()) errors.push("کار متخصص را کوتاه توضیح دهید.");
+  if (!value.instructions?.trim()) errors.push("روش و سبک کار متخصص را مشخص کنید.");
+  if (slug && experts.some((item) => item.slug === slug && item.id !== value.id)) {
+    errors.push(`دستور /${slug} قبلاً استفاده شده است.`);
+  }
+  return errors;
+}

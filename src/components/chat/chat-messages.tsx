@@ -8,6 +8,7 @@ import {
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { ChatMemoryToolPart } from "@/components/chat/chat-memory-tool-part";
+import { ChatExpertToolPart } from "@/components/chat/chat-expert-tool-part";
 import { ChatSkillToolPart } from "@/components/chat/chat-skill-tool-part";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Marker, MarkerContent, MarkerIcon } from "@/components/ui/marker";
@@ -253,6 +254,18 @@ function AssistantMessageParts({
       ) : null}
 
       {message.parts.map((part, index) => {
+        if (
+          part.type === "tool-create_expert" ||
+          part.type.startsWith("tool-expert_")
+        ) {
+          return (
+            <ChatExpertToolPart
+              key={`${message.id}-${index}`}
+              part={part as { type: string; state: string; input?: { name?: string; slug?: string }; output?: { success?: boolean; slug?: string } }}
+            />
+          );
+        }
+
         if (
           part.type === "tool-save_memory" ||
           part.type === "tool-delete_memory"

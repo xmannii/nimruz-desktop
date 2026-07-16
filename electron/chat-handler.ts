@@ -1,6 +1,9 @@
 import { isReasoningEffort, type ReasoningEffort } from "@/lib/models/reasoning";
-import { memoryTools } from "@/lib/ai/memory-tools";
-import { skillTools } from "@/lib/ai/skill-tools";
+import {
+  buildChatTools,
+  createExpertTools,
+  expertToolName,
+} from "@/lib/ai/tools";
 import { sanitizeMemories } from "@/lib/settings/memories";
 import { buildSystemInstructions } from "@/lib/ai/system-prompt";
 import type { SkillCatalogEntry } from "@/lib/skills/catalog";
@@ -8,6 +11,7 @@ import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { APP_NAME } from "@/lib/branding";
 import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
+import { findExplicitExpert, resolveSelectedExpert, sanitizeExperts } from "@/lib/settings/experts";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
@@ -18,6 +22,7 @@ import {
   streamText,
   toUIMessageStream,
   type LanguageModel,
+  type ToolSet,
 } from "ai";
 
 export type ChatRequestBody = {
@@ -27,6 +32,8 @@ export type ChatRequestBody = {
   reasoningEffort?: ReasoningEffort;
   personalization?: unknown;
   memories?: unknown;
+  experts?: unknown;
+  selectedExpertSlug?: string;
 };
 
 export type ResolvedChatModel = {
@@ -68,37 +75,6 @@ function createLanguageModel(
   return compatible.chatModel(model.modelId);
 }
 
-function createChatTools(skillsRuntime?: SkillsRuntime) {
-  return {
-    ...memoryTools,
-    load_skill: {
-      ...skillTools.load_skill,
-      execute: async ({ name }: { name: string }) => {
-        if (!skillsRuntime) {
-          return {
-            success: false,
-            error: "Skills are not available in this session.",
-          };
-        }
-
-        const content = await skillsRuntime.loadSkillContent(name);
-        if (!content) {
-          return {
-            success: false,
-            error: `Skill "${name}" was not found or is disabled.`,
-          };
-        }
-
-        return {
-          success: true,
-          name,
-          content,
-        };
-      },
-    },
-  };
-}
-
 export async function handleChatRequest(
   body: ChatRequestBody,
   resolveModel: (
@@ -114,6 +90,8 @@ export async function handleChatRequest(
     reasoningEffort,
     personalization,
     memories,
+    experts,
+    selectedExpertSlug,
   } = body;
 
   const resolved = resolveModel(providerId, model);
@@ -156,9 +134,27 @@ export async function handleChatRequest(
       ? reasoningEffort
       : undefined;
 
+  const sanitizedExperts = sanitizeExperts(experts);
+  const enabledExperts = sanitizedExperts.filter((expert) => expert.enabled);
+  const lastUserText = [...messages].reverse().find((message) => message.role === "user")?.parts
+    ?.filter((part): part is Extract<(typeof messages)[number]["parts"][number], { type: "text" }> => part.type === "text")
+    .map((part) => part.text).join("\n") ?? "";
+  const explicitExpert =
+    resolveSelectedExpert(sanitizedExperts, selectedExpertSlug) ??
+    findExplicitExpert(sanitizedExperts, lastUserText);
   const skillsCatalog = skillsRuntime
     ? await skillsRuntime.getSkillsCatalog()
     : [];
+  const hasSkills = skillsCatalog.length > 0;
+  const chatTools = buildChatTools({ skillsRuntime, includeSkills: hasSkills });
+  const availableTools: ToolSet | undefined = resolved.model.supportsTools
+    ? {
+        ...chatTools,
+        ...(enabledExperts.length > 0
+          ? createExpertTools(sanitizedExperts, languageModel)
+          : {}),
+      }
+    : undefined;
 
   const result = streamText({
     model: languageModel,
@@ -166,13 +162,24 @@ export async function handleChatRequest(
     instructions: buildSystemInstructions(
       personalization,
       sanitizeMemories(memories),
-      skillsCatalog
+      sanitizedExperts,
+      skillsCatalog,
     ),
     messages: await convertToModelMessages(messages),
-    ...(resolved.model.supportsTools
+    ...(availableTools
       ? {
-          tools: createChatTools(skillsRuntime),
+          tools: availableTools,
           stopWhen: stepCountIs(8),
+          ...(explicitExpert
+            ? {
+                prepareStep: ({ stepNumber }: { stepNumber: number }) => ({
+                  toolChoice:
+                    stepNumber === 0
+                      ? { type: "tool" as const, toolName: expertToolName(explicitExpert) }
+                      : "auto" as const,
+                }),
+              }
+            : {}),
         }
       : {}),
     experimental_transform: smoothStream({

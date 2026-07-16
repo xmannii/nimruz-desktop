@@ -26,6 +26,7 @@ import {
   sanitizeMemories,
   type MemoryEntry,
 } from "@/lib/settings/memories";
+import { sanitizeExperts, type Expert } from "@/lib/settings/experts";
 import {
   DEFAULT_SKILLS_PREFERENCES,
   sanitizeSkillsPreferences,
@@ -547,6 +548,32 @@ export class AppDatabase {
       }
     });
     return memories;
+  }
+
+  loadExperts(): Expert[] {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("experts");
+    if (typeof row?.value_json !== "string") return [];
+    try {
+      return sanitizeExperts(JSON.parse(row.value_json));
+    } catch {
+      return [];
+    }
+  }
+
+  saveExperts(value: unknown): Expert[] {
+    const experts = sanitizeExperts(value);
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('experts', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(experts), Date.now());
+    return experts;
   }
 
   getCredential(provider: string): CredentialRow | null {

@@ -13,6 +13,7 @@ import {
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BrainIcon,
+  BotIcon,
   CpuIcon,
   InfoIcon,
   PaletteIcon,
@@ -25,6 +26,7 @@ export const SETTINGS_NAV: Array<{
   to:
     | "/settings"
     | "/settings/memories"
+    | "/settings/experts"
     | "/settings/models"
     | "/settings/skills"
     | "/settings/appearance"
@@ -59,6 +61,12 @@ export const SETTINGS_NAV: Array<{
     label: "مهارت‌ها",
     icon: SparklesIcon,
     match: (pathname) => pathname.startsWith("/settings/skills"),
+  },
+  {
+    to: "/settings/experts",
+    label: "متخصص‌ها",
+    icon: BotIcon,
+    match: (pathname) => pathname.startsWith("/settings/experts"),
   },
   {
     to: "/settings/appearance",

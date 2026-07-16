@@ -4,8 +4,11 @@ import {
   buildSkillsAppendix,
   type SkillCatalogEntry,
 } from "@/lib/skills/catalog";
+import { buildExpertsAppendix, sanitizeExperts } from "@/lib/settings/experts";
 import systemPromptMd from "@/lib/ai/prompts/system-prompt.md";
 import memoryToolsMd from "@/lib/ai/prompts/memory-tools.md";
+import createExpertToolsMd from "@/lib/ai/prompts/create-expert-tools.md";
+import expertToolsMd from "@/lib/ai/prompts/expert-tools.md";
 import skillToolsMd from "@/lib/ai/prompts/skill-tools.md";
 
 export function getBaseSystemPrompt() {
@@ -16,6 +19,14 @@ export function getMemoryToolsPrompt() {
   return memoryToolsMd.trim();
 }
 
+export function getCreateExpertToolsPrompt() {
+  return createExpertToolsMd.trim();
+}
+
+export function getExpertToolsPrompt() {
+  return expertToolsMd.trim();
+}
+
 export function getSkillToolsPrompt() {
   return skillToolsMd.trim();
 }
@@ -23,15 +34,22 @@ export function getSkillToolsPrompt() {
 export function buildSystemInstructions(
   personalization?: unknown,
   memories?: unknown,
+  experts?: unknown,
   skills?: SkillCatalogEntry[]
 ) {
+  const hasExperts = sanitizeExperts(experts).some((expert) => expert.enabled);
+  const hasSkills = (skills?.length ?? 0) > 0;
+
   const sections = [
     getBaseSystemPrompt(),
     getMemoryToolsPrompt(),
-    getSkillToolsPrompt(),
+    getCreateExpertToolsPrompt(),
+    hasExperts ? getExpertToolsPrompt() : "",
+    hasExperts ? buildExpertsAppendix(experts) : "",
+    hasSkills ? getSkillToolsPrompt() : "",
+    hasSkills ? buildSkillsAppendix(skills) : "",
     buildPersonalizationAppendix(personalization),
     buildMemoriesAppendix(memories),
-    buildSkillsAppendix(skills),
   ].filter(Boolean);
 
   return sections.join("\n\n");

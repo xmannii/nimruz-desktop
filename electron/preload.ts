@@ -66,6 +66,8 @@ const desktopApi: DesktopAPI = {
     loadMemories: () => ipcRenderer.invoke("storage:load-memories"),
     saveMemories: (memories) =>
       ipcRenderer.invoke("storage:save-memories", memories),
+    loadExperts: () => ipcRenderer.invoke("storage:load-experts"),
+    saveExperts: (experts) => ipcRenderer.invoke("storage:save-experts", experts),
     importLegacyData: (snapshot) =>
       ipcRenderer.invoke("storage:import-legacy", snapshot),
   },
