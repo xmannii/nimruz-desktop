@@ -148,6 +148,9 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("storage:load-personalization"),
     savePersonalization: (settings) =>
       ipcRenderer.invoke("storage:save-personalization", settings),
+    loadAppearance: () => ipcRenderer.invoke("storage:load-appearance"),
+    saveAppearance: (settings) =>
+      ipcRenderer.invoke("storage:save-appearance", settings),
     loadMemories: () => ipcRenderer.invoke("storage:load-memories"),
     saveMemories: (memories) =>
       ipcRenderer.invoke("storage:save-memories", memories),
@@ -165,6 +168,9 @@ const desktopApi: DesktopAPI = {
     update: (name, skill) =>
       ipcRenderer.invoke("skills:update", name, skill),
     delete: (name) => ipcRenderer.invoke("skills:delete", name),
+  },
+  fonts: {
+    list: () => ipcRenderer.invoke("fonts:list"),
   },
   updates: {
     getVersion: () => ipcRenderer.invoke("updates:get-version"),

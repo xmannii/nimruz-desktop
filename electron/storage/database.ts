@@ -18,6 +18,11 @@ import {
   sanitizeProviderConfig,
 } from "@/lib/models/sanitize";
 import {
+  DEFAULT_APPEARANCE_SETTINGS,
+  sanitizeAppearanceSettings,
+  type AppearanceSettings,
+} from "@/lib/settings/appearance";
+import {
   DEFAULT_PERSONALIZATION_SETTINGS,
   sanitizePersonalizationSettings,
   type PersonalizationSettings,
@@ -1200,6 +1205,34 @@ export class AppDatabase {
       .prepare(
         `INSERT INTO settings (key, value_json, updated_at)
          VALUES ('personalization', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(settings), Date.now());
+    return settings;
+  }
+
+  loadAppearance(): AppearanceSettings {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("appearance");
+    if (typeof row?.value_json !== "string") {
+      return DEFAULT_APPEARANCE_SETTINGS;
+    }
+    try {
+      return sanitizeAppearanceSettings(JSON.parse(row.value_json));
+    } catch {
+      return DEFAULT_APPEARANCE_SETTINGS;
+    }
+  }
+
+  saveAppearance(value: unknown): AppearanceSettings {
+    const settings = sanitizeAppearanceSettings(value);
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('appearance', ?, ?)
          ON CONFLICT(key) DO UPDATE SET
            value_json = excluded.value_json,
            updated_at = excluded.updated_at`

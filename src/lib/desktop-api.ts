@@ -7,6 +7,7 @@ import type {
   ProviderTestResult,
 } from "@/lib/models/catalog";
 import type { MemoryEntry } from "@/lib/settings/memories";
+import type { AppearanceSettings } from "@/lib/settings/appearance";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
@@ -204,6 +205,8 @@ export type DesktopAPI = {
     savePersonalization: (
       settings: PersonalizationSettings
     ) => Promise<PersonalizationSettings>;
+    loadAppearance: () => Promise<AppearanceSettings>;
+    saveAppearance: (settings: AppearanceSettings) => Promise<AppearanceSettings>;
     loadMemories: () => Promise<MemoryEntry[]>;
     saveMemories: (memories: MemoryEntry[]) => Promise<MemoryEntry[]>;
     loadExperts: () => Promise<Expert[]>;
@@ -224,6 +227,9 @@ export type DesktopAPI = {
     getVersion: () => Promise<string>;
     check: () => Promise<UpdateCheckResult>;
     openUrl: (url: string) => Promise<boolean>;
+  };
+  fonts: {
+    list: () => Promise<string[]>;
   };
   workspaceEvents: {
     subscribe: (callback: (event: WorkspaceEvent) => void) => () => void;

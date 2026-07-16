@@ -34,14 +34,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import {
   Sidebar,
   SidebarContent,
@@ -73,7 +65,6 @@ import {
   FolderIcon,
   HistoryIcon,
   HomeIcon,
-  MessageSquareIcon,
   MoreHorizontalIcon,
   PencilIcon,
   PinIcon,
@@ -107,56 +98,6 @@ type AppSidebarProps = {
   settingsActive?: boolean;
   memoryCount?: number;
 };
-
-type ChatSectionKey = "today" | "yesterday" | "week" | "older";
-
-const SECTION_LABELS: Record<ChatSectionKey, string> = {
-  today: "امروز",
-  yesterday: "دیروز",
-  week: "۷ روز گذشته",
-  older: "قدیمی‌تر",
-};
-
-const SECTION_ORDER: ChatSectionKey[] = [
-  "today",
-  "yesterday",
-  "week",
-  "older",
-];
-
-function startOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-}
-
-function getChatSection(timestamp: number): ChatSectionKey {
-  const now = new Date();
-  const today = startOfDay(now);
-  const yesterday = today - 24 * 60 * 60 * 1000;
-  const weekAgo = today - 7 * 24 * 60 * 60 * 1000;
-
-  if (timestamp >= today) return "today";
-  if (timestamp >= yesterday) return "yesterday";
-  if (timestamp >= weekAgo) return "week";
-  return "older";
-}
-
-function groupChats(chats: LocalChat[]) {
-  const groups = new Map<ChatSectionKey, LocalChat[]>();
-
-  for (const key of SECTION_ORDER) {
-    groups.set(key, []);
-  }
-
-  for (const chat of chats) {
-    groups.get(getChatSection(chat.updatedAt))?.push(chat);
-  }
-
-  return SECTION_ORDER.map((key) => ({
-    key,
-    label: SECTION_LABELS[key],
-    chats: groups.get(key) ?? [],
-  })).filter((group) => group.chats.length > 0);
-}
 
 function ChatItemMenu({
   chat,
@@ -330,17 +271,13 @@ export function AppSidebar({
         {settingsActive ? null : (
           <SidebarHeader
             dir="rtl"
-            className="gap-1.5 border-b border-sidebar-border/70 px-2.5 pt-3 pb-2.5 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2"
+            className="gap-0.5 border-b border-sidebar-border px-2 pt-2.5 pb-2 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2"
           >
-            <SidebarMenu className="gap-1">
+            <SidebarMenu className="gap-0.5">
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  variant={isIconMode ? "outline" : "default"}
                   tooltip={{ children: "گفتگوی جدید", side: "left" }}
-                  className={cn(
-                    !isIconMode &&
-                      "h-9 bg-sidebar-accent/70 font-medium text-sidebar-accent-foreground hover:bg-sidebar-accent"
-                  )}
+                  className="h-8 text-[13px]"
                   onClick={() => {
                     onNewChat();
                     closeMobileSidebar();
@@ -353,17 +290,13 @@ export function AppSidebar({
 
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  variant={isIconMode ? "outline" : "default"}
                   tooltip={{ children: "جستجوی گفتگوها", side: "left" }}
-                  className={cn(
-                    !isIconMode &&
-                      "h-9 text-sidebar-foreground/75 hover:text-sidebar-foreground"
-                  )}
+                  className="h-8 text-[13px] text-muted-foreground"
                   onClick={() => setHistoryOpen(true)}
                 >
                   {isIconMode ? <HistoryIcon /> : <SearchIcon />}
                   <span>
-                    {isIconMode ? "تاریخچه گفتگوها" : "جستجوی گفتگوها"}
+                    {isIconMode ? "تاریخچه گفتگوها" : "جستجو"}
                   </span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -371,27 +304,27 @@ export function AppSidebar({
           </SidebarHeader>
         )}
 
-        <SidebarContent dir="rtl" className="gap-0 pt-1">
+        <SidebarContent dir="rtl" className="gap-0">
           {settingsActive ? (
             <SettingsSidebarNav memoryCount={memoryCount} />
           ) : !isIconMode ? (
             <div className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <SidebarGroup className="pt-2">
-                <SidebarGroupLabel className="mb-1 h-7 px-2 text-[11px] font-medium tracking-wide text-muted-foreground pe-9">
+              <SidebarGroup className="px-2 pt-3">
+                <SidebarGroupLabel className="mb-0.5 h-6 px-2 text-[11px] font-medium tracking-[0.08em] text-muted-foreground pe-8">
                   پروژه‌ها
                 </SidebarGroupLabel>
                 <SidebarGroupAction
                   type="button"
-                  className="top-2.5 size-7 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                  className="top-3 size-6 rounded-md text-muted-foreground hover:bg-transparent hover:text-foreground"
                   aria-label="ساخت پروژه جدید"
                   title="پروژه جدید"
                   onClick={openCreateWorkspaceDialog}
                 >
-                  <PlusIcon />
+                  <PlusIcon className="size-3.5" />
                 </SidebarGroupAction>
                 <SidebarGroupContent>
                   {workspaces.length > 0 ? (
-                    <SidebarMenu className="gap-0.5">
+                    <SidebarMenu className="gap-0">
                       {workspaces.map((workspace) => {
                         const workspaceChats =
                           chatsByWorkspace.get(workspace.id) ?? [];
@@ -407,21 +340,19 @@ export function AppSidebar({
                               render={
                                 <SidebarMenuButton
                                   title={workspace.description || undefined}
-                                  className="h-9 font-medium"
+                                  className="h-8 text-[13px] text-muted-foreground hover:text-foreground"
                                 />
                               }
                             >
-                              {home ? <HomeIcon /> : <FolderIcon />}
-                              <span className="min-w-0 flex-1 truncate text-start">
+                              {home ? (
+                                <HomeIcon className="size-3.5 opacity-70" />
+                              ) : (
+                                <FolderIcon className="size-3.5 opacity-70" />
+                              )}
+                              <span className="min-w-0 flex-1 truncate text-start font-normal">
                                 {workspace.title}
                               </span>
-                              <Badge
-                                variant="secondary"
-                                className="ms-auto h-5 min-w-5 justify-center rounded-md px-1.5 text-[10px] font-normal text-muted-foreground in-data-[panel-open]:hidden"
-                              >
-                                {workspaceChats.length}
-                              </Badge>
-                              <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground transition-transform in-data-[panel-open]:rotate-180" />
+                              <ChevronDownIcon className="size-3 shrink-0 opacity-50 transition-transform in-data-[panel-open]:rotate-180" />
                             </CollapsibleTrigger>
 
                             <DropdownMenu>
@@ -480,51 +411,47 @@ export function AppSidebar({
                             </DropdownMenu>
 
                             <CollapsibleContent>
-                              <SidebarMenuSub className="mx-0 me-0 ms-3.5 border-s border-sidebar-border/80 px-0 ps-2">
-                                <SidebarMenuSubItem className="group/menu-item">
-                                  <SidebarMenuButton
-                                    size="sm"
-                                    className="h-8 text-muted-foreground"
-                                    onClick={() =>
-                                      handleNewWorkspaceChat(workspace.id)
-                                    }
-                                  >
-                                    <PlusIcon />
-                                    <span>گفتگوی جدید</span>
-                                  </SidebarMenuButton>
-                                </SidebarMenuSubItem>
-                                {workspaceChats.map((chat) => (
-                                  <SidebarMenuSubItem
-                                    key={chat.id}
-                                    className="group/menu-item"
-                                  >
-                                    <SidebarMenuButton
-                                      size="sm"
-                                      isActive={chat.id === activeChatId}
-                                      className={cn(
-                                        "h-8",
-                                        chat.id === activeChatId &&
-                                          "relative font-medium before:absolute before:inset-y-1.5 before:end-0 before:w-0.5 before:rounded-full before:bg-sidebar-foreground"
-                                      )}
-                                      onClick={() =>
-                                        handleSelectChat(chat.id)
-                                      }
-                                    >
-                                      <ChatSidebarTitle
-                                        title={chat.title}
-                                        typingTitle={typingTitles[chat.id]}
-                                      />
-                                    </SidebarMenuButton>
-                                    <ChatItemMenu
-                                      chat={chat}
-                                      onRename={setChatToRename}
-                                      onDelete={setChatToDelete}
-                                      onPin={(item, pinned) =>
-                                        onPinChat(item.id, pinned)
-                                      }
-                                    />
+                              <SidebarMenuSub className="mx-0 me-0 ms-2.5 border-s border-sidebar-border px-0 ps-1.5">
+                                {workspaceChats.length === 0 ? (
+                                  <SidebarMenuSubItem>
+                                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                                      گفتگویی نیست
+                                    </p>
                                   </SidebarMenuSubItem>
-                                ))}
+                                ) : (
+                                  workspaceChats.map((chat) => (
+                                    <SidebarMenuSubItem
+                                      key={chat.id}
+                                      className="group/menu-item"
+                                    >
+                                      <SidebarMenuButton
+                                        size="sm"
+                                        isActive={chat.id === activeChatId}
+                                        className={cn(
+                                          "h-7 text-[13px] font-normal",
+                                          chat.id === activeChatId &&
+                                            "bg-sidebar-accent/80 font-medium text-sidebar-accent-foreground"
+                                        )}
+                                        onClick={() =>
+                                          handleSelectChat(chat.id)
+                                        }
+                                      >
+                                        <ChatSidebarTitle
+                                          title={chat.title}
+                                          typingTitle={typingTitles[chat.id]}
+                                        />
+                                      </SidebarMenuButton>
+                                      <ChatItemMenu
+                                        chat={chat}
+                                        onRename={setChatToRename}
+                                        onDelete={setChatToDelete}
+                                        onPin={(item, pinned) =>
+                                          onPinChat(item.id, pinned)
+                                        }
+                                      />
+                                    </SidebarMenuSubItem>
+                                  ))
+                                )}
                               </SidebarMenuSub>
                             </CollapsibleContent>
                           </Collapsible>
@@ -536,24 +463,24 @@ export function AppSidebar({
               </SidebarGroup>
 
               {pinnedUnassignedChats.length > 0 ? (
-                <SidebarGroup className="pt-1">
-                  <SidebarGroupLabel className="h-7 px-2 text-[11px] font-medium tracking-wide text-muted-foreground">
+                <SidebarGroup className="px-2 pt-2">
+                  <SidebarGroupLabel className="h-6 px-2 text-[11px] font-medium tracking-[0.08em] text-muted-foreground">
                     سنجاق‌شده
                   </SidebarGroupLabel>
                   <SidebarGroupContent>
-                    <SidebarMenu className="gap-0.5">
+                    <SidebarMenu className="gap-0">
                       {pinnedUnassignedChats.map((chat) => (
                         <SidebarMenuItem key={chat.id}>
                           <SidebarMenuButton
                             isActive={chat.id === activeChatId}
                             className={cn(
-                              "h-8",
+                              "h-7 text-[13px] font-normal",
                               chat.id === activeChatId &&
-                                "relative font-medium before:absolute before:inset-y-1.5 before:end-0 before:w-0.5 before:rounded-full before:bg-sidebar-foreground"
+                                "bg-sidebar-accent/80 font-medium text-sidebar-accent-foreground"
                             )}
                             onClick={() => handleSelectChat(chat.id)}
                           >
-                            <PinIcon className="opacity-70" />
+                            <PinIcon className="size-3.5 opacity-50" />
                             <ChatSidebarTitle
                               title={chat.title}
                               typingTitle={typingTitles[chat.id]}
@@ -575,18 +502,12 @@ export function AppSidebar({
               ) : null}
 
               {workspaces.length === 0 && chats.length === 0 ? (
-                <SidebarGroup className="flex-1 justify-center">
-                  <Empty className="border-0 bg-transparent p-4">
-                    <EmptyHeader>
-                      <EmptyMedia variant="icon">
-                        <MessageSquareIcon />
-                      </EmptyMedia>
-                      <EmptyTitle className="text-sm">هنوز گفتگویی نیست</EmptyTitle>
-                      <EmptyDescription className="text-xs">
-                        با یک گفتگوی جدید شروع کنید یا پروژه بسازید.
-                      </EmptyDescription>
-                    </EmptyHeader>
-                  </Empty>
+                <SidebarGroup className="px-4 pt-8">
+                  <p className="text-center text-xs leading-6 text-muted-foreground">
+                    هنوز گفتگویی نیست.
+                    <br />
+                    با گفتگوی جدید شروع کنید.
+                  </p>
                 </SidebarGroup>
               ) : null}
             </div>
@@ -595,31 +516,14 @@ export function AppSidebar({
 
         <SidebarFooter
           dir="rtl"
-          className="gap-1 border-t border-sidebar-border/70 p-2.5 group-data-[collapsible=icon]:p-2"
+          className="gap-0.5 border-t border-sidebar-border p-2 group-data-[collapsible=icon]:p-2"
         >
           <SidebarMenu className="gap-0.5">
-            {!settingsActive && chats.length > 0 ? (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  tooltip={{ children: "حذف همه گفتگوها", side: "left" }}
-                  className="h-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => {
-                    setDeleteAllOpen(true);
-                    closeMobileSidebar();
-                  }}
-                >
-                  <Trash2Icon />
-                  <span className="group-data-[collapsible=icon]:sr-only">
-                    حذف همه گفتگوها
-                  </span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ) : null}
             <SidebarMenuItem>
               {settingsActive ? (
                 <SidebarMenuButton
                   tooltip={{ children: "بازگشت به گفتگو", side: "left" }}
-                  className="h-8"
+                  className="h-8 text-[13px]"
                   onClick={() => {
                     onBackToChat();
                     closeMobileSidebar();
@@ -631,7 +535,7 @@ export function AppSidebar({
               ) : (
                 <SidebarMenuButton
                   tooltip={{ children: "تنظیمات", side: "left" }}
-                  className="h-8"
+                  className="h-8 text-[13px]"
                   onClick={() => {
                     onOpenSettings();
                     closeMobileSidebar();
@@ -642,6 +546,35 @@ export function AppSidebar({
                 </SidebarMenuButton>
               )}
             </SidebarMenuItem>
+            {!settingsActive && chats.length > 0 ? (
+              <SidebarMenuItem>
+                <DropdownMenu>
+                  <DropdownMenuTrigger
+                    render={
+                      <SidebarMenuButton
+                        tooltip={{ children: "بیشتر", side: "left" }}
+                        className="h-8 text-[13px] text-muted-foreground"
+                      />
+                    }
+                  >
+                    <MoreHorizontalIcon />
+                    <span>بیشتر</span>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" dir="rtl">
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => {
+                        setDeleteAllOpen(true);
+                        closeMobileSidebar();
+                      }}
+                    >
+                      <Trash2Icon />
+                      حذف همه گفتگوها
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </SidebarMenuItem>
+            ) : null}
           </SidebarMenu>
         </SidebarFooter>
 

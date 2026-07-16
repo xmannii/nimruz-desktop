@@ -1,8 +1,10 @@
 import { dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
 import { realpathSync, statSync } from "node:fs";
 import { nanoid } from "nanoid";
+import { listInstalledFonts } from "./system-fonts";
 import type { LegacyImportResult } from "@/lib/desktop-api";
 import type { MemoryEntry } from "@/lib/settings/memories";
+import type { AppearanceSettings } from "@/lib/settings/appearance";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
 import type {
   SkillDocument,
@@ -497,6 +499,14 @@ export function registerIpcHandlers(options: {
   handle("storage:save-personalization", (value: unknown) =>
     database.savePersonalization(value)
   );
+  handle(
+    "storage:load-appearance",
+    (): AppearanceSettings => database.loadAppearance()
+  );
+  handle("storage:save-appearance", (value: unknown) =>
+    database.saveAppearance(value)
+  );
+  handle("fonts:list", () => listInstalledFonts());
   handle("storage:load-memories", (): MemoryEntry[] =>
     database.loadMemories()
   );

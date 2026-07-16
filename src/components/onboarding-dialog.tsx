@@ -1,6 +1,7 @@
 "use client";
 
 import { NimruzLogo } from "@/components/logo";
+import { OnboardingAppearanceStep } from "@/components/onboarding-appearance-step";
 import {
   Anthropic,
   DeepSeek,
@@ -23,6 +24,7 @@ import {
   FolderKanbanIcon,
   KeyRoundIcon,
   MessageSquareTextIcon,
+  PaletteIcon,
   SparklesIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -36,6 +38,7 @@ type OnboardingStep = {
   description: string;
   bullets?: string[];
   showProviders?: boolean;
+  showAppearance?: boolean;
 };
 
 const PROVIDER_SHOWCASE: Array<{
@@ -77,6 +80,14 @@ const STEPS: OnboardingStep[] = [
     title: `به ${APP_NAME_FA} خوش آمدید`,
     description:
       "دستیار هوش مصنوعی روی دسکتاپ شما — چت، فضای کاری و ابزارها، همه به‌صورت لوکال.",
+  },
+  {
+    id: "appearance",
+    icon: PaletteIcon,
+    title: "ظاهر دلخواه شما",
+    description:
+      "حالت روشن یا تیره، پالت رنگ و فونت را همین حالا انتخاب کنید. بعداً از تنظیمات هم قابل تغییر است.",
+    showAppearance: true,
   },
   {
     id: "models",
@@ -172,7 +183,10 @@ export function OnboardingDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         dir="rtl"
-        className="sm:max-w-lg"
+        className={cn(
+          "sm:max-w-lg",
+          step.showAppearance && "sm:max-w-xl"
+        )}
         showCloseButton={false}
       >
         <DialogHeader className="gap-4">
@@ -214,7 +228,11 @@ export function OnboardingDialog({
           </div>
         </DialogHeader>
 
-        {step.showProviders || step.bullets?.length ? (
+        {step.showAppearance ? (
+          <div className="max-h-[min(24rem,50vh)] overflow-y-auto rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5">
+            <OnboardingAppearanceStep />
+          </div>
+        ) : step.showProviders || step.bullets?.length ? (
           <div className="space-y-3 rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5">
             {step.showProviders ? (
               <div className="flex flex-wrap items-center justify-center gap-2.5 pb-1">
@@ -249,7 +267,7 @@ export function OnboardingDialog({
           </div>
         ) : (
           <div className="rounded-2xl border border-border/70 bg-muted/25 px-4 py-4 text-sm leading-7 text-muted-foreground">
-            چند دقیقه کافی است تا مدل را وصل کنید، یک فضای کاری بسازید و شروع به
+            چند دقیقه کافی است تا ظاهر را تنظیم کنید، مدل را وصل کنید و شروع به
             گفتگو کنید.
           </div>
         )}
