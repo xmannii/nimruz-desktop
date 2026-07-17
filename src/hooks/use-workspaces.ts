@@ -10,7 +10,7 @@ import {
   DEFAULT_WORKSPACE_TRUST,
   HOME_WORKSPACE_ID,
   isHomeWorkspace,
-  readStoredActiveWorkspaceId,
+  loadStoredActiveWorkspaceId,
   writeStoredActiveWorkspaceId,
   type LocalWorkspace,
   type WorkspaceInput,
@@ -77,7 +77,10 @@ export function useWorkspaces() {
         next = sortWorkspaces(next);
         setWorkspaces(next);
 
-        const active = readStoredActiveWorkspaceId(next.map((workspace) => workspace.id));
+        const active = await loadStoredActiveWorkspaceId(
+          next.map((workspace) => workspace.id)
+        );
+        if (cancelled) return;
         setActiveWorkspaceIdState(active);
         writeStoredActiveWorkspaceId(active);
       })

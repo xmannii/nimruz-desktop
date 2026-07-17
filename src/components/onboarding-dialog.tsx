@@ -157,7 +157,9 @@ export function OnboardingDialog({
   const Icon = step.icon;
 
   function completeAndClose() {
-    markOnboardingCompleted();
+    void markOnboardingCompleted().catch((error) => {
+      console.error("Failed to save onboarding completion:", error);
+    });
     onOpenChange(false);
     setStepIndex(0);
   }

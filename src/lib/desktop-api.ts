@@ -245,6 +245,10 @@ export type DesktopAPI = {
       limit?: number;
     }) => Promise<AgentRun[]>;
     getAgentRun: (runId: string) => Promise<AgentRunSnapshot | null>;
+    loadOnboardingCompleted: () => Promise<boolean>;
+    saveOnboardingCompleted: (completed: boolean) => Promise<void>;
+    loadActiveWorkspaceId: () => Promise<string | null>;
+    saveActiveWorkspaceId: (workspaceId: string) => Promise<string>;
     loadPersonalization: () => Promise<PersonalizationSettings>;
     savePersonalization: (
       settings: PersonalizationSettings

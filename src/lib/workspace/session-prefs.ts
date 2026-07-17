@@ -7,7 +7,12 @@ export function readStoredActiveWorkspaceId(
 ): string {
   if (typeof window === "undefined") return HOME_WORKSPACE_ID;
 
-  const storedId = window.localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+  let storedId: string | null = null;
+  try {
+    storedId = window.localStorage.getItem(ACTIVE_WORKSPACE_KEY);
+  } catch {
+    return HOME_WORKSPACE_ID;
+  }
   if (!storedId) return HOME_WORKSPACE_ID;
 
   if (validWorkspaceIds) {
@@ -18,7 +23,39 @@ export function readStoredActiveWorkspaceId(
   return storedId;
 }
 
+export async function loadStoredActiveWorkspaceId(
+  validWorkspaceIds?: Iterable<string>
+): Promise<string> {
+  const validIds = validWorkspaceIds
+    ? new Set(validWorkspaceIds)
+    : undefined;
+  try {
+    const storedId = await window.desktop.storage.loadActiveWorkspaceId();
+    if (storedId && (!validIds || validIds.has(storedId))) {
+      return storedId;
+    }
+  } catch {
+    // Fall back to the legacy renderer preference.
+  }
+
+  const legacyId = readStoredActiveWorkspaceId(validIds);
+  void window.desktop.storage
+    .saveActiveWorkspaceId(legacyId)
+    .catch(() => undefined);
+  return legacyId;
+}
+
 export function writeStoredActiveWorkspaceId(id: string): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(ACTIVE_WORKSPACE_KEY, id ?? HOME_WORKSPACE_ID);
+  const workspaceId = id ?? HOME_WORKSPACE_ID;
+  try {
+    window.localStorage.setItem(ACTIVE_WORKSPACE_KEY, workspaceId);
+  } catch {
+    // SQLite remains the durable source of truth.
+  }
+  void window.desktop.storage
+    .saveActiveWorkspaceId(workspaceId)
+    .catch((error) => {
+      console.error("Failed to save active workspace:", error);
+    });
 }

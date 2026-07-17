@@ -559,6 +559,18 @@ export function registerIpcHandlers(options: {
     };
   });
 
+  handle("storage:load-onboarding-completed", () =>
+    database.loadOnboardingCompleted()
+  );
+  handle("storage:save-onboarding-completed", (completed: boolean) =>
+    database.saveOnboardingCompleted(completed === true)
+  );
+  handle("storage:load-active-workspace-id", () =>
+    database.loadActiveWorkspaceId()
+  );
+  handle("storage:save-active-workspace-id", (workspaceId: string) =>
+    database.saveActiveWorkspaceId(workspaceId)
+  );
   handle(
     "storage:load-personalization",
     (): PersonalizationSettings => database.loadPersonalization()

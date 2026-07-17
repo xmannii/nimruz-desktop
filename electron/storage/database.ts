@@ -1265,6 +1265,57 @@ export class AppDatabase {
     return typeof row?.workspace_id === "string" ? row.workspace_id : null;
   }
 
+  loadOnboardingCompleted(): boolean {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("onboarding-completed");
+    if (typeof row?.value_json !== "string") return false;
+    try {
+      return JSON.parse(row.value_json) === true;
+    } catch {
+      return false;
+    }
+  }
+
+  saveOnboardingCompleted(completed: boolean): void {
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('onboarding-completed', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(completed), Date.now());
+  }
+
+  loadActiveWorkspaceId(): string | null {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("active-workspace-id");
+    if (typeof row?.value_json !== "string") return null;
+    try {
+      const id = JSON.parse(row.value_json);
+      return validateId(id) && this.getWorkspace(id) ? id : null;
+    } catch {
+      return null;
+    }
+  }
+
+  saveActiveWorkspaceId(id: string): string {
+    const workspaceId = validateId(id) ? id : HOME_WORKSPACE_ID;
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('active-workspace-id', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(workspaceId), Date.now());
+    return workspaceId;
+  }
+
   loadPersonalization(): PersonalizationSettings {
     const row = this.database
       .prepare("SELECT value_json FROM settings WHERE key = ?")

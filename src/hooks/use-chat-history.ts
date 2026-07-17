@@ -17,7 +17,7 @@ import {
 import type { ProviderModelRef } from "@/lib/models/catalog";
 import {
   HOME_WORKSPACE_ID,
-  readStoredActiveWorkspaceId,
+  loadStoredActiveWorkspaceId,
 } from "@/lib/workspace";
 import type { UIMessage } from "ai";
 import { nanoid } from "nanoid";
@@ -144,7 +144,7 @@ export function useChatHistory(
           );
         }
 
-        const activeWorkspaceId = readStoredActiveWorkspaceId(
+        const activeWorkspaceId = await loadStoredActiveWorkspaceId(
           loadedWorkspaces.map((workspace) => workspace.id)
         );
         const { chats: initialChats, activeChatId: initialActiveId } =

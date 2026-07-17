@@ -120,6 +120,9 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   const stopCurrentChatRef = useRef<(() => void) | null>(null);
   const [credentialRefreshSignal, setCredentialRefreshSignal] = useState(0);
+  const [onboardingCompleted, setOnboardingCompleted] = useState<
+    boolean | null
+  >(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [appVersion, setAppVersion] = useState<string | null>(null);
@@ -141,17 +144,30 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   useEffect(() => {
     if (!areSettingsHydrated || !isCatalogHydrated) return;
-    if (!hasCompletedOnboarding()) {
-      setOnboardingOpen(true);
-    }
+    let cancelled = false;
+    void hasCompletedOnboarding().then((completed) => {
+      if (cancelled) return;
+      setOnboardingCompleted(completed);
+      if (!completed) setOnboardingOpen(true);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [areSettingsHydrated, isCatalogHydrated]);
 
   useEffect(() => {
-    if (!areSettingsHydrated || !isCatalogHydrated || !appVersion) return;
+    if (
+      !areSettingsHydrated ||
+      !isCatalogHydrated ||
+      !appVersion ||
+      onboardingCompleted === null
+    ) {
+      return;
+    }
 
     // First install: remember the installed version so onboarding does not
     // hand off into a "what's new" dialog for v1.
-    if (!hasCompletedOnboarding()) {
+    if (!onboardingCompleted) {
       seedLastSeenVersionIfNeeded(appVersion);
       return;
     }
@@ -164,12 +180,18 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     areSettingsHydrated,
     isCatalogHydrated,
     appVersion,
+    onboardingCompleted,
     onboardingOpen,
     whatsNewOpen,
   ]);
 
   const openOnboarding = useCallback(() => {
     setOnboardingOpen(true);
+  }, []);
+
+  const handleOnboardingOpenChange = useCallback((open: boolean) => {
+    setOnboardingOpen(open);
+    if (!open) setOnboardingCompleted(true);
   }, []);
 
   const shellValue = useMemo<AppShellContextValue>(
@@ -311,9 +333,10 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   function handleNewChat() {
     stopCurrentChatRef.current?.();
-    setActiveWorkspaceId(HOME_WORKSPACE_ID);
-    const id = createChat(HOME_WORKSPACE_ID);
-    navigateToChat(id, HOME_WORKSPACE_ID);
+    const workspaceId = activeWorkspaceId;
+    setActiveWorkspaceId(workspaceId);
+    const id = createChat(workspaceId);
+    navigateToChat(id, workspaceId);
   }
 
   function handleNewWorkspaceChat(workspaceId: string) {
@@ -423,7 +446,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
         {onboardingOpen ? (
           <OnboardingDialog
             open
-            onOpenChange={setOnboardingOpen}
+            onOpenChange={handleOnboardingOpenChange}
             needsModelSetup={!hasUsableModel}
             onFinishSetup={handleOpenSettings}
           />

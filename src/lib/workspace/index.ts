@@ -1,6 +1,7 @@
 export * from "./types";
 export {
   ACTIVE_WORKSPACE_KEY,
+  loadStoredActiveWorkspaceId,
   readStoredActiveWorkspaceId,
   writeStoredActiveWorkspaceId,
 } from "./session-prefs";

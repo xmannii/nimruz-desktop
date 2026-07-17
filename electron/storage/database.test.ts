@@ -115,6 +115,23 @@ test("persists chats, projects, settings, memories, and credentials", async () =
   });
 });
 
+test("persists onboarding completion and the active workspace", async () => {
+  await withDatabase((database) => {
+    assert.equal(database.loadOnboardingCompleted(), false);
+    assert.equal(database.loadActiveWorkspaceId(), null);
+
+    database.saveWorkspace(project);
+    database.saveOnboardingCompleted(true);
+    database.saveActiveWorkspaceId(project.id);
+
+    assert.equal(database.loadOnboardingCompleted(), true);
+    assert.equal(database.loadActiveWorkspaceId(), project.id);
+
+    database.deleteWorkspace(project.id);
+    assert.equal(database.loadActiveWorkspaceId(), null);
+  });
+});
+
 test("imports legacy data only once", async () => {
   await withDatabase((database) => {
     const snapshot: LegacyDataSnapshot = {

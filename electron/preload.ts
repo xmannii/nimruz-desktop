@@ -164,6 +164,14 @@ const desktopApi: DesktopAPI = {
     listAgentRuns: (options) =>
       ipcRenderer.invoke("storage:list-agent-runs", options),
     getAgentRun: (runId) => ipcRenderer.invoke("storage:get-agent-run", runId),
+    loadOnboardingCompleted: () =>
+      ipcRenderer.invoke("storage:load-onboarding-completed"),
+    saveOnboardingCompleted: (completed) =>
+      ipcRenderer.invoke("storage:save-onboarding-completed", completed),
+    loadActiveWorkspaceId: () =>
+      ipcRenderer.invoke("storage:load-active-workspace-id"),
+    saveActiveWorkspaceId: (workspaceId) =>
+      ipcRenderer.invoke("storage:save-active-workspace-id", workspaceId),
     loadPersonalization: () =>
       ipcRenderer.invoke("storage:load-personalization"),
     savePersonalization: (settings) =>
