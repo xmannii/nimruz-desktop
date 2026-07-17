@@ -177,7 +177,7 @@ export const FileTreeFolder = ({
     [setPathExpanded, path]
   );
 
-  const handleSelect = useCallback(() => {
+  const handleRowClick = useCallback(() => {
     onSelect?.(path);
   }, [onSelect, path]);
 
@@ -192,7 +192,6 @@ export const FileTreeFolder = ({
         <div
           className={cn("", className)}
           role="treeitem"
-          tabIndex={0}
           {...props}
         >
           <div
@@ -202,7 +201,8 @@ export const FileTreeFolder = ({
             )}
           >
             <CollapsibleTrigger
-              className="flex shrink-0 cursor-pointer items-center border-none bg-transparent p-0"
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-start"
+              onClick={handleRowClick}
               type="button"
             >
               <ChevronRightIcon
@@ -211,12 +211,6 @@ export const FileTreeFolder = ({
                   isExpanded && "rotate-90"
                 )}
               />
-            </CollapsibleTrigger>
-            <button
-              className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 border-none bg-transparent p-0 text-start"
-              onClick={handleSelect}
-              type="button"
-            >
               <FileTreeIcon>
                 {isExpanded ? (
                   <FolderOpenIcon className="size-4 text-sky-500/80" />
@@ -225,7 +219,7 @@ export const FileTreeFolder = ({
                 )}
               </FileTreeIcon>
               <FileTreeName>{name}</FileTreeName>
-            </button>
+            </CollapsibleTrigger>
             {actions}
           </div>
           <CollapsibleContent>
