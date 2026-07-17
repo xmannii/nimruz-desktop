@@ -4,7 +4,7 @@
   "description": "Nimruz — Persian desktop AI workspace agent with Codex",
   "license": "MIT",
   "engines": {
-    "node": ">=22.12.0",
+    "node": ">=22.13.0",
     "pnpm": ">=9"
   },
   "author": "Mani",
@@ -67,6 +67,7 @@
     "motion": "^12.42.2",
     "nanoid": "^6.0.0",
     "next-themes": "^0.4.6",
+    "pdfjs-dist": "^6.1.200",
     "react": "19.2.4",
     "react-day-picker": "^10.0.1",
     "react-dom": "19.2.4",
