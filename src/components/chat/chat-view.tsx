@@ -213,7 +213,12 @@ export function ChatView({ chatId, workspaceId }: ChatViewProps) {
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <OpenRouterApiKeyAlert refreshSignal={credentialRefreshSignal} />
+      {resolvedChat ? (
+        <OpenRouterApiKeyAlert
+          refreshSignal={credentialRefreshSignal}
+          providerId={resolvedChat.providerId}
+        />
+      ) : null}
 
       <div
         ref={containerRef}

@@ -220,7 +220,12 @@ export function ModelPicker({
             variant="ghost"
             size="sm"
             className="w-full justify-start"
-            render={<Link to="/settings/models" />}
+            render={
+              <Link
+                to="/settings/models"
+                search={{ provider: undefined }}
+              />
+            }
             onClick={() => setOpen(false)}
           >
             <Settings2Icon data-icon="inline-start" />

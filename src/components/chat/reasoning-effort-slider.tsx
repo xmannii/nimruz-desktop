@@ -20,6 +20,7 @@ import { useState } from "react";
 type ReasoningEffortSliderProps = {
   value: ReasoningEffort;
   onValueChange: (value: ReasoningEffort) => void;
+  levels?: readonly ReasoningEffort[];
   disabled?: boolean;
   compact?: boolean;
 };
@@ -51,6 +52,7 @@ function EffortIcon({
 export function ReasoningEffortSlider({
   value,
   onValueChange,
+  levels = REASONING_EFFORT_LEVELS,
   disabled = false,
   compact = false,
 }: ReasoningEffortSliderProps) {
@@ -101,8 +103,9 @@ export function ReasoningEffortSlider({
         </div>
 
         <div className="space-y-0.5 p-1.5" dir="rtl">
-          {REASONING_EFFORT_LEVELS.map((level, levelIndex) => {
+          {levels.map((level) => {
             const isSelected = level === value;
+            const levelIndex = getReasoningEffortIndex(level);
 
             return (
               <Button

@@ -9,6 +9,7 @@ Nimruz graduates from a chat client to an **agentic workspace** product.
 ### Highlights
 
 - **Agentic workspaces** — the assistant can work inside linked project folders with filesystem, search, shell, artifact, and task tools under an approval policy.
+- **Codex integration** — connect a ChatGPT subscription and use synchronized Codex models through an isolated, non-interactive runtime that stays separate from workspace tools and files.
 - **Workspace side panel** — files, artifacts, tasks, activity, and settings for the active workspace.
 - **Tool timeline** — connected tool/reasoning steps in chat, with compaction for long exploration runs.
 - **Composer context** — workspace picker, context chips, and `@`-mentions for files/artifacts.

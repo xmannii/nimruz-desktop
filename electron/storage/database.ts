@@ -4,9 +4,13 @@ import type {
   LegacyImportResult,
 } from "@/lib/desktop-api";
 import type { LocalChat } from "@/lib/chat/storage";
+import type { CodexChatThread, CodexModelDescriptor } from "@/lib/codex";
 import {
+  CODEX_PROVIDER_ID,
+  createBuiltinCodexProvider,
   createBuiltinOpenRouterModels,
   createBuiltinOpenRouterProvider,
+  createCodexModelConfig,
   OPENROUTER_PROVIDER_ID,
   PROVIDER_LIMITS,
   type ModelConfig,
@@ -78,6 +82,36 @@ function validateModelRowId(id: unknown): id is string {
   return typeof id === "string" && /^[\w.:/-]{1,256}$/.test(id);
 }
 
+function validateCodexThreadId(id: unknown): id is string {
+  return (
+    typeof id === "string" &&
+    id.length > 0 &&
+    id.length <= 256 &&
+    !/[\u0000-\u001f]/.test(id)
+  );
+}
+
+function hasTableColumn(
+  database: DatabaseSync,
+  table: string,
+  column: string
+) {
+  return database
+    .prepare(`PRAGMA table_info(${table})`)
+    .all()
+    .some((row) => row.name === column);
+}
+
+function hasTable(database: DatabaseSync, table: string) {
+  return Boolean(
+    database
+      .prepare(
+        "SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ?"
+      )
+      .get(table)
+  );
+}
+
 function parseMessages(value: unknown): LocalChat["messages"] {
   if (typeof value !== "string") return [];
   try {
@@ -92,7 +126,10 @@ function mapProviderRow(row: Record<string, unknown>): ProviderConfig {
   return {
     id: String(row.id),
     name: String(row.name),
-    kind: row.kind === "openrouter" ? "openrouter" : "openai-compatible",
+    kind:
+      row.kind === "openrouter" || row.kind === "codex"
+        ? row.kind
+        : "openai-compatible",
     baseUrl: String(row.base_url),
     enabled: asBoolean(row.enabled),
     includeUsage: asBoolean(row.include_usage),
@@ -268,25 +305,47 @@ export class AppDatabase {
       });
     }
 
-    if (currentVersion < 3) {
+    // Schema versions 3 and 4 were assigned independently on the official,
+    // Codex, and agentic-workspace branches. Migrate by inspecting physical
+    // tables and columns, then converge every known lineage on version 6.
+    if (currentVersion < 6) {
       this.transaction(() => {
+        if (!hasTableColumn(this.database, "chats", "pinned")) {
+          this.database.exec(
+            "ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0"
+          );
+        }
+        if (!hasTableColumn(this.database, "chats", "pinned_at")) {
+          this.database.exec("ALTER TABLE chats ADD COLUMN pinned_at INTEGER");
+        }
+
+        if (
+          !hasTable(this.database, "workspaces") &&
+          hasTable(this.database, "projects")
+        ) {
+          this.database.exec("ALTER TABLE projects RENAME TO workspaces");
+        }
+        if (!hasTableColumn(this.database, "workspaces", "instructions")) {
+          this.database.exec(
+            "ALTER TABLE workspaces ADD COLUMN instructions TEXT NOT NULL DEFAULT ''"
+          );
+        }
+        if (!hasTableColumn(this.database, "workspaces", "trust_json")) {
+          this.database.exec(
+            "ALTER TABLE workspaces ADD COLUMN trust_json TEXT NOT NULL DEFAULT '{}'"
+          );
+        }
+
+        if (
+          hasTableColumn(this.database, "chats", "project_id") &&
+          !hasTableColumn(this.database, "chats", "workspace_id")
+        ) {
+          this.database.exec(
+            "ALTER TABLE chats RENAME COLUMN project_id TO workspace_id"
+          );
+        }
+
         this.database.exec(`
-          ALTER TABLE chats ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;
-          ALTER TABLE chats ADD COLUMN pinned_at INTEGER;
-          PRAGMA user_version = 3;
-        `);
-      });
-    }
-
-    if (currentVersion < 4) {
-      this.transaction(() => {
-        this.database.exec(`
-          ALTER TABLE projects RENAME TO workspaces;
-          ALTER TABLE workspaces ADD COLUMN instructions TEXT NOT NULL DEFAULT '';
-          ALTER TABLE workspaces ADD COLUMN trust_json TEXT NOT NULL DEFAULT '{}';
-
-          ALTER TABLE chats RENAME COLUMN project_id TO workspace_id;
-
           DROP INDEX IF EXISTS chats_project_id_idx;
           CREATE INDEX IF NOT EXISTS chats_workspace_id_idx
             ON chats(workspace_id);
@@ -300,6 +359,7 @@ export class AppDatabase {
             kind TEXT NOT NULL,
             path TEXT NOT NULL,
             label TEXT NOT NULL DEFAULT '',
+            is_primary INTEGER NOT NULL DEFAULT 0,
             created_at INTEGER NOT NULL
           );
           CREATE INDEX IF NOT EXISTS workspace_roots_workspace_id_idx
@@ -397,18 +457,25 @@ export class AppDatabase {
           CREATE INDEX IF NOT EXISTS tasks_workspace_id_idx
             ON tasks(workspace_id);
 
-          PRAGMA user_version = 4;
-        `);
-      });
-    }
+          CREATE TABLE IF NOT EXISTS codex_chat_threads (
+            chat_id TEXT PRIMARY KEY,
+            thread_id TEXT NOT NULL,
+            last_user_message_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
 
-    if (currentVersion < 5) {
-      this.transaction(() => {
-        this.database.exec(`
-          ALTER TABLE workspace_roots
-            ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0;
-          PRAGMA user_version = 5;
+          CREATE UNIQUE INDEX IF NOT EXISTS codex_chat_threads_thread_id_idx
+            ON codex_chat_threads(thread_id);
         `);
+
+        if (!hasTableColumn(this.database, "workspace_roots", "is_primary")) {
+          this.database.exec(
+            "ALTER TABLE workspace_roots ADD COLUMN is_primary INTEGER NOT NULL DEFAULT 0"
+          );
+        }
+
+        this.database.exec("PRAGMA user_version = 6");
       });
     }
 
@@ -432,19 +499,20 @@ export class AppDatabase {
     const now = Date.now();
     const provider = createBuiltinOpenRouterProvider(now);
     this.insertProviderRow(provider);
+    this.insertProviderRow(createBuiltinCodexProvider(now + 1));
     for (const model of createBuiltinOpenRouterModels(now)) {
       this.insertModelRow(model);
     }
   }
 
   private ensureBuiltinCatalog() {
-    const existing = this.getProvider(OPENROUTER_PROVIDER_ID);
-    if (!existing) {
-      this.transaction(() => this.seedBuiltinCatalog());
-      return;
-    }
-
     const now = Date.now();
+    if (!this.getProvider(OPENROUTER_PROVIDER_ID)) {
+      this.insertProviderRow(createBuiltinOpenRouterProvider(now));
+    }
+    if (!this.getProvider(CODEX_PROVIDER_ID)) {
+      this.insertProviderRow(createBuiltinCodexProvider(now + 1));
+    }
     for (const model of createBuiltinOpenRouterModels(now)) {
       const row = this.getModelByRowId(model.id);
       if (!row) {
@@ -599,11 +667,19 @@ export class AppDatabase {
 
   deleteChat(id: string): void {
     if (!validateId(id)) throw new Error("Invalid chat id.");
-    this.database.prepare("DELETE FROM chats WHERE id = ?").run(id);
+    this.transaction(() => {
+      this.database
+        .prepare("DELETE FROM codex_chat_threads WHERE chat_id = ?")
+        .run(id);
+      this.database.prepare("DELETE FROM chats WHERE id = ?").run(id);
+    });
   }
 
   deleteAllChats(): void {
-    this.database.prepare("DELETE FROM chats").run();
+    this.transaction(() => {
+      this.database.prepare("DELETE FROM codex_chat_threads").run();
+      this.database.prepare("DELETE FROM chats").run();
+    });
   }
 
   loadWorkspaces(): LocalWorkspace[] {
@@ -1368,6 +1444,139 @@ export class AppDatabase {
       providers: this.listProviders(),
       models: this.listModels(),
     };
+  }
+
+  syncCodexModels(descriptors: CodexModelDescriptor[]): ModelConfig[] {
+    const unique = new Map<string, CodexModelDescriptor>();
+    for (const descriptor of descriptors) {
+      const modelId = descriptor?.model?.trim();
+      if (!modelId || modelId.length > PROVIDER_LIMITS.modelId) continue;
+      if (unique.size >= PROVIDER_LIMITS.maxModelsPerProvider) break;
+      unique.set(modelId, { ...descriptor, model: modelId });
+    }
+
+    if (unique.size === 0) {
+      throw new Error("Codex did not return any available models.");
+    }
+
+    this.transaction(() => {
+      const existing = new Map(
+        this.listModels(CODEX_PROVIDER_ID).map((model) => [model.modelId, model])
+      );
+
+      for (const descriptor of unique.values()) {
+        this.saveModel(
+          createCodexModelConfig(descriptor, {
+            existing: existing.get(descriptor.model) ?? null,
+          })
+        );
+      }
+
+      for (const model of existing.values()) {
+        if (!unique.has(model.modelId)) {
+          this.database
+            .prepare("DELETE FROM provider_models WHERE id = ? AND provider_id = ?")
+            .run(model.id, CODEX_PROVIDER_ID);
+        }
+      }
+
+      this.ensureDefaultModelExists();
+    });
+
+    return this.listModels(CODEX_PROVIDER_ID);
+  }
+
+  getCodexChatThread(chatId: string): CodexChatThread | null {
+    if (!validateId(chatId)) return null;
+    const row = this.database
+      .prepare(
+        `SELECT chat_id, thread_id, last_user_message_id, created_at, updated_at
+           FROM codex_chat_threads
+          WHERE chat_id = ?`
+      )
+      .get(chatId);
+    if (!row || !validateCodexThreadId(row.thread_id)) return null;
+    return {
+      chatId: String(row.chat_id),
+      threadId: String(row.thread_id),
+      lastUserMessageId:
+        typeof row.last_user_message_id === "string"
+          ? row.last_user_message_id
+          : null,
+      createdAt: asNumber(row.created_at),
+      updatedAt: asNumber(row.updated_at),
+    };
+  }
+
+  listCodexChatThreads(): CodexChatThread[] {
+    return this.database
+      .prepare(
+        `SELECT chat_id, thread_id, last_user_message_id, created_at, updated_at
+           FROM codex_chat_threads
+          ORDER BY created_at ASC, chat_id ASC`
+      )
+      .all()
+      .filter(
+        (row) => validateId(row.chat_id) && validateCodexThreadId(row.thread_id)
+      )
+      .map((row) => ({
+        chatId: String(row.chat_id),
+        threadId: String(row.thread_id),
+        lastUserMessageId:
+          typeof row.last_user_message_id === "string"
+            ? row.last_user_message_id
+            : null,
+        createdAt: asNumber(row.created_at),
+        updatedAt: asNumber(row.updated_at),
+      }));
+  }
+
+  saveCodexChatThread(input: {
+    chatId: string;
+    threadId: string;
+    lastUserMessageId: string | null;
+  }): CodexChatThread {
+    if (!validateId(input.chatId)) throw new Error("Invalid chat id.");
+    if (!validateCodexThreadId(input.threadId)) {
+      throw new Error("Invalid Codex thread id.");
+    }
+    const lastUserMessageId =
+      typeof input.lastUserMessageId === "string" &&
+      input.lastUserMessageId.length <= 256 &&
+      !/[\u0000-\u001f]/.test(input.lastUserMessageId)
+        ? input.lastUserMessageId
+        : null;
+    const existing = this.getCodexChatThread(input.chatId);
+    const now = Date.now();
+    this.database
+      .prepare(
+        `INSERT INTO codex_chat_threads (
+           chat_id, thread_id, last_user_message_id, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(chat_id) DO UPDATE SET
+           thread_id = excluded.thread_id,
+           last_user_message_id = excluded.last_user_message_id,
+           updated_at = excluded.updated_at`
+      )
+      .run(
+        input.chatId,
+        input.threadId,
+        lastUserMessageId,
+        existing?.createdAt ?? now,
+        now
+      );
+    return this.getCodexChatThread(input.chatId)!;
+  }
+
+  deleteCodexChatThread(chatId: string): void {
+    if (!validateId(chatId)) return;
+    this.database
+      .prepare("DELETE FROM codex_chat_threads WHERE chat_id = ?")
+      .run(chatId);
+  }
+
+  clearCodexChatThreads(): void {
+    this.database.prepare("DELETE FROM codex_chat_threads").run();
   }
 
   listProviders(): ProviderConfig[] {

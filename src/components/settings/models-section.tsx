@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppShell } from "@/components/app-shell-context";
+import { CodexAccountCard } from "@/components/settings/codex-account-card";
 import { SettingsSection } from "@/components/settings/settings-section";
 import {
   AlertDialog,
@@ -30,8 +31,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
+import type { CodexAccountStatus } from "@/lib/codex";
 import type { CredentialStatus } from "@/lib/desktop-api";
 import {
+  CODEX_PROVIDER_ID,
   OPENROUTER_PROVIDER_ID,
   type ModelConfig,
   type ProviderConfig,
@@ -46,11 +49,12 @@ import {
   RefreshCwIcon,
   RocketIcon,
   ServerIcon,
+  SparklesIcon,
   StarIcon,
   Trash2Icon,
 } from "lucide-react";
 import { nanoid } from "nanoid";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const PROVIDER_PRESETS = [
@@ -116,7 +120,11 @@ function emptyModelDraft(providerId: string): ModelDraft {
   };
 }
 
-export function ModelsSettingsSection() {
+export function ModelsSettingsSection({
+  initialProviderId = OPENROUTER_PROVIDER_ID,
+}: {
+  initialProviderId?: string;
+}) {
   const {
     providers,
     models,
@@ -128,11 +136,14 @@ export function ModelsSettingsSection() {
   } = useAppShell();
 
   const [selectedProviderId, setSelectedProviderId] = useState<string>(
-    OPENROUTER_PROVIDER_ID
+    initialProviderId
   );
+  const appliedInitialProviderId = useRef<string | null>(null);
   const [providerStatuses, setProviderStatuses] = useState<
     Record<string, CredentialStatus>
   >({});
+  const [codexStatus, setCodexStatus] = useState<CodexAccountStatus | null>(null);
+  const [codexStatusLoading, setCodexStatusLoading] = useState(true);
   const [providerSheetOpen, setProviderSheetOpen] = useState(false);
   const [providerDraft, setProviderDraft] = useState<ProviderDraft>(
     emptyProviderDraft()
@@ -160,6 +171,7 @@ export function ModelsSettingsSection() {
   const isCustomProvider = Boolean(
     selectedProvider && !selectedProvider.isBuiltin
   );
+  const isCodexProvider = selectedProvider?.kind === "codex";
 
   const providerModels = useMemo(() => {
     const list = models.filter(
@@ -185,6 +197,16 @@ export function ModelsSettingsSection() {
 
   useEffect(() => {
     if (
+      appliedInitialProviderId.current !== initialProviderId &&
+      providers.some((provider) => provider.id === initialProviderId)
+    ) {
+      appliedInitialProviderId.current = initialProviderId;
+      setSelectedProviderId(initialProviderId);
+    }
+  }, [initialProviderId, providers]);
+
+  useEffect(() => {
+    if (
       selectedProviderId &&
       !providers.some((provider) => provider.id === selectedProviderId) &&
       providers[0]
@@ -201,16 +223,18 @@ export function ModelsSettingsSection() {
     let cancelled = false;
     async function loadStatuses() {
       const entries = await Promise.all(
-        providers.map(async (provider) => {
-          try {
-            const status = await window.desktop.credentials.getStatus(
-              provider.id
-            );
-            return [provider.id, status] as const;
-          } catch {
-            return null;
-          }
-        })
+        providers
+          .filter((provider) => provider.kind !== "codex")
+          .map(async (provider) => {
+            try {
+              const status = await window.desktop.credentials.getStatus(
+                provider.id
+              );
+              return [provider.id, status] as const;
+            } catch {
+              return null;
+            }
+          })
       );
       if (cancelled) return;
       const next: Record<string, CredentialStatus> = {};
@@ -224,6 +248,52 @@ export function ModelsSettingsSection() {
       cancelled = true;
     };
   }, [providers]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const applyStatus = (status: CodexAccountStatus) => {
+      if (cancelled) return;
+      setCodexStatus(status);
+      setCodexStatusLoading(false);
+    };
+
+    const unsubscribe = window.desktop.codex.onStatusChange((status) => {
+      applyStatus(status);
+      if (status.state === "connected") {
+        void refreshCatalog().catch(() => undefined);
+      }
+    });
+
+    void window.desktop.codex
+      .getStatus()
+      .then(async (status) => {
+        applyStatus(status);
+        if (status.state !== "connected" || cancelled) return;
+        try {
+          const result = await window.desktop.codex.syncModels();
+          if (!cancelled) setCatalog(result.catalog);
+        } catch {
+          if (!cancelled) await refreshCatalog().catch(() => undefined);
+        }
+      })
+      .catch((error: unknown) => {
+        applyStatus({
+          state: "unavailable",
+          email: null,
+          planType: null,
+          message:
+            error instanceof Error
+              ? error.message
+              : "بررسی وضعیت Codex ممکن نشد.",
+        });
+      });
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [refreshCatalog, setCatalog]);
 
   function openCreateProvider(preset?: (typeof PROVIDER_PRESETS)[number]) {
     setEditingProviderId(null);
@@ -498,9 +568,11 @@ export function ModelsSettingsSection() {
     <div className="flex flex-col gap-8">
       {!hasUsableModel ? (
         <ModelsGettingStarted
+          codexConnected={codexStatus?.state === "connected"}
           openrouterConfigured={
             providerStatuses[OPENROUTER_PROVIDER_ID]?.configured ?? false
           }
+          onSelectCodex={() => setSelectedProviderId(CODEX_PROVIDER_ID)}
           onSelectOpenRouter={() => setSelectedProviderId(OPENROUTER_PROVIDER_ID)}
           onAddPreset={(preset) => openCreateProvider(preset)}
         />
@@ -508,7 +580,7 @@ export function ModelsSettingsSection() {
 
       <SettingsSection
         title="ارائه‌دهنده‌ها"
-        description="OpenRouter به‌صورت داخلی آماده است. می‌توانید هر ارائه‌دهنده ابری یا محلی با API سازگار با OpenAI (مثل LM Studio، Ollama یا سرویس‌های ابری دیگر) را هم اضافه کنید."
+        description="Codex با اشتراک ChatGPT و OpenRouter به‌صورت داخلی آماده‌اند. می‌توانید هر ارائه‌دهنده ابری یا محلی با API سازگار با OpenAI (مثل LM Studio، Ollama یا سرویس‌های ابری دیگر) را هم اضافه کنید."
         icon={ServerIcon}
       >
         <div className="flex flex-wrap gap-2">
@@ -536,25 +608,29 @@ export function ModelsSettingsSection() {
         <div className="mt-4 flex flex-col gap-2">
           {providers.map((provider) => {
             const status = providerStatuses[provider.id];
+            const isCodex = provider.kind === "codex";
             const count = models.filter(
               (model) => model.providerId === provider.id
             ).length;
             const selected = selectedProvider?.id === provider.id;
 
             return (
-              <button
+              <div
                 key={provider.id}
-                type="button"
-                onClick={() => setSelectedProviderId(provider.id)}
                 className={cn(
-                  "rounded-2xl border px-3.5 py-3 text-right transition-colors",
+                  "flex items-stretch rounded-2xl border transition-colors",
                   selected
                     ? "border-primary/40 bg-primary/5 ring-1 ring-primary/20"
                     : "border-border/70 bg-background hover:bg-muted/40"
                 )}
               >
-                <div className="flex items-start gap-3">
-                  <div className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => setSelectedProviderId(provider.id)}
+                  className="min-w-0 flex-1 rounded-s-2xl px-3.5 py-3 text-right"
+                >
+                  <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-medium">{provider.name}</span>
                       {provider.isBuiltin ? (
@@ -563,7 +639,17 @@ export function ModelsSettingsSection() {
                       {!provider.enabled ? (
                         <Badge variant="outline">غیرفعال</Badge>
                       ) : null}
-                      {status?.configured ? (
+                      {isCodex && codexStatus?.state === "connected" ? (
+                        <Badge variant="secondary">اشتراک متصل</Badge>
+                      ) : isCodex && codexStatus?.state === "unavailable" ? (
+                        <Badge variant="destructive">در دسترس نیست</Badge>
+                      ) : isCodex && codexStatus?.state === "error" ? (
+                        <Badge variant="destructive">نیاز به اصلاح</Badge>
+                      ) : isCodex ? (
+                        <Badge variant="outline">
+                          {codexStatusLoading ? "در حال بررسی" : "نیاز به ورود"}
+                        </Badge>
+                      ) : status?.configured ? (
                         <Badge variant="secondary">کلید دارد</Badge>
                       ) : provider.authRequired ? (
                         <Badge variant="outline">بدون کلید</Badge>
@@ -571,28 +657,29 @@ export function ModelsSettingsSection() {
                         <Badge variant="secondary">بدون احراز هویت</Badge>
                       )}
                     </div>
-                    <p className="mt-1 truncate text-xs text-muted-foreground" dir="ltr">
-                      {provider.baseUrl}
+                    <p
+                      className="mt-1 truncate text-xs text-muted-foreground"
+                      dir={isCodex ? "rtl" : "ltr"}
+                    >
+                      {isCodex
+                        ? "اشتراک ChatGPT · ورود مدیریت‌شده توسط OpenAI"
+                        : provider.baseUrl}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
                       {count.toLocaleString("fa-IR")} مدل
                     </p>
                   </div>
-                  <div
-                    className="flex shrink-0 items-center gap-2"
-                    onClick={(event) => event.stopPropagation()}
-                    onKeyDown={(event) => event.stopPropagation()}
-                  >
-                    <Switch
-                      checked={provider.enabled}
-                      onCheckedChange={(checked) =>
-                        void toggleProviderEnabled(provider, checked)
-                      }
-                      aria-label={`فعال‌سازی ${provider.name}`}
-                    />
-                  </div>
+                </button>
+                <div className="flex shrink-0 items-center px-3.5 py-3">
+                  <Switch
+                    checked={provider.enabled}
+                    onCheckedChange={(checked) =>
+                      void toggleProviderEnabled(provider, checked)
+                    }
+                    aria-label={`فعال‌سازی ${provider.name}`}
+                  />
                 </div>
-              </button>
+              </div>
             );
           })}
         </div>
@@ -602,36 +689,67 @@ export function ModelsSettingsSection() {
         <SettingsSection
           title={`مدل‌های ${selectedProvider.name}`}
           description={
-            selectedProvider.isBuiltin
-              ? "مدل‌های پیش‌فرض آماده‌اند. کلید OpenRouter را وارد کنید، مدل‌ها را فعال کنید و در صورت نیاز شناسه مدل را دستی اضافه کنید."
-              : "مدل‌ها را از API وارد کنید یا دستی اضافه کنید، سپس مدل‌های موردنظر را فعال کنید (حداکثر ۲۰۰ مدل). فقط مدل‌های گفتگو (chat completions) وارد می‌شوند."
+            isCodexProvider
+              ? "پس از اتصال حساب ChatGPT، مدل‌های مجاز برای طرح و فضای کاری شما مستقیماً از Codex همگام می‌شوند. مدل‌ها را اینجا فعال کنید یا مدل پیش‌فرض را تغییر دهید."
+              : selectedProvider.isBuiltin
+                ? "مدل‌های پیش‌فرض آماده‌اند. کلید OpenRouter را وارد کنید، مدل‌ها را فعال کنید و در صورت نیاز شناسه مدل را دستی اضافه کنید."
+                : "مدل‌ها را از API وارد کنید یا دستی اضافه کنید، سپس مدل‌های موردنظر را فعال کنید (حداکثر ۲۰۰ مدل). فقط مدل‌های گفتگو (chat completions) وارد می‌شوند."
           }
           icon={CpuIcon}
         >
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" onClick={openCreateModel}>
-              <PlusIcon data-icon="inline-start" />
-              افزودن مدل
-            </Button>
-            {isCustomProvider ? (
-              <>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={busy}
-                  onClick={() => void discoverAndImport(selectedProvider)}
-                >
-                  {busy ? (
-                    <Loader2Icon
-                      className="animate-spin"
-                      data-icon="inline-start"
-                    />
-                  ) : (
-                    <RefreshCwIcon data-icon="inline-start" />
-                  )}
-                  دریافت از /models
-                </Button>
+          {!isCodexProvider ? (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" onClick={openCreateModel}>
+                <PlusIcon data-icon="inline-start" />
+                افزودن مدل
+              </Button>
+              {isCustomProvider ? (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void discoverAndImport(selectedProvider)}
+                  >
+                    {busy ? (
+                      <Loader2Icon
+                        className="animate-spin"
+                        data-icon="inline-start"
+                      />
+                    ) : (
+                      <RefreshCwIcon data-icon="inline-start" />
+                    )}
+                    دریافت از /models
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void testProvider(selectedProvider)}
+                  >
+                    آزمون اتصال
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openEditProvider(selectedProvider)}
+                  >
+                    ویرایش ارائه‌دهنده
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setProviderToDelete(selectedProvider)}
+                  >
+                    <Trash2Icon data-icon="inline-start" />
+                    حذف
+                  </Button>
+                </>
+              ) : (
                 <Button
                   type="button"
                   size="sm"
@@ -641,46 +759,19 @@ export function ModelsSettingsSection() {
                 >
                   آزمون اتصال
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  onClick={() => openEditProvider(selectedProvider)}
-                >
-                  ویرایش ارائه‌دهنده
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setProviderToDelete(selectedProvider)}
-                >
-                  <Trash2Icon data-icon="inline-start" />
-                  حذف
-                </Button>
-              </>
-            ) : (
+              )}
               <Button
                 type="button"
                 size="sm"
-                variant="outline"
-                disabled={busy}
-                onClick={() => void testProvider(selectedProvider)}
+                variant="destructive"
+                disabled={busy || deletableProviderModels.length === 0}
+                onClick={() => setRemoveAllModelsOpen(true)}
               >
-                آزمون اتصال
+                <Trash2Icon data-icon="inline-start" />
+                حذف همه مدل‌ها
               </Button>
-            )}
-            <Button
-              type="button"
-              size="sm"
-              variant="destructive"
-              disabled={busy || deletableProviderModels.length === 0}
-              onClick={() => setRemoveAllModelsOpen(true)}
-            >
-              <Trash2Icon data-icon="inline-start" />
-              حذف همه مدل‌ها
-            </Button>
-          </div>
+            </div>
+          ) : null}
 
           {selectedProvider.id === OPENROUTER_PROVIDER_ID ? (
             <OpenRouterKeyField
@@ -705,6 +796,15 @@ export function ModelsSettingsSection() {
             />
           ) : null}
 
+          {isCodexProvider ? (
+            <CodexAccountCard
+              status={codexStatus}
+              loading={codexStatusLoading}
+              onStatusChange={setCodexStatus}
+              onCatalogChange={setCatalog}
+            />
+          ) : null}
+
           {isCustomProvider ? (
             <Input
               className="mt-3"
@@ -718,7 +818,13 @@ export function ModelsSettingsSection() {
           <div className="mt-3 flex flex-col gap-2">
             {providerModels.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
-                {selectedProvider.isBuiltin ? (
+                {isCodexProvider ? (
+                  <>
+                    {codexStatus?.state === "connected"
+                      ? "هنوز مدلی دریافت نشده است. «تازه‌سازی مدل‌ها» را بزنید و اگر مشکل ادامه داشت، دسترسی Codex در طرح یا فضای کاری ChatGPT را بررسی کنید."
+                      : "برای دریافت مدل‌های Codex، ابتدا حساب ChatGPT خود را متصل کنید."}
+                  </>
+                ) : selectedProvider.isBuiltin ? (
                   <>
                     مدلی فعال نیست. کلید OpenRouter را وارد کنید و حداقل یک مدل
                     را روشن کنید؛ یا با «افزودن مدل» شناسه دلخواه OpenRouter را
@@ -746,7 +852,9 @@ export function ModelsSettingsSection() {
                         <Badge variant="secondary">پیش‌فرض</Badge>
                       ) : null}
                       {model.source === "builtin" ? (
-                        <Badge variant="outline">داخلی</Badge>
+                        <Badge variant="outline">
+                          {isCodexProvider ? "همگام‌شده" : "داخلی"}
+                        </Badge>
                       ) : model.source === "discovered" ? (
                         <Badge variant="outline">کشف‌شده</Badge>
                       ) : (
@@ -787,16 +895,18 @@ export function ModelsSettingsSection() {
                       >
                         <StarIcon />
                       </Button>
-                      <Button
-                        type="button"
-                        size="icon-sm"
-                        variant="ghost"
-                        title="ویرایش"
-                        onClick={() => openEditModel(model)}
-                      >
-                        <PencilIcon />
-                      </Button>
-                      {model.source !== "builtin" ? (
+                      {!isCodexProvider ? (
+                        <Button
+                          type="button"
+                          size="icon-sm"
+                          variant="ghost"
+                          title="ویرایش"
+                          onClick={() => openEditModel(model)}
+                        >
+                          <PencilIcon />
+                        </Button>
+                      ) : null}
+                      {!isCodexProvider && model.source !== "builtin" ? (
                         <Button
                           type="button"
                           size="icon-sm"
@@ -1094,11 +1204,15 @@ export function ModelsSettingsSection() {
 }
 
 function ModelsGettingStarted({
+  codexConnected,
   openrouterConfigured,
+  onSelectCodex,
   onSelectOpenRouter,
   onAddPreset,
 }: {
+  codexConnected: boolean;
   openrouterConfigured: boolean;
+  onSelectCodex: () => void;
   onSelectOpenRouter: () => void;
   onAddPreset: (preset: (typeof PROVIDER_PRESETS)[number]) => void;
 }) {
@@ -1114,14 +1228,33 @@ function ModelsGettingStarted({
         <div className="min-w-0 flex-1">
           <h2 className="text-base font-medium text-foreground">شروع سریع</h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            برای شروع گفتگو یک مسیر را انتخاب کنید: OpenRouter، اجرای محلی با
-            LM Studio / Ollama، یا هر سرویس ابری دیگر با API سازگار با OpenAI.
-            سپس حداقل یک مدل را فعال کنید.
+            برای شروع گفتگو یک مسیر را انتخاب کنید: اشتراک ChatGPT با Codex،
+            OpenRouter، اجرای محلی با LM Studio / Ollama، یا هر سرویس ابری دیگر
+            با API سازگار با OpenAI. سپس حداقل یک مدل را فعال کنید.
           </p>
         </div>
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <button
+          type="button"
+          onClick={onSelectCodex}
+          className="rounded-2xl border border-border/70 bg-background p-4 text-right transition-colors hover:border-primary/30 hover:bg-muted/30"
+        >
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <SparklesIcon className="size-4 text-muted-foreground" />
+            Codex (اشتراک ChatGPT)
+          </div>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            {codexConnected
+              ? "حساب متصل است — مدل‌های Codex را تازه‌سازی و فعال کنید."
+              : "با حساب ChatGPT وارد شوید تا مدل‌های مجاز طرح شما همگام شوند."}
+          </p>
+          <p className="mt-2 text-[11px] text-primary">
+            ۱. ورود ChatGPT → ۲. همگام‌سازی مدل
+          </p>
+        </button>
+
         <button
           type="button"
           onClick={onSelectOpenRouter}

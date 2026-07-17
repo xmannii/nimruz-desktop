@@ -11,9 +11,15 @@ import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { APP_NAME } from "@/lib/branding";
 import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
-import { findExplicitExpert, resolveSelectedExpert, sanitizeExperts } from "@/lib/settings/experts";
+import {
+  findExplicitExpert,
+  resolveSelectedExpert,
+  sanitizeExperts,
+} from "@/lib/settings/experts";
 import { generateChatTitleWithModel } from "@/lib/ai/generate-chat-title-model";
 import { fallbackTitleFromMessage } from "@/lib/ai/chat-title";
+import type { CodexService } from "./codex/service";
+import { handleCodexChatRequest } from "./codex/chat-handler";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import {
@@ -28,6 +34,7 @@ import {
 } from "ai";
 
 export type ChatRequestBody = {
+  id?: string;
   messages: ChatUIMessage[];
   providerId?: string;
   model?: string;
@@ -49,9 +56,13 @@ export type SkillsRuntime = {
   loadSkillContent: (name: string) => Promise<string | null>;
 };
 
-function createLanguageModel(
-  resolved: ResolvedChatModel
-): LanguageModel {
+export type ChatRuntimeOptions = {
+  codex?: CodexService | null;
+  signal?: AbortSignal;
+  skillsRuntime?: SkillsRuntime;
+};
+
+function createLanguageModel(resolved: ResolvedChatModel): LanguageModel {
   const { provider, model, apiKey } = resolved;
 
   if (provider.kind === "openrouter") {
@@ -104,7 +115,11 @@ function resolveModelOrError(
     };
   }
 
-  if (resolved.provider.authRequired && !resolved.apiKey) {
+  if (
+    resolved.provider.kind !== "codex" &&
+    resolved.provider.authRequired &&
+    !resolved.apiKey
+  ) {
     return {
       error: new Response(
         JSON.stringify({
@@ -186,7 +201,7 @@ export async function handleChatRequest(
     providerId?: string,
     modelId?: string
   ) => ResolvedChatModel | null,
-  skillsRuntime?: SkillsRuntime
+  options?: ChatRuntimeOptions
 ): Promise<Response> {
   const {
     messages,
@@ -203,6 +218,15 @@ export async function handleChatRequest(
   if ("error" in resolvedResult) return resolvedResult.error;
   const resolved = resolvedResult.resolved;
 
+  if (resolved.provider.kind === "codex") {
+    return handleCodexChatRequest({
+      body,
+      resolved,
+      codex: options?.codex ?? null,
+      signal: options?.signal,
+    });
+  }
+
   const modelResult = createLanguageModelOrError(resolved);
   if ("error" in modelResult) return modelResult.error;
   const languageModel = modelResult.languageModel;
@@ -214,12 +238,24 @@ export async function handleChatRequest(
 
   const sanitizedExperts = sanitizeExperts(experts);
   const enabledExperts = sanitizedExperts.filter((expert) => expert.enabled);
-  const lastUserText = [...messages].reverse().find((message) => message.role === "user")?.parts
-    ?.filter((part): part is Extract<(typeof messages)[number]["parts"][number], { type: "text" }> => part.type === "text")
-    .map((part) => part.text).join("\n") ?? "";
+  const lastUserText =
+    [...messages]
+      .reverse()
+      .find((message) => message.role === "user")
+      ?.parts?.filter(
+        (
+          part
+        ): part is Extract<
+          (typeof messages)[number]["parts"][number],
+          { type: "text" }
+        > => part.type === "text"
+      )
+      .map((part) => part.text)
+      .join("\n") ?? "";
   const explicitExpert =
     resolveSelectedExpert(sanitizedExperts, selectedExpertSlug) ??
     findExplicitExpert(sanitizedExperts, lastUserText);
+  const skillsRuntime = options?.skillsRuntime;
   const skillsCatalog = skillsRuntime
     ? await skillsRuntime.getSkillsCatalog()
     : [];
@@ -236,12 +272,17 @@ export async function handleChatRequest(
 
   const result = streamText({
     model: languageModel,
+    abortSignal: options?.signal,
     ...(selectedReasoningEffort ? { reasoning: selectedReasoningEffort } : {}),
     instructions: buildSystemInstructions(
       personalization,
       sanitizeMemories(memories),
       sanitizedExperts,
       skillsCatalog,
+      {
+        includeMemoryTools: Boolean(availableTools),
+        includeAgentTools: Boolean(availableTools),
+      }
     ),
     messages: await convertToModelMessages(messages),
     ...(availableTools
@@ -253,8 +294,11 @@ export async function handleChatRequest(
                 prepareStep: ({ stepNumber }: { stepNumber: number }) => ({
                   toolChoice:
                     stepNumber === 0
-                      ? { type: "tool" as const, toolName: expertToolName(explicitExpert) }
-                      : "auto" as const,
+                      ? {
+                          type: "tool" as const,
+                          toolName: expertToolName(explicitExpert),
+                        }
+                      : ("auto" as const),
                 }),
               }
             : {}),

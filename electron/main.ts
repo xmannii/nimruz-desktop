@@ -7,7 +7,12 @@ import { fileURLToPath } from "node:url";
 import { WorkspaceFilesStore } from "./agent/workspace-files";
 import { WorkspaceEventBus } from "./agent/events";
 import { CredentialService } from "./credentials";
+import { CodexService } from "./codex/service";
 import { registerIpcHandlers } from "./ipc";
+import {
+  isSafeExternalHttpUrl,
+  isTrustedRendererUrl,
+} from "./renderer-security";
 import { startServer } from "./server";
 import { SkillStore } from "./skills/store";
 import { AppDatabase } from "./storage/database";
@@ -47,6 +52,7 @@ function resolveAppIcon(): Electron.NativeImage | undefined {
 let mainWindow: BrowserWindow | null = null;
 let localServer: http.Server | null = null;
 let database: AppDatabase | null = null;
+let codex: CodexService | null = null;
 let rendererUrl = "";
 
 async function createWindow() {
@@ -78,11 +84,23 @@ async function createWindow() {
 
   attachWindowStateEvents(mainWindow);
 
+  const openExternalLink = (url: string) => {
+    if (!isSafeExternalHttpUrl(url)) return;
+    void shell.openExternal(url).catch(() => undefined);
+  };
+
+  // Never give a navigated third-party page access to the preload bridge.
+  const guardNavigation = (event: Electron.Event, url: string) => {
+    if (isTrustedRendererUrl(url, rendererUrl)) return;
+    event.preventDefault();
+    openExternalLink(url);
+  };
+  mainWindow.webContents.on("will-navigate", guardNavigation);
+  mainWindow.webContents.on("will-redirect", guardNavigation);
+
   // Open external links in the user's browser, not inside the app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("http://") || url.startsWith("https://")) {
-      shell.openExternal(url);
-    }
+    openExternalLink(url);
     return { action: "deny" };
   });
 
@@ -101,6 +119,12 @@ app.whenReady().then(async () => {
   const userDataPath = app.getPath("userData");
   database = new AppDatabase(path.join(userDataPath, DATABASE_FILE));
   const credentials = new CredentialService(database);
+  codex = new CodexService({
+    database,
+    codexHome: path.join(app.getPath("userData"), "codex"),
+    workspace: path.join(app.getPath("userData"), "codex-workspace"),
+    clientVersion: app.getVersion(),
+  });
   const skills = new SkillStore();
   const workspaceEvents = new WorkspaceEventBus(() => mainWindow);
   const workspaceFiles = new WorkspaceFilesStore(
@@ -115,11 +139,13 @@ app.whenReady().then(async () => {
   registerIpcHandlers({
     database,
     credentials,
+    codex,
     skills,
     workspaceFiles,
     workspaceEvents,
     sessionToken,
     getMainWindow: () => mainWindow,
+    getRendererUrl: () => rendererUrl,
   });
 
   const agentDeps = {
@@ -129,12 +155,16 @@ app.whenReady().then(async () => {
     resolveModel: (providerId?: string, modelId?: string) => {
       const resolved = database?.resolveChatModel(providerId, modelId);
       if (!resolved) return null;
-      const auth = credentials.resolveProviderAuth(resolved.provider);
+      const auth =
+        resolved.provider.kind === "codex"
+          ? { apiKey: null }
+          : credentials.resolveProviderAuth(resolved.provider);
       return {
         ...resolved,
         apiKey: auth.apiKey,
       };
     },
+    codex,
     getSkillsCatalog: async () =>
       skills.getEnabledCatalog(database!.loadSkillsPreferences()),
     loadSkillContent: async (name: string) =>
@@ -174,10 +204,12 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+  codex?.dispose();
   localServer?.close();
   database?.close();
   localServer = null;
   database = null;
+  codex = null;
 });
 
 app.on("window-all-closed", () => {
