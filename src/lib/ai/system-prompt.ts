@@ -11,6 +11,8 @@ import createExpertToolsMd from "@/lib/ai/prompts/create-expert-tools.md";
 import expertToolsMd from "@/lib/ai/prompts/expert-tools.md";
 import skillToolsMd from "@/lib/ai/prompts/skill-tools.md";
 import webToolsMd from "@/lib/ai/prompts/web-tools.md";
+import workspaceToolsMd from "@/lib/ai/prompts/workspace-tools.md";
+import spawnSubagentToolsMd from "@/lib/ai/prompts/spawn-subagent-tools.md";
 
 export function getBaseSystemPrompt() {
   return systemPromptMd.trim();
@@ -36,24 +38,67 @@ export function getWebToolsPrompt() {
   return webToolsMd.trim();
 }
 
+export function getWorkspaceToolsPrompt() {
+  return workspaceToolsMd.trim();
+}
+
+export function getSpawnSubagentToolsPrompt() {
+  return spawnSubagentToolsMd.trim();
+}
+
+/** Current date appendix in Gregorian (English) and Jalali (Persian). */
+export function buildCurrentDateAppendix(now: Date = new Date()): string {
+  const english = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZoneName: "short",
+  }).format(now);
+
+  const persian = new Intl.DateTimeFormat("fa-IR-u-ca-persian", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    timeZoneName: "short",
+  }).format(now);
+
+  const isoDate = now.toISOString().slice(0, 10);
+
+  return [
+    "## Current date",
+    `- Gregorian: ${english} (${isoDate})`,
+    `- Persian (Jalali): ${persian}`,
+  ].join("\n");
+}
+
 export function buildSystemInstructions(
   personalization?: unknown,
   memories?: unknown,
   experts?: unknown,
-  skills?: SkillCatalogEntry[]
+  skills?: SkillCatalogEntry[],
+  options?: {
+    includeMemoryTools?: boolean;
+    includeAgentTools?: boolean;
+    includeSubagentTools?: boolean;
+  }
 ) {
   const hasExperts = sanitizeExperts(experts).some((expert) => expert.enabled);
   const hasSkills = (skills?.length ?? 0) > 0;
+  const includeAgentTools = options?.includeAgentTools !== false;
 
   const sections = [
     getBaseSystemPrompt(),
-    getMemoryToolsPrompt(),
-    getCreateExpertToolsPrompt(),
-    hasExperts ? getExpertToolsPrompt() : "",
-    hasExperts ? buildExpertsAppendix(experts) : "",
-    hasSkills ? getSkillToolsPrompt() : "",
-    hasSkills ? buildSkillsAppendix(skills) : "",
-    getWebToolsPrompt(),
+    buildCurrentDateAppendix(),
+    options?.includeMemoryTools === false ? "" : getMemoryToolsPrompt(),
+    includeAgentTools ? getCreateExpertToolsPrompt() : "",
+    includeAgentTools && hasExperts ? getExpertToolsPrompt() : "",
+    includeAgentTools && hasExperts ? buildExpertsAppendix(experts) : "",
+    includeAgentTools && hasSkills ? getSkillToolsPrompt() : "",
+    includeAgentTools && hasSkills ? buildSkillsAppendix(skills) : "",
+    includeAgentTools ? getWebToolsPrompt() : "",
+    options?.includeSubagentTools ? getSpawnSubagentToolsPrompt() : "",
     buildPersonalizationAppendix(personalization),
     buildMemoriesAppendix(memories),
   ].filter(Boolean);

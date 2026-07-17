@@ -1,6 +1,6 @@
 import { getModelById } from "@/lib/models";
 import type { LegacyDataSnapshot } from "@/lib/desktop-api";
-import type { LocalChat, LocalProject } from "@/lib/chat/storage";
+import type { LocalChat } from "@/lib/chat/storage";
 import { sanitizeMemories } from "@/lib/settings/memories";
 import { sanitizePersonalizationSettings } from "@/lib/settings/personalization";
 import { DEFAULT_PROVIDER_ID } from "@/lib/models";
@@ -11,6 +11,10 @@ import {
   normalizeBaseUrl,
 } from "@/lib/models/sanitize";
 import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
+import {
+  sanitizeWorkspace,
+  type LocalWorkspace,
+} from "@/lib/workspace";
 
 const MAX_IPC_PAYLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -26,13 +30,12 @@ function isId(value: unknown): value is string {
 
 function parseChat(value: unknown): LocalChat | null {
   if (!value || typeof value !== "object") return null;
-  const chat = value as Partial<LocalChat>;
+  const chat = value as Partial<LocalChat> & { projectId?: string | null };
   const model = String(chat.model ?? "");
   const providerId = isId(chat.providerId)
     ? chat.providerId
     : DEFAULT_PROVIDER_ID;
 
-  // Accept known builtin catalog models or any non-empty slug (custom providers).
   const modelOk =
     Boolean(getModelById(model)) || isValidModelSlug(model);
 
@@ -46,13 +49,20 @@ function parseChat(value: unknown): LocalChat | null {
   ) {
     return null;
   }
+
+  const workspaceId = isId(chat.workspaceId)
+    ? chat.workspaceId
+    : isId(chat.projectId)
+      ? chat.projectId
+      : null;
+
   return {
     id: chat.id,
     title: chat.title.slice(0, 500),
     providerId,
     model,
     messages: chat.messages,
-    projectId: isId(chat.projectId) ? chat.projectId : null,
+    workspaceId,
     createdAt: Number(chat.createdAt),
     updatedAt: Number(chat.updatedAt),
     titleIsCustom: Boolean(chat.titleIsCustom),
@@ -74,32 +84,19 @@ export function validateChatsPayload(value: unknown): LocalChat[] {
   return chats as LocalChat[];
 }
 
-export function validateProjectPayload(value: unknown): LocalProject {
-  if (!value || typeof value !== "object") {
-    throw new Error("Project is invalid.");
-  }
-  const project = value as Partial<LocalProject>;
-  if (
-    !isId(project.id) ||
-    typeof project.title !== "string" ||
-    typeof project.description !== "string" ||
-    !Number.isFinite(project.createdAt) ||
-    !Number.isFinite(project.updatedAt)
-  ) {
-    throw new Error("Project is invalid.");
-  }
-  return {
-    id: project.id,
-    title: project.title.slice(0, 500),
-    description: project.description.slice(0, 10_000),
-    createdAt: Number(project.createdAt),
-    updatedAt: Number(project.updatedAt),
-  };
+export function validateWorkspacePayload(value: unknown): LocalWorkspace {
+  assertPayloadSize(value);
+  return sanitizeWorkspace(value);
 }
 
-function parseProjects(value: unknown): LocalProject[] {
-  if (!Array.isArray(value)) throw new Error("Projects must be an array.");
-  return value.map(validateProjectPayload);
+/** @deprecated Use validateWorkspacePayload */
+export function validateProjectPayload(value: unknown): LocalWorkspace {
+  return validateWorkspacePayload(value);
+}
+
+function parseWorkspaces(value: unknown): LocalWorkspace[] {
+  if (!Array.isArray(value)) throw new Error("Workspaces must be an array.");
+  return value.map(validateWorkspacePayload);
 }
 
 export function validateLegacySnapshot(value: unknown): LegacyDataSnapshot {
@@ -110,7 +107,7 @@ export function validateLegacySnapshot(value: unknown): LegacyDataSnapshot {
   const snapshot = value as Partial<LegacyDataSnapshot>;
   return {
     chats: validateChatsPayload(snapshot.chats ?? []),
-    projects: parseProjects(snapshot.projects ?? []),
+    projects: parseWorkspaces(snapshot.projects ?? []),
     personalization: sanitizePersonalizationSettings(snapshot.personalization),
     memories: sanitizeMemories(snapshot.memories),
   };

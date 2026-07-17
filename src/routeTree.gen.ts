@@ -13,13 +13,19 @@ import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
+import { Route as AppWorkspaceWorkspaceIdRouteImport } from './routes/_app.workspace.$workspaceId'
 import { Route as AppSettingsSkillsRouteImport } from './routes/_app.settings.skills'
+import { Route as AppSettingsResearchAgentsRouteImport } from './routes/_app.settings.research-agents'
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppSettingsMemoriesRouteImport } from './routes/_app.settings.memories'
+import { Route as AppSettingsHelpRouteImport } from './routes/_app.settings.help'
 import { Route as AppSettingsExpertsRouteImport } from './routes/_app.settings.experts'
+import { Route as AppSettingsChangelogRouteImport } from './routes/_app.settings.changelog'
 import { Route as AppSettingsAppearanceRouteImport } from './routes/_app.settings.appearance'
 import { Route as AppSettingsAboutRouteImport } from './routes/_app.settings.about'
 import { Route as AppChatChatIdRouteImport } from './routes/_app.chat.$chatId'
+import { Route as AppWorkspaceWorkspaceIdIndexRouteImport } from './routes/_app.workspace.$workspaceId.index'
+import { Route as AppWorkspaceWorkspaceIdChatChatIdRouteImport } from './routes/_app.workspace.$workspaceId.chat.$chatId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -40,11 +46,22 @@ const AppSettingsIndexRoute = AppSettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppWorkspaceWorkspaceIdRoute = AppWorkspaceWorkspaceIdRouteImport.update({
+  id: '/workspace/$workspaceId',
+  path: '/workspace/$workspaceId',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsSkillsRoute = AppSettingsSkillsRouteImport.update({
   id: '/skills',
   path: '/skills',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsResearchAgentsRoute =
+  AppSettingsResearchAgentsRouteImport.update({
+    id: '/research-agents',
+    path: '/research-agents',
+    getParentRoute: () => AppSettingsRoute,
+  } as any)
 const AppSettingsModelsRoute = AppSettingsModelsRouteImport.update({
   id: '/models',
   path: '/models',
@@ -55,9 +72,19 @@ const AppSettingsMemoriesRoute = AppSettingsMemoriesRouteImport.update({
   path: '/memories',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsHelpRoute = AppSettingsHelpRouteImport.update({
+  id: '/help',
+  path: '/help',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsExpertsRoute = AppSettingsExpertsRouteImport.update({
   id: '/experts',
   path: '/experts',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsChangelogRoute = AppSettingsChangelogRouteImport.update({
+  id: '/changelog',
+  path: '/changelog',
   getParentRoute: () => AppSettingsRoute,
 } as any)
 const AppSettingsAppearanceRoute = AppSettingsAppearanceRouteImport.update({
@@ -75,6 +102,18 @@ const AppChatChatIdRoute = AppChatChatIdRouteImport.update({
   path: '/chat/$chatId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppWorkspaceWorkspaceIdIndexRoute =
+  AppWorkspaceWorkspaceIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AppWorkspaceWorkspaceIdRoute,
+  } as any)
+const AppWorkspaceWorkspaceIdChatChatIdRoute =
+  AppWorkspaceWorkspaceIdChatChatIdRouteImport.update({
+    id: '/chat/$chatId',
+    path: '/chat/$chatId',
+    getParentRoute: () => AppWorkspaceWorkspaceIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
@@ -82,22 +121,33 @@ export interface FileRoutesByFullPath {
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/about': typeof AppSettingsAboutRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/settings/changelog': typeof AppSettingsChangelogRoute
   '/settings/experts': typeof AppSettingsExpertsRoute
+  '/settings/help': typeof AppSettingsHelpRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
+  '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
+  '/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
   '/settings/': typeof AppSettingsIndexRoute
+  '/workspace/$workspaceId/': typeof AppWorkspaceWorkspaceIdIndexRoute
+  '/workspace/$workspaceId/chat/$chatId': typeof AppWorkspaceWorkspaceIdChatChatIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/about': typeof AppSettingsAboutRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/settings/changelog': typeof AppSettingsChangelogRoute
   '/settings/experts': typeof AppSettingsExpertsRoute
+  '/settings/help': typeof AppSettingsHelpRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
+  '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings': typeof AppSettingsIndexRoute
+  '/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdIndexRoute
+  '/workspace/$workspaceId/chat/$chatId': typeof AppWorkspaceWorkspaceIdChatChatIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -107,11 +157,17 @@ export interface FileRoutesById {
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
   '/_app/settings/about': typeof AppSettingsAboutRoute
   '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
+  '/_app/settings/changelog': typeof AppSettingsChangelogRoute
   '/_app/settings/experts': typeof AppSettingsExpertsRoute
+  '/_app/settings/help': typeof AppSettingsHelpRoute
   '/_app/settings/memories': typeof AppSettingsMemoriesRoute
   '/_app/settings/models': typeof AppSettingsModelsRoute
+  '/_app/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/_app/settings/skills': typeof AppSettingsSkillsRoute
+  '/_app/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
   '/_app/settings/': typeof AppSettingsIndexRoute
+  '/_app/workspace/$workspaceId/': typeof AppWorkspaceWorkspaceIdIndexRoute
+  '/_app/workspace/$workspaceId/chat/$chatId': typeof AppWorkspaceWorkspaceIdChatChatIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -121,22 +177,33 @@ export interface FileRouteTypes {
     | '/chat/$chatId'
     | '/settings/about'
     | '/settings/appearance'
+    | '/settings/changelog'
     | '/settings/experts'
+    | '/settings/help'
     | '/settings/memories'
     | '/settings/models'
+    | '/settings/research-agents'
     | '/settings/skills'
+    | '/workspace/$workspaceId'
     | '/settings/'
+    | '/workspace/$workspaceId/'
+    | '/workspace/$workspaceId/chat/$chatId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/chat/$chatId'
     | '/settings/about'
     | '/settings/appearance'
+    | '/settings/changelog'
     | '/settings/experts'
+    | '/settings/help'
     | '/settings/memories'
     | '/settings/models'
+    | '/settings/research-agents'
     | '/settings/skills'
     | '/settings'
+    | '/workspace/$workspaceId'
+    | '/workspace/$workspaceId/chat/$chatId'
   id:
     | '__root__'
     | '/_app'
@@ -145,11 +212,17 @@ export interface FileRouteTypes {
     | '/_app/chat/$chatId'
     | '/_app/settings/about'
     | '/_app/settings/appearance'
+    | '/_app/settings/changelog'
     | '/_app/settings/experts'
+    | '/_app/settings/help'
     | '/_app/settings/memories'
     | '/_app/settings/models'
+    | '/_app/settings/research-agents'
     | '/_app/settings/skills'
+    | '/_app/workspace/$workspaceId'
     | '/_app/settings/'
+    | '/_app/workspace/$workspaceId/'
+    | '/_app/workspace/$workspaceId/chat/$chatId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -186,11 +259,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsIndexRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/workspace/$workspaceId': {
+      id: '/_app/workspace/$workspaceId'
+      path: '/workspace/$workspaceId'
+      fullPath: '/workspace/$workspaceId'
+      preLoaderRoute: typeof AppWorkspaceWorkspaceIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings/skills': {
       id: '/_app/settings/skills'
       path: '/skills'
       fullPath: '/settings/skills'
       preLoaderRoute: typeof AppSettingsSkillsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/research-agents': {
+      id: '/_app/settings/research-agents'
+      path: '/research-agents'
+      fullPath: '/settings/research-agents'
+      preLoaderRoute: typeof AppSettingsResearchAgentsRouteImport
       parentRoute: typeof AppSettingsRoute
     }
     '/_app/settings/models': {
@@ -207,11 +294,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsMemoriesRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/help': {
+      id: '/_app/settings/help'
+      path: '/help'
+      fullPath: '/settings/help'
+      preLoaderRoute: typeof AppSettingsHelpRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/settings/experts': {
       id: '/_app/settings/experts'
       path: '/experts'
       fullPath: '/settings/experts'
       preLoaderRoute: typeof AppSettingsExpertsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/changelog': {
+      id: '/_app/settings/changelog'
+      path: '/changelog'
+      fullPath: '/settings/changelog'
+      preLoaderRoute: typeof AppSettingsChangelogRouteImport
       parentRoute: typeof AppSettingsRoute
     }
     '/_app/settings/appearance': {
@@ -235,15 +336,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppChatChatIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/workspace/$workspaceId/': {
+      id: '/_app/workspace/$workspaceId/'
+      path: '/'
+      fullPath: '/workspace/$workspaceId/'
+      preLoaderRoute: typeof AppWorkspaceWorkspaceIdIndexRouteImport
+      parentRoute: typeof AppWorkspaceWorkspaceIdRoute
+    }
+    '/_app/workspace/$workspaceId/chat/$chatId': {
+      id: '/_app/workspace/$workspaceId/chat/$chatId'
+      path: '/chat/$chatId'
+      fullPath: '/workspace/$workspaceId/chat/$chatId'
+      preLoaderRoute: typeof AppWorkspaceWorkspaceIdChatChatIdRouteImport
+      parentRoute: typeof AppWorkspaceWorkspaceIdRoute
+    }
   }
 }
 
 interface AppSettingsRouteChildren {
   AppSettingsAboutRoute: typeof AppSettingsAboutRoute
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
+  AppSettingsChangelogRoute: typeof AppSettingsChangelogRoute
   AppSettingsExpertsRoute: typeof AppSettingsExpertsRoute
+  AppSettingsHelpRoute: typeof AppSettingsHelpRoute
   AppSettingsMemoriesRoute: typeof AppSettingsMemoriesRoute
   AppSettingsModelsRoute: typeof AppSettingsModelsRoute
+  AppSettingsResearchAgentsRoute: typeof AppSettingsResearchAgentsRoute
   AppSettingsSkillsRoute: typeof AppSettingsSkillsRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
@@ -251,9 +369,12 @@ interface AppSettingsRouteChildren {
 const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsAboutRoute: AppSettingsAboutRoute,
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
+  AppSettingsChangelogRoute: AppSettingsChangelogRoute,
   AppSettingsExpertsRoute: AppSettingsExpertsRoute,
+  AppSettingsHelpRoute: AppSettingsHelpRoute,
   AppSettingsMemoriesRoute: AppSettingsMemoriesRoute,
   AppSettingsModelsRoute: AppSettingsModelsRoute,
+  AppSettingsResearchAgentsRoute: AppSettingsResearchAgentsRoute,
   AppSettingsSkillsRoute: AppSettingsSkillsRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
@@ -262,16 +383,35 @@ const AppSettingsRouteWithChildren = AppSettingsRoute._addFileChildren(
   AppSettingsRouteChildren,
 )
 
+interface AppWorkspaceWorkspaceIdRouteChildren {
+  AppWorkspaceWorkspaceIdIndexRoute: typeof AppWorkspaceWorkspaceIdIndexRoute
+  AppWorkspaceWorkspaceIdChatChatIdRoute: typeof AppWorkspaceWorkspaceIdChatChatIdRoute
+}
+
+const AppWorkspaceWorkspaceIdRouteChildren: AppWorkspaceWorkspaceIdRouteChildren =
+  {
+    AppWorkspaceWorkspaceIdIndexRoute: AppWorkspaceWorkspaceIdIndexRoute,
+    AppWorkspaceWorkspaceIdChatChatIdRoute:
+      AppWorkspaceWorkspaceIdChatChatIdRoute,
+  }
+
+const AppWorkspaceWorkspaceIdRouteWithChildren =
+  AppWorkspaceWorkspaceIdRoute._addFileChildren(
+    AppWorkspaceWorkspaceIdRouteChildren,
+  )
+
 interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRouteWithChildren
   AppIndexRoute: typeof AppIndexRoute
   AppChatChatIdRoute: typeof AppChatChatIdRoute
+  AppWorkspaceWorkspaceIdRoute: typeof AppWorkspaceWorkspaceIdRouteWithChildren
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRouteWithChildren,
   AppIndexRoute: AppIndexRoute,
   AppChatChatIdRoute: AppChatChatIdRoute,
+  AppWorkspaceWorkspaceIdRoute: AppWorkspaceWorkspaceIdRouteWithChildren,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

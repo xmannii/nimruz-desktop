@@ -14,9 +14,12 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BrainIcon,
   BotIcon,
+  CircleHelpIcon,
   CpuIcon,
   InfoIcon,
   PaletteIcon,
+  SearchIcon,
+  ScrollTextIcon,
   SparklesIcon,
   UserRoundIcon,
   type LucideIcon,
@@ -28,8 +31,11 @@ export const SETTINGS_NAV: Array<{
     | "/settings/memories"
     | "/settings/experts"
     | "/settings/models"
+    | "/settings/research-agents"
     | "/settings/skills"
     | "/settings/appearance"
+    | "/settings/changelog"
+    | "/settings/help"
     | "/settings/about";
   label: string;
   icon: LucideIcon;
@@ -48,6 +54,12 @@ export const SETTINGS_NAV: Array<{
     label: "مدل‌ها",
     icon: CpuIcon,
     match: (pathname) => pathname.startsWith("/settings/models"),
+  },
+  {
+    to: "/settings/research-agents",
+    label: "دستیارهای پژوهشی",
+    icon: SearchIcon,
+    match: (pathname) => pathname.startsWith("/settings/research-agents"),
   },
   {
     to: "/settings/memories",
@@ -75,6 +87,18 @@ export const SETTINGS_NAV: Array<{
     match: (pathname) => pathname.startsWith("/settings/appearance"),
   },
   {
+    to: "/settings/changelog",
+    label: "تغییرات نسخه‌ها",
+    icon: ScrollTextIcon,
+    match: (pathname) => pathname.startsWith("/settings/changelog"),
+  },
+  {
+    to: "/settings/help",
+    label: "راهنما",
+    icon: CircleHelpIcon,
+    match: (pathname) => pathname.startsWith("/settings/help"),
+  },
+  {
     to: "/settings/about",
     label: "درباره",
     icon: InfoIcon,
@@ -94,9 +118,11 @@ export function SettingsSidebarNav({ memoryCount = 0 }: { memoryCount?: number }
   }
 
   return (
-    <SidebarGroup className="flex min-h-0 flex-1 flex-col pt-0">
+    <SidebarGroup className="flex min-h-0 flex-1 flex-col pt-2">
       {!isIconMode ? (
-        <SidebarGroupLabel className="mb-1">تنظیمات</SidebarGroupLabel>
+        <SidebarGroupLabel className="mb-1 h-7 px-2 text-[11px] font-medium tracking-wide text-muted-foreground">
+          تنظیمات
+        </SidebarGroupLabel>
       ) : null}
       <SidebarGroupContent className="min-h-0 flex-1 overflow-y-auto">
         <SidebarMenu className="gap-0.5">
@@ -112,7 +138,7 @@ export function SettingsSidebarNav({ memoryCount = 0 }: { memoryCount?: number }
                   className={
                     isIconMode
                       ? undefined
-                      : "h-auto rounded-md px-3 py-2.5 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                      : "h-9 text-sidebar-foreground/80 hover:text-sidebar-foreground"
                   }
                   render={
                     <Link to={item.to} onClick={closeMobileSidebar} />
@@ -123,7 +149,7 @@ export function SettingsSidebarNav({ memoryCount = 0 }: { memoryCount?: number }
                   {item.badgeKey === "memories" && memoryCount > 0 ? (
                     <Badge
                       variant="secondary"
-                      className="ms-auto h-5 min-w-5 px-1.5 text-[10px] leading-none group-data-[collapsible=icon]:hidden"
+                      className="ms-auto h-5 min-w-5 justify-center rounded-md px-1.5 text-[10px] font-normal leading-none group-data-[collapsible=icon]:hidden"
                     >
                       {memoryCount.toLocaleString("fa-IR")}
                     </Badge>

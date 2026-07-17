@@ -37,6 +37,9 @@ export async function generateChatTitleWithModel(
 ): Promise<string> {
   const trimmed = message.trim().replace(/\s+/g, " ");
   if (!trimmed) return fallbackTitleFromMessage(message);
+  if (resolved.provider.kind === "codex") {
+    return fallbackTitleFromMessage(trimmed);
+  }
 
   try {
     const text = await fetchOpenAICompatibleChatCompletion({

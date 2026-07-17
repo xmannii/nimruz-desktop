@@ -2,6 +2,7 @@ export const WEB_LIMITS = {
   fetchTimeoutMs: 15_000,
   maxResponseBytes: 2_000_000,
   maxCleanChars: 32_000,
+  maxRedirects: 5,
 } as const;
 
 const PRIVATE_HOST_PATTERNS = [

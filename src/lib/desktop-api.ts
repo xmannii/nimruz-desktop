@@ -1,5 +1,10 @@
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
 import type {
+  CodexAccountStatus,
+  CodexLoginResult,
+  CodexModelSyncResult,
+} from "@/lib/codex";
+import type {
   ModelCatalogSnapshot,
   ModelConfig,
   ModelDiscoveryResult,
@@ -7,10 +12,25 @@ import type {
   ProviderTestResult,
 } from "@/lib/models/catalog";
 import type { MemoryEntry } from "@/lib/settings/memories";
+import type { AppearanceSettings } from "@/lib/settings/appearance";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
 import type { Expert } from "@/lib/settings/experts";
+import type { SubagentModel } from "@/lib/settings/subagents";
+import type {
+  AgentRun,
+  AgentRunStep,
+  ApprovalRecord,
+  ArtifactRecord,
+  LocalWorkspace,
+  TaskRecord,
+  ToolCallRecord,
+  WorkspaceFileEntry,
+  WorkspaceEvent,
+  WorkspaceRoot,
+  WorkspaceTrustSettings,
+} from "@/lib/workspace";
 
 export type CredentialStatus = {
   configured: boolean;
@@ -44,6 +64,13 @@ export type WindowState = {
   fullscreen: boolean;
 };
 
+export type AgentRunSnapshot = {
+  run: AgentRun;
+  steps: AgentRunStep[];
+  toolCalls: ToolCallRecord[];
+  approvals: ApprovalRecord[];
+};
+
 export type DesktopAPI = {
   platform: NodeJS.Platform;
   isDesktop: true;
@@ -71,6 +98,14 @@ export type DesktopAPI = {
     clearOpenRouterKey: () => Promise<CredentialStatus>;
     testOpenRouterKey: (key?: string) => Promise<CredentialTestResult>;
   };
+  codex: {
+    getStatus: (refreshToken?: boolean) => Promise<CodexAccountStatus>;
+    startLogin: (flow?: "browser" | "device-code") => Promise<CodexLoginResult>;
+    cancelLogin: (loginId: string) => Promise<void>;
+    logout: () => Promise<void>;
+    syncModels: () => Promise<CodexModelSyncResult>;
+    onStatusChange: (callback: (status: CodexAccountStatus) => void) => () => void;
+  };
   providers: {
     listCatalog: () => Promise<ModelCatalogSnapshot>;
     saveProvider: (provider: Partial<ProviderConfig> & { id: string }) => Promise<ProviderConfig>;
@@ -91,17 +126,137 @@ export type DesktopAPI = {
     saveChats: (chats: LocalChat[]) => Promise<void>;
     deleteChat: (id: string) => Promise<void>;
     deleteAllChats: () => Promise<void>;
-    loadProjects: () => Promise<LocalProject[]>;
-    saveProject: (project: LocalProject) => Promise<void>;
+    loadWorkspaces: () => Promise<LocalWorkspace[]>;
+    saveWorkspace: (workspace: LocalWorkspace) => Promise<void>;
+    deleteWorkspace: (id: string) => Promise<void>;
+    /** @deprecated Use loadWorkspaces */
+    loadProjects: () => Promise<LocalWorkspace[]>;
+    /** @deprecated Use saveWorkspace */
+    saveProject: (project: LocalWorkspace) => Promise<void>;
+    /** @deprecated Use deleteWorkspace */
     deleteProject: (id: string) => Promise<void>;
+    loadWorkspaceRoots: (workspaceId: string) => Promise<WorkspaceRoot[]>;
+    pickDirectory: () => Promise<{ path: string } | null>;
+    addLinkedWorkspaceRoot: (
+      workspaceId: string,
+      options?: { path?: string; makePrimary?: boolean }
+    ) => Promise<WorkspaceRoot | null>;
+    setPrimaryWorkspaceRoot: (
+      workspaceId: string,
+      rootId: string
+    ) => Promise<WorkspaceRoot[]>;
+    removeWorkspaceRoot: (rootId: string) => Promise<void>;
+    updateWorkspaceTrust: (
+      workspaceId: string,
+      trust: WorkspaceTrustSettings
+    ) => Promise<LocalWorkspace>;
+    listWorkspaceFiles: (
+      workspaceId: string,
+      path?: string
+    ) => Promise<WorkspaceFileEntry[]>;
+    readWorkspaceFile: (
+      workspaceId: string,
+      path: string
+    ) => Promise<{ path: string; content: string; truncated: boolean; sizeBytes: number }>;
+    readWorkspaceFileBinary: (
+      workspaceId: string,
+      path: string
+    ) => Promise<{
+      path: string;
+      base64: string;
+      mimeType: string;
+      sizeBytes: number;
+    }>;
+    searchWorkspaceFiles: (
+      workspaceId: string,
+      query: string,
+      options?: {
+        glob?: string;
+        maxMatches?: number;
+        scope?: "all" | "filename" | "content";
+        path?: string;
+        caseSensitive?: boolean;
+      }
+    ) => Promise<{
+      query: string;
+      filenameMatches: Array<{
+        path: string;
+        name: string;
+        matchType: "filename" | "content";
+        line?: number;
+        text: string;
+      }>;
+      contentMatches: Array<{
+        path: string;
+        name: string;
+        matchType: "filename" | "content";
+        line?: number;
+        text: string;
+      }>;
+      matches: Array<{
+        path: string;
+        name: string;
+        matchType: "filename" | "content";
+        line?: number;
+        text: string;
+      }>;
+      truncated: boolean;
+    }>;
+    importWorkspaceFiles: (
+      workspaceId: string,
+      files: Array<{ name: string; base64: string; mimeType?: string }>
+    ) => Promise<
+      Array<{
+        path: string;
+        relativePath: string;
+        name: string;
+        sizeBytes: number;
+        mimeType: string;
+      }>
+    >;
+    createWorkspaceDirectory: (
+      workspaceId: string,
+      path: string
+    ) => Promise<{ path: string }>;
+    createWorkspaceFile: (
+      workspaceId: string,
+      path: string,
+      content?: string
+    ) => Promise<{ path: string; sizeBytes: number }>;
+    renameWorkspaceEntry: (
+      workspaceId: string,
+      from: string,
+      to: string
+    ) => Promise<{ from: string; to: string }>;
+    deleteWorkspaceEntry: (
+      workspaceId: string,
+      path: string
+    ) => Promise<{ path: string }>;
+    revealWorkspacePath: (workspaceId: string, path: string) => Promise<void>;
+    listArtifacts: (workspaceId: string) => Promise<ArtifactRecord[]>;
+    readArtifact: (workspaceId: string, artifactId: string) => Promise<string>;
+    deleteArtifact: (artifactId: string) => Promise<void>;
+    listTasks: (workspaceId: string) => Promise<TaskRecord[]>;
+    saveTask: (task: TaskRecord) => Promise<TaskRecord>;
+    deleteTask: (taskId: string) => Promise<void>;
+    listAgentRuns: (options?: {
+      workspaceId?: string;
+      chatId?: string;
+      limit?: number;
+    }) => Promise<AgentRun[]>;
+    getAgentRun: (runId: string) => Promise<AgentRunSnapshot | null>;
     loadPersonalization: () => Promise<PersonalizationSettings>;
     savePersonalization: (
       settings: PersonalizationSettings
     ) => Promise<PersonalizationSettings>;
+    loadAppearance: () => Promise<AppearanceSettings>;
+    saveAppearance: (settings: AppearanceSettings) => Promise<AppearanceSettings>;
     loadMemories: () => Promise<MemoryEntry[]>;
     saveMemories: (memories: MemoryEntry[]) => Promise<MemoryEntry[]>;
     loadExperts: () => Promise<Expert[]>;
     saveExperts: (experts: Expert[]) => Promise<Expert[]>;
+    loadSubagents: () => Promise<SubagentModel[]>;
+    saveSubagents: (models: SubagentModel[]) => Promise<SubagentModel[]>;
     importLegacyData: (
       snapshot: LegacyDataSnapshot
     ) => Promise<LegacyImportResult>;
@@ -118,5 +273,11 @@ export type DesktopAPI = {
     getVersion: () => Promise<string>;
     check: () => Promise<UpdateCheckResult>;
     openUrl: (url: string) => Promise<boolean>;
+  };
+  fonts: {
+    list: () => Promise<string[]>;
+  };
+  workspaceEvents: {
+    subscribe: (callback: (event: WorkspaceEvent) => void) => () => void;
   };
 };

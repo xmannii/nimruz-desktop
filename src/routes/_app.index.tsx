@@ -1,6 +1,7 @@
 "use client";
 
 import { useAppShell } from "@/components/app-shell-context";
+import { HOME_WORKSPACE_ID } from "@/lib/workspace";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useEffect } from "react";
 
@@ -10,16 +11,18 @@ export const Route = createFileRoute("/_app/")({
 
 function HomeChatPage() {
   const navigate = useNavigate();
-  const { activeChatId, isHydrated } = useAppShell();
+  const { activeChatId, activeChat, isHydrated } = useAppShell();
 
   useEffect(() => {
     if (!isHydrated || !activeChatId) return;
+
+    const workspaceId = activeChat?.workspaceId ?? HOME_WORKSPACE_ID;
     void navigate({
-      to: "/chat/$chatId",
-      params: { chatId: activeChatId },
+      to: "/workspace/$workspaceId/chat/$chatId",
+      params: { workspaceId, chatId: activeChatId },
       replace: true,
     });
-  }, [activeChatId, isHydrated, navigate]);
+  }, [activeChat, activeChatId, isHydrated, navigate]);
 
   return (
     <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">

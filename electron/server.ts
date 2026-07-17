@@ -1,8 +1,18 @@
 import http from "node:http";
 import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { handleChatRequest, handleGenerateChatTitleRequest, type ChatRequestBody, type ChatTitleRequestBody } from "./chat-handler";
+import {
+  handleGenerateChatTitleRequest,
+  type ChatTitleRequestBody,
+} from "./chat-handler";
+import {
+  handleAgentChatRequest,
+  type AgentRequestBody,
+  type AgentRuntimeDeps,
+} from "./agent/runtime";
+import { resolveStaticPath } from "./static-path";
 
 const MAX_REQUEST_BYTES = 10 * 1024 * 1024;
 
@@ -24,7 +34,9 @@ const MIME_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-function readJsonBody<T = ChatRequestBody>(req: http.IncomingMessage): Promise<T> {
+function readJsonBody<T = AgentRequestBody>(
+  req: http.IncomingMessage
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
@@ -63,7 +75,7 @@ async function pipeWebResponse(
   res.writeHead(webResponse.status, headers);
 
   if (webResponse.body) {
-    Readable.fromWeb(webResponse.body as never).pipe(res);
+    await pipeline(Readable.fromWeb(webResponse.body as never), res);
   } else {
     res.end();
   }
@@ -74,16 +86,13 @@ async function serveStatic(
   urlPath: string,
   res: http.ServerResponse
 ): Promise<void> {
-  const cleanPath = decodeURIComponent(urlPath.split("?")[0]);
-  const relative = cleanPath === "/" ? "index.html" : cleanPath.replace(/^\/+/, "");
-  const resolved = path.join(rendererDir, relative);
-
-  // Prevent path traversal outside the renderer directory.
-  if (!resolved.startsWith(rendererDir)) {
-    res.writeHead(403);
-    res.end("Forbidden");
+  const staticPath = resolveStaticPath(rendererDir, urlPath);
+  if (!staticPath.ok) {
+    res.writeHead(staticPath.status);
+    res.end(staticPath.status === 400 ? "Bad request" : "Forbidden");
     return;
   }
+  const resolved = staticPath.path;
 
   try {
     const data = await fs.readFile(resolved);
@@ -93,7 +102,6 @@ async function serveStatic(
     });
     res.end(data);
   } catch {
-    // SPA fallback: unknown routes (e.g. /chat/:id) return index.html.
     try {
       const fallback = await fs.readFile(path.join(rendererDir, "index.html"));
       res.writeHead(200, { "Content-Type": MIME_TYPES[".html"] });
@@ -109,14 +117,7 @@ type StartServerOptions = {
   port?: number;
   rendererDir?: string;
   sessionToken: string;
-  resolveChatModel: (
-    providerId?: string,
-    modelId?: string
-  ) => import("./chat-handler").ResolvedChatModel | null;
-  getSkillsCatalog?: () => Promise<
-    import("@/lib/skills/catalog").SkillCatalogEntry[]
-  >;
-  loadSkillContent?: (name: string) => Promise<string | null>;
+  agentDeps: AgentRuntimeDeps;
   allowedOrigins?: string[];
 };
 
@@ -134,7 +135,10 @@ function getAllowedOrigin(
   const origin = req.headers.origin;
   if (!origin) return null;
   if (allowedOrigins.has(origin)) return origin;
-  if (isLoopbackHost(req.headers.host) && origin === `http://${req.headers.host}`) {
+  if (
+    isLoopbackHost(req.headers.host) &&
+    origin === `http://${req.headers.host}`
+  ) {
     return origin;
   }
   return null;
@@ -147,16 +151,10 @@ export function startServer(
     port = 0,
     rendererDir,
     sessionToken,
-    resolveChatModel,
-    getSkillsCatalog,
-    loadSkillContent,
+    agentDeps,
     allowedOrigins = [],
   } = options;
   const originAllowlist = new Set(allowedOrigins);
-  const skillsRuntime =
-    getSkillsCatalog && loadSkillContent
-      ? { getSkillsCatalog, loadSkillContent }
-      : undefined;
 
   const server = http.createServer(async (req, res) => {
     if (!isLoopbackHost(req.headers.host)) {
@@ -193,7 +191,9 @@ export function startServer(
 
     if (req.headers.authorization !== `Bearer ${sessionToken}`) {
       if (
-        (url === "/api/chat/title" || url.startsWith("/api/chat")) &&
+        (url === "/api/chat/title" ||
+          url.startsWith("/api/chat") ||
+          url.startsWith("/api/agent")) &&
         req.method === "POST"
       ) {
         res.writeHead(401, { "Content-Type": "application/json" });
@@ -207,10 +207,11 @@ export function startServer(
         const body = await readJsonBody<ChatTitleRequestBody>(req);
         const webResponse = await handleGenerateChatTitleRequest(
           body,
-          resolveChatModel
+          agentDeps.resolveModel
         );
         await pipeWebResponse(webResponse, res);
       } catch (error) {
+        if (res.headersSent || res.destroyed) return;
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
@@ -221,34 +222,78 @@ export function startServer(
       return;
     }
 
-    if (url.startsWith("/api/chat") && req.method === "POST") {
+    if (
+      (url.startsWith("/api/chat") || url.startsWith("/api/agent/run")) &&
+      req.method === "POST"
+    ) {
       if (req.headers.authorization !== `Bearer ${sessionToken}`) {
         res.writeHead(401, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: "Unauthorized" }));
         return;
       }
 
+      const abortController = new AbortController();
+      const abort = () => {
+        if (!res.writableEnded) abortController.abort();
+      };
+      req.once("aborted", abort);
+      res.once("close", abort);
+
       try {
-        const body = await readJsonBody(req);
-        const webResponse = await handleChatRequest(
+        const body = await readJsonBody<AgentRequestBody>(req);
+        const webResponse = await handleAgentChatRequest(
           body,
-          resolveChatModel,
-          skillsRuntime
+          agentDeps,
+          abortController.signal
         );
         await pipeWebResponse(webResponse, res);
       } catch (error) {
+        if (res.headersSent || res.destroyed) return;
         res.writeHead(500, { "Content-Type": "application/json" });
         res.end(
           JSON.stringify({
             error: error instanceof Error ? error.message : "Unknown error",
           })
         );
+      } finally {
+        req.removeListener("aborted", abort);
+        res.removeListener("close", abort);
       }
       return;
     }
 
+    if (url.startsWith("/api/agent/runs/") && req.method === "GET") {
+      if (req.headers.authorization !== `Bearer ${sessionToken}`) {
+        res.writeHead(401, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Unauthorized" }));
+        return;
+      }
+      const runId = decodeURIComponent(url.replace("/api/agent/runs/", "").split("?")[0]);
+      const run = agentDeps.database.getAgentRun(runId);
+      if (!run) {
+        res.writeHead(404, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Run not found" }));
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          run,
+          steps: agentDeps.database.listAgentRunSteps(runId),
+          toolCalls: agentDeps.database.listToolCalls(runId),
+          approvals: agentDeps.database.listApprovals(runId),
+        })
+      );
+      return;
+    }
+
     if (rendererDir && req.method === "GET") {
-      await serveStatic(rendererDir, url, res);
+      try {
+        await serveStatic(rendererDir, url, res);
+      } catch {
+        if (!res.headersSent) res.writeHead(500);
+        if (!res.writableEnded) res.end("Internal server error");
+      }
       return;
     }
 

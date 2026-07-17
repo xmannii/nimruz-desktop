@@ -68,7 +68,10 @@ function getFetchUrlError(part: FetchUrlToolPart, hasResult: boolean): string | 
 export function ChatFetchUrlToolPart({ part }: { part: FetchUrlToolPart }) {
   const url = part.input?.url ?? part.output?.url ?? part.output?.finalUrl;
   const isLoading =
-    part.state === "input-streaming" || part.state === "input-available";
+    part.state === "input-streaming" ||
+    part.state === "input-available" ||
+    part.state === "approval-requested" ||
+    part.state === "approval-responded";
   const content = part.output?.content?.trim();
   const title = part.output?.title;
   const hasResult = Boolean(content || title);

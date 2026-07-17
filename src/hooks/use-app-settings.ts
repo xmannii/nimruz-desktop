@@ -15,6 +15,12 @@ import {
 } from "@/lib/settings/memories";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sanitizeExperts, type Expert } from "@/lib/settings/experts";
+import {
+  loadSubagentModels,
+  sanitizeSubagentModels,
+  saveSubagentModels,
+  type SubagentModel,
+} from "@/lib/settings/subagents";
 
 const PERSONALIZATION_SAVE_DEBOUNCE_MS = 400;
 
@@ -23,6 +29,7 @@ export function useAppSettings() {
     useState<PersonalizationSettings>(DEFAULT_PERSONALIZATION_SETTINGS);
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [experts, setExperts] = useState<Expert[]>([]);
+  const [subagents, setSubagents] = useState<SubagentModel[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">(
     "idle"
@@ -39,14 +46,23 @@ export function useAppSettings() {
           loadPersonalizationSettings(),
           loadMemories(),
           window.desktop.storage.loadExperts(),
+          loadSubagentModels(),
         ])
       )
-      .then(([loadedPersonalization, loadedMemories, loadedExperts]) => {
-        if (cancelled) return;
-        setPersonalization(loadedPersonalization);
-        setMemories(loadedMemories);
-        setExperts(loadedExperts);
-      })
+      .then(
+        ([
+          loadedPersonalization,
+          loadedMemories,
+          loadedExperts,
+          loadedSubagents,
+        ]) => {
+          if (cancelled) return;
+          setPersonalization(loadedPersonalization);
+          setMemories(loadedMemories);
+          setExperts(loadedExperts);
+          setSubagents(loadedSubagents);
+        }
+      )
       .catch((error) => {
         console.error("Failed to load app settings:", error);
       })
@@ -132,15 +148,29 @@ export function useAppSettings() {
     });
   }, []);
 
+  const handleSubagentsChange = useCallback(
+    (nextSubagents: SubagentModel[]) => {
+      const sanitized = sanitizeSubagentModels(nextSubagents);
+      setSubagents(sanitized);
+      void saveSubagentModels(sanitized)
+        .catch((error) => {
+          console.error("Failed to save subagent models:", error);
+        });
+    },
+    []
+  );
+
   return {
     personalization,
     memories,
     experts,
+    subagents,
     isHydrated,
     saveState,
     updatePersonalization,
     handleMemoriesChange,
     handleDeleteMemory,
     handleExpertsChange,
+    handleSubagentsChange,
   };
 }

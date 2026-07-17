@@ -1,10 +1,10 @@
 {
   "name": "nimruz-desktop",
-  "version": "0.3.1",
-  "description": "Nimruz — Persian desktop AI chat powered by OpenRouter",
+  "version": "1.0.0",
+  "description": "Nimruz — Persian desktop AI workspace agent with Codex",
   "license": "MIT",
   "engines": {
-    "node": ">=22.12.0",
+    "node": ">=22.13.0",
     "pnpm": ">=9"
   },
   "author": "Mani",
@@ -19,7 +19,11 @@
   "keywords": [
     "electron",
     "ai",
+    "agent",
+    "workspace",
     "chatbot",
+    "chatgpt",
+    "codex",
     "openrouter",
     "persian",
     "desktop",
@@ -35,13 +39,14 @@
     "build": "npm run build:renderer && npm run build:electron",
     "start": "npm run build && node scripts/run-electron.mjs",
     "dist": "npm run build && electron-builder",
-    "test": "tsx --test $(find electron src -name '*.test.ts' | sort)",
+    "test": "tsx --test \"electron/**/*.test.ts\" \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.9",
     "@ai-sdk/react": "^4.0.23",
     "@base-ui/react": "^1.6.0",
+    "@openai/codex": "0.144.4",
     "@openrouter/ai-sdk-provider": "^3.0.0",
     "@radix-ui/react-use-controllable-state": "^1.2.3",
     "@shadcn/react": "^0.2.1",
@@ -62,6 +67,7 @@
     "motion": "^12.42.2",
     "nanoid": "^6.0.0",
     "next-themes": "^0.4.6",
+    "pdfjs-dist": "^6.1.200",
     "react": "19.2.4",
     "react-day-picker": "^10.0.1",
     "react-dom": "19.2.4",
@@ -100,6 +106,19 @@
     "appId": "dev.nimruz.desktop",
     "productName": "Nimruz",
     "asar": true,
+    "asarUnpack": [
+      "node_modules/@openai/codex-*/vendor/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES",
+        "to": "THIRD_PARTY_NOTICES"
+      }
+    ],
     "icon": "assets/icon.png",
     "files": [
       "dist/**",
