@@ -1,5 +1,7 @@
 "use client";
 
+import { useAppShell } from "@/components/app-shell-context";
+import { WorkspaceDialog } from "@/components/workspace-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,9 +12,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import type { WorkspaceInput } from "@/hooks/use-workspaces";
 import type { LocalWorkspace } from "@/lib/chat/storage";
 import { isHomeWorkspace } from "@/lib/workspace";
-import { CheckIcon, ChevronDownIcon, FolderIcon, HomeIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  FolderIcon,
+  HomeIcon,
+  PlusIcon,
+} from "lucide-react";
+import { useState } from "react";
 
 type ComposerWorkspacePickerProps = {
   workspaces: LocalWorkspace[];
@@ -27,12 +37,20 @@ export function ComposerWorkspacePicker({
   onWorkspaceChange,
   disabled = false,
 }: ComposerWorkspacePickerProps) {
+  const { createWorkspace } = useAppShell();
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const selected =
     workspaces.find((workspace) => workspace.id === workspaceId) ??
     workspaces.find((workspace) => isHomeWorkspace(workspace)) ??
     null;
 
+  function handleCreateWorkspace(input: WorkspaceInput) {
+    const workspace = createWorkspace(input);
+    onWorkspaceChange(workspace.id);
+  }
+
   return (
+    <>
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
@@ -75,8 +93,20 @@ export function ComposerWorkspacePicker({
               </DropdownMenuItem>
             );
           })}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => setCreateDialogOpen(true)}>
+            <PlusIcon />
+            <span>ساخت پروژه جدید</span>
+          </DropdownMenuItem>
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+
+    <WorkspaceDialog
+      open={createDialogOpen}
+      onOpenChange={setCreateDialogOpen}
+      onSubmit={handleCreateWorkspace}
+    />
+    </>
   );
 }

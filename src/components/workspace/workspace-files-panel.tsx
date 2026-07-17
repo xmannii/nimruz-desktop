@@ -1,5 +1,14 @@
 "use client";
 
+import {
+  FileTree,
+  FileTreeActions,
+  FileTreeFile,
+  FileTreeFolder,
+  FileTreeIcon,
+  FileTreeName,
+} from "@/components/ai-elements/file-tree";
+import { FilePreview } from "@/components/workspace/file-preview";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -30,9 +39,6 @@ import { useWorkspaceRoots } from "@/hooks/use-workspace-roots";
 import { cn } from "@/lib/utils";
 import type { WorkspaceFileEntry, WorkspaceRoot } from "@/lib/workspace";
 import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  ArrowUpIcon,
   ChevronLeftIcon,
   ExternalLinkIcon,
   FileIcon,
@@ -50,11 +56,12 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { toast } from "sonner";
-import { FilePreview } from "@/components/workspace/file-preview";
 
 type WorkspaceFilesPanelProps = {
   workspaceId: string;
@@ -62,21 +69,6 @@ type WorkspaceFilesPanelProps = {
   revealPath?: string | null;
   onRevealHandled?: () => void;
 };
-
-function formatSize(bytes: number | null): string {
-  if (bytes == null) return "";
-  if (bytes < 1024) return `${bytes} بایت`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} کیلوبایت`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} مگابایت`;
-}
-
-function formatModified(ms: number | null): string {
-  if (!ms) return "";
-  return new Intl.DateTimeFormat("fa-IR", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(ms));
-}
 
 function parentPath(target: string): string {
   const normalized = target.replace(/[/\\]+$/, "");
@@ -104,7 +96,174 @@ function rootDisplayLabel(root: WorkspaceRoot): string {
   return root.label?.trim() || baseName(root.path) || "پوشه";
 }
 
-type SortMode = "name" | "modified";
+function ancestorDirs(rootPath: string, dirPath: string): string[] {
+  const normalizedRoot = rootPath.replace(/[/\\]+$/, "");
+  const normalizedDir = dirPath.replace(/[/\\]+$/, "");
+  if (!normalizedDir.startsWith(normalizedRoot)) return [normalizedRoot];
+
+  const relative = normalizedDir
+    .slice(normalizedRoot.length)
+    .replace(/^[/\\]+/, "");
+  const segments = relative ? relative.split(/[/\\]/).filter(Boolean) : [];
+  const dirs = [normalizedRoot];
+  let acc = normalizedRoot;
+  for (const segment of segments) {
+    acc = joinPath(acc, segment);
+    dirs.push(acc);
+  }
+  return dirs;
+}
+
+function sortEntries(entries: WorkspaceFileEntry[]): WorkspaceFileEntry[] {
+  return [...entries].sort((a, b) => {
+    if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+    return a.name.localeCompare(b.name, "fa");
+  });
+}
+
+function EntryActions({
+  entry,
+  onRename,
+  onReveal,
+  onDelete,
+}: {
+  entry: WorkspaceFileEntry;
+  onRename: (entry: WorkspaceFileEntry) => void;
+  onReveal: (path: string) => void;
+  onDelete: (entry: WorkspaceFileEntry) => void;
+}) {
+  return (
+    <FileTreeActions
+      className={cn(
+        "opacity-0 transition-opacity",
+        "group-hover/folder:opacity-100 group-hover/file:opacity-100",
+        "has-[[data-popup-open]]:opacity-100"
+      )}
+    >
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              size="icon-xs"
+              variant="ghost"
+              className="size-6 opacity-100"
+              title="عملیات"
+              aria-label={`عملیات ${entry.name}`}
+            >
+              <MoreVerticalIcon />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" dir="rtl">
+          <DropdownMenuItem onClick={() => onRename(entry)}>
+            <PencilIcon />
+            تغییر نام
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onReveal(entry.path)}>
+            <ExternalLinkIcon />
+            باز کردن در سیستم
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            variant="destructive"
+            onClick={() => onDelete(entry)}
+          >
+            <Trash2Icon />
+            حذف
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </FileTreeActions>
+  );
+}
+
+function TreeNodes({
+  entries,
+  childrenByPath,
+  loadingPaths,
+  filter,
+  onRename,
+  onReveal,
+  onDelete,
+}: {
+  entries: WorkspaceFileEntry[];
+  childrenByPath: Map<string, WorkspaceFileEntry[]>;
+  loadingPaths: Set<string>;
+  filter: string;
+  onRename: (entry: WorkspaceFileEntry) => void;
+  onReveal: (path: string) => void;
+  onDelete: (entry: WorkspaceFileEntry) => void;
+}): ReactNode {
+  const query = filter.trim().toLowerCase();
+  const visible = sortEntries(
+    query
+      ? entries.filter((entry) => entry.name.toLowerCase().includes(query))
+      : entries
+  );
+
+  if (visible.length === 0) {
+    return (
+      <p className="px-2 py-1.5 font-sans text-[11px] text-muted-foreground">
+        {query ? "نتیجه‌ای یافت نشد" : "خالی"}
+      </p>
+    );
+  }
+
+  return visible.map((entry) => {
+    if (entry.kind === "directory") {
+      const children = childrenByPath.get(entry.path);
+      const isLoading = loadingPaths.has(entry.path);
+      return (
+        <FileTreeFolder
+          key={entry.path}
+          path={entry.path}
+          name={entry.name}
+          actions={
+            <EntryActions
+              entry={entry}
+              onRename={onRename}
+              onReveal={onReveal}
+              onDelete={onDelete}
+            />
+          }
+        >
+          {isLoading && !children ? (
+            <div className="flex items-center gap-2 px-2 py-1.5 font-sans text-xs text-muted-foreground">
+              <Spinner className="size-3.5" />
+              در حال بارگذاری…
+            </div>
+          ) : children ? (
+            <TreeNodes
+              entries={children}
+              childrenByPath={childrenByPath}
+              loadingPaths={loadingPaths}
+              filter={filter}
+              onRename={onRename}
+              onReveal={onReveal}
+              onDelete={onDelete}
+            />
+          ) : null}
+        </FileTreeFolder>
+      );
+    }
+
+    return (
+      <FileTreeFile key={entry.path} path={entry.path} name={entry.name}>
+        <span className="size-4 shrink-0" />
+        <FileTreeIcon>
+          <FileIcon className="size-4 text-muted-foreground" />
+        </FileTreeIcon>
+        <FileTreeName>{entry.name}</FileTreeName>
+        <EntryActions
+          entry={entry}
+          onRename={onRename}
+          onReveal={onReveal}
+          onDelete={onDelete}
+        />
+      </FileTreeFile>
+    );
+  });
+}
 
 export function WorkspaceFilesPanel({
   workspaceId,
@@ -115,17 +274,16 @@ export function WorkspaceFilesPanel({
 
   const [root, setRoot] = useState<WorkspaceRoot | null>(null);
   const [pickingRoot, setPickingRoot] = useState(false);
-  const [nav, setNav] = useState<{ stack: string[]; index: number }>({
-    stack: [],
-    index: -1,
-  });
-  const history = nav.stack;
-  const historyIndex = nav.index;
-  const [entries, setEntries] = useState<WorkspaceFileEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [childrenByPath, setChildrenByPath] = useState<
+    Map<string, WorkspaceFileEntry[]>
+  >(() => new Map());
+  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [sort, setSort] = useState<SortMode>("name");
   const [filter, setFilter] = useState("");
   const [showFilter, setShowFilter] = useState(false);
   const [dialog, setDialog] = useState<
@@ -134,74 +292,136 @@ export function WorkspaceFilesPanel({
     | null
   >(null);
 
-  const currentPath = historyIndex >= 0 ? history[historyIndex] : null;
+  const loadGeneration = useRef(0);
+
+  const entryByPath = useMemo(() => {
+    const map = new Map<string, WorkspaceFileEntry>();
+    for (const entries of childrenByPath.values()) {
+      for (const entry of entries) map.set(entry.path, entry);
+    }
+    return map;
+  }, [childrenByPath]);
 
   const load = useCallback(
     async (targetPath: string) => {
-      setIsLoading(true);
+      const generation = loadGeneration.current;
+      setLoadingPaths((prev) => {
+        const next = new Set(prev);
+        next.add(targetPath);
+        return next;
+      });
       setError(null);
       try {
         const result = await window.desktop.storage.listWorkspaceFiles(
           workspaceId,
           targetPath
         );
-        setEntries(result);
+        if (generation !== loadGeneration.current) return;
+        setChildrenByPath((prev) => {
+          const next = new Map(prev);
+          next.set(targetPath, result);
+          return next;
+        });
       } catch (err) {
+        if (generation !== loadGeneration.current) return;
         setError(
           err instanceof Error ? err.message : "بارگذاری فایل‌ها ناموفق بود."
         );
-        setEntries([]);
+        setChildrenByPath((prev) => {
+          const next = new Map(prev);
+          next.set(targetPath, []);
+          return next;
+        });
       } finally {
-        setIsLoading(false);
+        if (generation === loadGeneration.current) {
+          setLoadingPaths((prev) => {
+            const next = new Set(prev);
+            next.delete(targetPath);
+            return next;
+          });
+        }
       }
     },
     [workspaceId]
   );
 
-  const navigateTo = useCallback((dirPath: string) => {
-    setSelectedFile(null);
-    setNav((prev) => {
-      const trimmed = prev.stack.slice(0, prev.index + 1);
-      trimmed.push(dirPath);
-      return { stack: trimmed, index: trimmed.length - 1 };
-    });
-  }, []);
+  const openRoot = useCallback(
+    (selected: WorkspaceRoot) => {
+      loadGeneration.current += 1;
+      setPickingRoot(false);
+      setRoot(selected);
+      setChildrenByPath(new Map());
+      setLoadingPaths(new Set());
+      setExpanded(new Set([selected.path]));
+      setSelectedPath(selected.path);
+      setPreviewFile(null);
+      setFilter("");
+      setShowFilter(false);
+      setError(null);
+      void load(selected.path);
+    },
+    [load]
+  );
 
   // Reset when switching workspaces.
   useEffect(() => {
+    loadGeneration.current += 1;
     setRoot(null);
     setPickingRoot(false);
-    setNav({ stack: [], index: -1 });
-    setEntries([]);
-    setSelectedFile(null);
+    setChildrenByPath(new Map());
+    setLoadingPaths(new Set());
+    setExpanded(new Set());
+    setSelectedPath(null);
+    setPreviewFile(null);
     setFilter("");
     setShowFilter(false);
+    setError(null);
   }, [workspaceId]);
 
-  const openRoot = useCallback((selected: WorkspaceRoot) => {
-    setPickingRoot(false);
-    setRoot(selected);
-    setSelectedFile(null);
-    setNav({ stack: [selected.path], index: 0 });
-  }, []);
-
-  // Auto-open the primary (or first) root so files appear immediately.
+  // Auto-open the preferred root. New workspaces briefly only have an empty
+  // managed root before the linked folder is attached — upgrade when it arrives.
   useEffect(() => {
-    if (pickingRoot || root || rootsLoading || roots.length === 0) return;
+    if (pickingRoot || rootsLoading || roots.length === 0) return;
+
     const preferred =
       roots.find((item) => item.isPrimary) ??
       roots.find((item) => item.kind === "linked") ??
       roots.find((item) => item.kind === "managed") ??
       roots[0];
-    if (preferred) openRoot(preferred);
+    if (!preferred) return;
+
+    if (!root) {
+      openRoot(preferred);
+      return;
+    }
+
+    // Current root was removed (e.g. unlinked).
+    if (!roots.some((item) => item.id === root.id)) {
+      openRoot(preferred);
+      return;
+    }
+
+    // Still on managed while a primary/linked working folder now exists.
+    if (
+      root.kind === "managed" &&
+      preferred.id !== root.id &&
+      (preferred.isPrimary || preferred.kind === "linked")
+    ) {
+      openRoot(preferred);
+    }
   }, [pickingRoot, root, roots, rootsLoading, openRoot]);
 
-  // Load directory whenever the current path changes.
+  // Lazy-load children whenever a folder is expanded.
   useEffect(() => {
-    if (currentPath) void load(currentPath);
-  }, [currentPath, load]);
+    if (!root) return;
+    for (const path of expanded) {
+      if (!childrenByPath.has(path) && !loadingPaths.has(path)) {
+        void load(path);
+      }
+    }
+  }, [root, expanded, childrenByPath, loadingPaths, load]);
 
-  // Live refresh on file changes in the current directory or preview.
+  // Live refresh on file changes for already-loaded directories.
   useWorkspaceEvents(workspaceId, (events) => {
     if (
       !hasEventType(
@@ -215,79 +435,72 @@ export function WorkspaceFilesPanel({
     ) {
       return;
     }
-    if (currentPath) void load(currentPath);
+    for (const path of childrenByPath.keys()) {
+      void load(path);
+    }
   });
 
   // Handle a reveal request pointing at an absolute file path.
   useEffect(() => {
     if (!revealPath || roots.length === 0) return;
-    const owningRoot =
-      roots.find((item) => revealPath.startsWith(item.path)) ?? null;
-    if (!owningRoot) {
+
+    let cancelled = false;
+
+    async function reveal() {
+      const path = revealPath!;
+      const owningRoot =
+        roots.find((item) => path.startsWith(item.path)) ?? null;
+      if (!owningRoot) {
+        onRevealHandled?.();
+        return;
+      }
+
+      if (!root || root.id !== owningRoot.id) {
+        openRoot(owningRoot);
+      }
+
+      const dir = parentPath(path);
+      const dirs = ancestorDirs(owningRoot.path, dir);
+
+      for (const ancestor of dirs) {
+        if (cancelled) return;
+        await load(ancestor);
+      }
+      if (cancelled) return;
+
+      setExpanded(new Set(dirs));
+      setSelectedPath(path);
+      setPreviewFile(path);
       onRevealHandled?.();
-      return;
     }
-    const dir = parentPath(revealPath);
-    setRoot(owningRoot);
-    if (dir !== owningRoot.path) {
-      setNav({ stack: [owningRoot.path, dir], index: 1 });
-    } else {
-      setNav({ stack: [owningRoot.path], index: 0 });
-    }
-    setSelectedFile(revealPath);
-    onRevealHandled?.();
+
+    void reveal();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealPath, roots]);
 
-  const goBack = () => {
-    setSelectedFile(null);
-    setNav((prev) => ({ ...prev, index: Math.max(0, prev.index - 1) }));
-  };
-  const goForward = () => {
-    setSelectedFile(null);
-    setNav((prev) => ({
-      ...prev,
-      index: Math.min(prev.stack.length - 1, prev.index + 1),
-    }));
-  };
-  const goUp = () => {
-    if (!root || !currentPath || currentPath === root.path) return;
-    navigateTo(parentPath(currentPath));
-  };
+  const targetDirForCreate = useMemo(() => {
+    if (!root) return null;
+    if (!selectedPath) return root.path;
+    if (selectedPath === root.path) return root.path;
+    const entry = entryByPath.get(selectedPath);
+    if (entry?.kind === "directory") return entry.path;
+    return parentPath(selectedPath);
+  }, [root, selectedPath, entryByPath]);
 
-  const breadcrumbs = useMemo(() => {
-    if (!root || !currentPath) return [];
-    const relative = currentPath.slice(root.path.length).replace(/^[/\\]+/, "");
-    const segments = relative ? relative.split(/[/\\]/).filter(Boolean) : [];
-    const crumbs = [{ label: rootDisplayLabel(root), path: root.path }];
-    let acc = root.path;
-    for (const segment of segments) {
-      acc = joinPath(acc, segment);
-      crumbs.push({ label: segment, path: acc });
+  function handleSelect(path: string) {
+    setSelectedPath(path);
+    if (root && path === root.path) {
+      setPreviewFile(null);
+      return;
     }
-    return crumbs;
-  }, [root, currentPath]);
-
-  const visibleEntries = useMemo(() => {
-    const filtered = filter.trim()
-      ? entries.filter((entry) =>
-          entry.name.toLowerCase().includes(filter.trim().toLowerCase())
-        )
-      : entries;
-    return [...filtered].sort((a, b) => {
-      if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
-      if (sort === "modified") {
-        return (b.modifiedAt ?? 0) - (a.modifiedAt ?? 0);
-      }
-      return a.name.localeCompare(b.name, "fa");
-    });
-  }, [entries, filter, sort]);
-
-  function handleEntryClick(entry: WorkspaceFileEntry) {
-    if (entry.kind === "directory") {
-      navigateTo(entry.path);
+    const entry = entryByPath.get(path);
+    if (entry?.kind === "file") {
+      setPreviewFile(path);
     } else {
-      setSelectedFile(entry.path);
+      setPreviewFile(null);
     }
   }
 
@@ -308,7 +521,12 @@ export function WorkspaceFilesPanel({
         entry.path
       );
       toast.success(`«${entry.name}» حذف شد.`);
-      if (currentPath) void load(currentPath);
+      if (previewFile === entry.path) setPreviewFile(null);
+      if (selectedPath === entry.path) {
+        setSelectedPath(root?.path ?? null);
+      }
+      const parent = parentPath(entry.path);
+      void load(parent);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "حذف ناموفق بود.");
     }
@@ -316,23 +534,29 @@ export function WorkspaceFilesPanel({
 
   async function handleDialogSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!dialog || !currentPath) return;
+    if (!dialog) return;
     const name = dialog.value.trim();
     if (!name) return;
     try {
       if (dialog.mode === "new-folder") {
+        if (!targetDirForCreate) return;
         await window.desktop.storage.createWorkspaceDirectory(
           workspaceId,
-          joinPath(currentPath, name)
+          joinPath(targetDirForCreate, name)
         );
         toast.success("پوشه ساخته شد.");
+        setExpanded((prev) => new Set(prev).add(targetDirForCreate));
+        void load(targetDirForCreate);
       } else if (dialog.mode === "new-file") {
+        if (!targetDirForCreate) return;
         await window.desktop.storage.createWorkspaceFile(
           workspaceId,
-          joinPath(currentPath, name),
+          joinPath(targetDirForCreate, name),
           ""
         );
         toast.success("فایل ساخته شد.");
+        setExpanded((prev) => new Set(prev).add(targetDirForCreate));
+        void load(targetDirForCreate);
       } else if (dialog.mode === "rename") {
         await window.desktop.storage.renameWorkspaceEntry(
           workspaceId,
@@ -340,12 +564,20 @@ export function WorkspaceFilesPanel({
           joinPath(parentPath(dialog.target), name)
         );
         toast.success("تغییر نام انجام شد.");
+        void load(parentPath(dialog.target));
       }
       setDialog(null);
-      if (currentPath) void load(currentPath);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "عملیات ناموفق بود.");
     }
+  }
+
+  function refreshTree() {
+    if (!root) return;
+    for (const path of childrenByPath.keys()) {
+      void load(path);
+    }
+    if (!childrenByPath.has(root.path)) void load(root.path);
   }
 
   // --- Render ---
@@ -358,7 +590,6 @@ export function WorkspaceFilesPanel({
     );
   }
 
-  // While roots load (or before auto-open), keep a calm spinner.
   if (!root && !pickingRoot) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -367,7 +598,6 @@ export function WorkspaceFilesPanel({
     );
   }
 
-  // Manual root selection (user tapped the roots switcher).
   if (!root) {
     return (
       <div dir="rtl" className="flex h-full min-h-0 flex-col gap-2">
@@ -412,8 +642,7 @@ export function WorkspaceFilesPanel({
     );
   }
 
-  // File preview view.
-  if (selectedFile) {
+  if (previewFile) {
     return (
       <div dir="rtl" className="flex h-full min-h-0 flex-col gap-2">
         <div className="flex items-center gap-1.5 px-1">
@@ -421,78 +650,54 @@ export function WorkspaceFilesPanel({
             size="icon-sm"
             variant="ghost"
             title="بازگشت"
-            onClick={() => setSelectedFile(null)}
+            onClick={() => setPreviewFile(null)}
           >
             <ChevronLeftIcon />
           </Button>
           <span className="min-w-0 flex-1 truncate text-sm font-medium">
-            {baseName(selectedFile)}
+            {baseName(previewFile)}
           </span>
           <Button
             size="icon-sm"
             variant="ghost"
             title="باز کردن در سیستم"
-            onClick={() => void handleReveal(selectedFile)}
+            onClick={() => void handleReveal(previewFile)}
           >
             <ExternalLinkIcon />
           </Button>
         </div>
         <FilePreview
           workspaceId={workspaceId}
-          path={selectedFile}
+          path={previewFile}
           className="min-h-0 flex-1"
         />
       </div>
     );
   }
 
-  const canGoBack = historyIndex > 0;
-  const canGoForward = historyIndex < history.length - 1;
-  const atRoot = currentPath === root.path;
+  const rootEntries = childrenByPath.get(root.path);
+  const rootLoading = loadingPaths.has(root.path) && !rootEntries;
 
   return (
     <div dir="rtl" className="flex h-full min-h-0 flex-col gap-2">
       <div className="flex items-center gap-0.5 px-0.5">
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          title="تعویض پوشه"
-          onClick={() => {
-            setPickingRoot(true);
-            setRoot(null);
-            setSelectedFile(null);
-          }}
-        >
-          <HardDriveIcon />
-        </Button>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          title="عقب"
-          disabled={!canGoBack}
-          onClick={goBack}
-        >
-          <ArrowRightIcon />
-        </Button>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          title="جلو"
-          disabled={!canGoForward}
-          onClick={goForward}
-        >
-          <ArrowLeftIcon />
-        </Button>
-        <Button
-          size="icon-sm"
-          variant="ghost"
-          title="بالا"
-          disabled={atRoot}
-          onClick={goUp}
-        >
-          <ArrowUpIcon />
-        </Button>
-        <div className="flex-1" />
+        {roots.length > 1 ? (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            title="تعویض پوشه"
+            onClick={() => {
+              setPickingRoot(true);
+              setRoot(null);
+              setPreviewFile(null);
+            }}
+          >
+            <HardDriveIcon />
+          </Button>
+        ) : null}
+        <div className="min-w-0 flex-1 truncate px-1 text-xs font-medium">
+          {rootDisplayLabel(root)}
+        </div>
         <Button
           size="icon-sm"
           variant={showFilter ? "secondary" : "ghost"}
@@ -530,18 +735,10 @@ export function WorkspaceFilesPanel({
         <Button
           size="icon-sm"
           variant="ghost"
-          title={sort === "name" ? "مرتب‌سازی بر اساس تاریخ" : "مرتب‌سازی بر اساس نام"}
-          onClick={() => setSort((s) => (s === "name" ? "modified" : "name"))}
-        >
-          <span className="text-[10px] font-medium">
-            {sort === "name" ? "نام" : "تاریخ"}
-          </span>
-        </Button>
-        <Button
-          size="icon-sm"
-          variant="ghost"
           title="باز کردن در سیستم"
-          onClick={() => void handleReveal(currentPath ?? root.path)}
+          onClick={() =>
+            void handleReveal(selectedPath ?? targetDirForCreate ?? root.path)
+          }
         >
           <ExternalLinkIcon />
         </Button>
@@ -549,33 +746,10 @@ export function WorkspaceFilesPanel({
           size="icon-sm"
           variant="ghost"
           title="بازخوانی"
-          onClick={() => currentPath && void load(currentPath)}
+          onClick={refreshTree}
         >
           <RefreshCwIcon />
         </Button>
-      </div>
-
-      {/* Breadcrumbs */}
-      <div className="flex min-w-0 items-center gap-0.5 overflow-x-auto px-1 pb-0.5 text-xs">
-        {breadcrumbs.map((crumb, index) => (
-          <span key={crumb.path} className="flex shrink-0 items-center gap-0.5">
-            {index > 0 ? (
-              <ChevronLeftIcon className="size-3 text-muted-foreground" />
-            ) : null}
-            <button
-              type="button"
-              onClick={() => navigateTo(crumb.path)}
-              className={cn(
-                "shrink-0 truncate rounded px-1 py-0.5 hover:bg-muted/60",
-                index === breadcrumbs.length - 1
-                  ? "font-medium text-foreground"
-                  : "text-muted-foreground"
-              )}
-            >
-              {crumb.label}
-            </button>
-          </span>
-        ))}
       </div>
 
       {showFilter ? (
@@ -588,11 +762,11 @@ export function WorkspaceFilesPanel({
         />
       ) : null}
 
-      {isLoading ? (
+      {rootLoading ? (
         <div className="flex flex-1 items-center justify-center">
           <Spinner />
         </div>
-      ) : visibleEntries.length === 0 ? (
+      ) : !rootEntries || rootEntries.length === 0 ? (
         <Empty className="flex-1 border-0 p-6">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -607,70 +781,31 @@ export function WorkspaceFilesPanel({
           </EmptyHeader>
         </Empty>
       ) : (
-        <ScrollArea className="min-h-0 flex-1">
-          <ul className="flex flex-col gap-0.5 pe-2">
-            {visibleEntries.map((entry) => (
-              <li key={entry.path} className="group flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => handleEntryClick(entry)}
-                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-right text-sm hover:bg-muted/60"
-                >
-                  {entry.kind === "directory" ? (
-                    <FolderIcon className="size-4 shrink-0 text-sky-500/80" />
-                  ) : (
-                    <FileIcon className="size-4 shrink-0 text-muted-foreground" />
-                  )}
-                  <span className="min-w-0 flex-1 truncate">{entry.name}</span>
-                  <span className="shrink-0 text-[11px] text-muted-foreground">
-                    {sort === "modified"
-                      ? formatModified(entry.modifiedAt)
-                      : formatSize(entry.sizeBytes)}
-                  </span>
-                </button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    render={
-                      <Button
-                        size="icon-xs"
-                        variant="ghost"
-                        className="opacity-0 group-hover:opacity-100 data-[popup-open]:opacity-100"
-                        title="عملیات"
-                      >
-                        <MoreVerticalIcon />
-                      </Button>
-                    }
-                  />
-                  <DropdownMenuContent align="end" dir="rtl">
-                    <DropdownMenuItem
-                      onClick={() =>
-                        setDialog({
-                          mode: "rename",
-                          value: entry.name,
-                          target: entry.path,
-                        })
-                      }
-                    >
-                      <PencilIcon />
-                      تغییر نام
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => void handleReveal(entry.path)}>
-                      <ExternalLinkIcon />
-                      باز کردن در سیستم
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onClick={() => void handleDelete(entry)}
-                    >
-                      <Trash2Icon />
-                      حذف
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </li>
-            ))}
-          </ul>
+        <ScrollArea className="min-h-0 flex-1" dir="ltr">
+          <FileTree
+            className="border-0 bg-transparent font-sans"
+            dir="ltr"
+            expanded={expanded}
+            onExpandedChange={setExpanded}
+            selectedPath={selectedPath ?? undefined}
+            onSelect={handleSelect}
+          >
+            <TreeNodes
+              entries={rootEntries}
+              childrenByPath={childrenByPath}
+              loadingPaths={loadingPaths}
+              filter={filter}
+              onRename={(entry) =>
+                setDialog({
+                  mode: "rename",
+                  value: entry.name,
+                  target: entry.path,
+                })
+              }
+              onReveal={(path) => void handleReveal(path)}
+              onDelete={(entry) => void handleDelete(entry)}
+            />
+          </FileTree>
         </ScrollArea>
       )}
 
