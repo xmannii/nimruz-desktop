@@ -8,6 +8,7 @@ import {
 import { ChatHeader } from "@/components/chat/chat-header";
 import { OnboardingDialog } from "@/components/onboarding-dialog";
 import { UpdateAvailableAlert } from "@/components/update-available-alert";
+import { WhatsNewDialog } from "@/components/whats-new-dialog";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAppSettings } from "@/hooks/use-app-settings";
 import { useAppUpdate } from "@/hooks/use-app-update";
@@ -17,6 +18,10 @@ import { useModelCatalog } from "@/hooks/use-model-catalog";
 import { useWorkspaces, type WorkspaceInput } from "@/hooks/use-workspaces";
 import { APP_HEADER_HEIGHT } from "@/lib/branding";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
+import {
+  seedLastSeenVersionIfNeeded,
+  shouldShowWhatsNew,
+} from "@/lib/whats-new";
 import { HOME_WORKSPACE_ID, isHomeWorkspace } from "@/lib/workspace";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
@@ -103,17 +108,21 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     personalization,
     memories,
     experts,
+    subagents,
     isHydrated: areSettingsHydrated,
     saveState: personalizationSaveState,
     updatePersonalization,
     handleMemoriesChange,
     handleDeleteMemory,
     handleExpertsChange,
+    handleSubagentsChange,
   } = useAppSettings();
 
   const stopCurrentChatRef = useRef<(() => void) | null>(null);
   const [credentialRefreshSignal, setCredentialRefreshSignal] = useState(0);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const [appVersion, setAppVersion] = useState<string | null>(null);
   const {
     available: availableUpdate,
     dismiss: dismissUpdate,
@@ -121,11 +130,43 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   } = useAppUpdate();
 
   useEffect(() => {
+    let cancelled = false;
+    void window.desktop.updates.getVersion().then((version) => {
+      if (!cancelled) setAppVersion(version);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!areSettingsHydrated || !isCatalogHydrated) return;
     if (!hasCompletedOnboarding()) {
       setOnboardingOpen(true);
     }
   }, [areSettingsHydrated, isCatalogHydrated]);
+
+  useEffect(() => {
+    if (!areSettingsHydrated || !isCatalogHydrated || !appVersion) return;
+
+    // First install: remember the installed version so onboarding does not
+    // hand off into a "what's new" dialog for v1.
+    if (!hasCompletedOnboarding()) {
+      seedLastSeenVersionIfNeeded(appVersion);
+      return;
+    }
+
+    if (onboardingOpen || whatsNewOpen) return;
+    if (!shouldShowWhatsNew(appVersion)) return;
+
+    setWhatsNewOpen(true);
+  }, [
+    areSettingsHydrated,
+    isCatalogHydrated,
+    appVersion,
+    onboardingOpen,
+    whatsNewOpen,
+  ]);
 
   const openOnboarding = useCallback(() => {
     setOnboardingOpen(true);
@@ -147,6 +188,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       personalization,
       memories,
       experts,
+      subagents,
       personalizationSaveState,
       credentialRefreshSignal,
       providers,
@@ -182,6 +224,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       handleMemoriesChange,
       handleDeleteMemory,
       handleExpertsChange,
+      handleSubagentsChange,
       bumpCredentialRefresh: () =>
         setCredentialRefreshSignal((current) => current + 1),
       openOnboarding,
@@ -211,6 +254,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       personalization,
       memories,
       experts,
+      subagents,
       personalizationSaveState,
       credentialRefreshSignal,
       providers,
@@ -245,6 +289,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       handleMemoriesChange,
       handleDeleteMemory,
       handleExpertsChange,
+      handleSubagentsChange,
       openOnboarding,
       refreshCatalog,
       setCatalog,
@@ -381,6 +426,14 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
             onOpenChange={setOnboardingOpen}
             needsModelSetup={!hasUsableModel}
             onFinishSetup={handleOpenSettings}
+          />
+        ) : null}
+
+        {whatsNewOpen && appVersion ? (
+          <WhatsNewDialog
+            open
+            onOpenChange={setWhatsNewOpen}
+            currentVersion={appVersion}
           />
         ) : null}
 

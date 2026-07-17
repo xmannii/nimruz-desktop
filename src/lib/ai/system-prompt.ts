@@ -12,6 +12,7 @@ import expertToolsMd from "@/lib/ai/prompts/expert-tools.md";
 import skillToolsMd from "@/lib/ai/prompts/skill-tools.md";
 import webToolsMd from "@/lib/ai/prompts/web-tools.md";
 import workspaceToolsMd from "@/lib/ai/prompts/workspace-tools.md";
+import spawnSubagentToolsMd from "@/lib/ai/prompts/spawn-subagent-tools.md";
 
 export function getBaseSystemPrompt() {
   return systemPromptMd.trim();
@@ -39,6 +40,10 @@ export function getWebToolsPrompt() {
 
 export function getWorkspaceToolsPrompt() {
   return workspaceToolsMd.trim();
+}
+
+export function getSpawnSubagentToolsPrompt() {
+  return spawnSubagentToolsMd.trim();
 }
 
 /** Current date appendix in Gregorian (English) and Jalali (Persian). */
@@ -76,6 +81,7 @@ export function buildSystemInstructions(
   options?: {
     includeMemoryTools?: boolean;
     includeAgentTools?: boolean;
+    includeSubagentTools?: boolean;
   }
 ) {
   const hasExperts = sanitizeExperts(experts).some((expert) => expert.enabled);
@@ -92,6 +98,7 @@ export function buildSystemInstructions(
     includeAgentTools && hasSkills ? getSkillToolsPrompt() : "",
     includeAgentTools && hasSkills ? buildSkillsAppendix(skills) : "",
     includeAgentTools ? getWebToolsPrompt() : "",
+    options?.includeSubagentTools ? getSpawnSubagentToolsPrompt() : "",
     buildPersonalizationAppendix(personalization),
     buildMemoriesAppendix(memories),
   ].filter(Boolean);

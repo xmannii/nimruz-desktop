@@ -80,6 +80,15 @@ test("persists chats, projects, settings, memories, and credentials", async () =
         updatedAt: 6,
       },
     ]);
+    database.saveSubagents([
+      {
+        id: "research-model",
+        providerId: "openrouter",
+        modelId: "anthropic/claude",
+        description: "Deep research",
+        enabled: true,
+      },
+    ]);
     database.setCredential("openrouter", Buffer.from("encrypted"), "••••1234");
 
     assert.ok(
@@ -93,6 +102,7 @@ test("persists chats, projects, settings, memories, and credentials", async () =
     assert.equal(database.loadChats()[0]?.messages[0]?.role, "user");
     assert.equal(database.loadPersonalization().nickname, "مانی");
     assert.equal(database.loadMemories()[0]?.id, "memory-1");
+    assert.equal(database.loadSubagents()[0]?.id, "research-model");
     assert.equal(database.getCredential("openrouter")?.hint, "••••1234");
 
     database.deleteWorkspace(project.id);

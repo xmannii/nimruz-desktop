@@ -1,5 +1,10 @@
 export * from "./types";
 export {
+  ACTIVE_WORKSPACE_KEY,
+  readStoredActiveWorkspaceId,
+  writeStoredActiveWorkspaceId,
+} from "./session-prefs";
+export {
   normalizeWorkspaceTrust,
   sanitizeWorkspace,
   sanitizeWorkspaceRoot,

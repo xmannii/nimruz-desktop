@@ -74,7 +74,7 @@ export function getToolNameFromPartType(type: string): string {
   return type.replace(/^tool-/, "");
 }
 
-function isPartLoading(part: CompactableToolPart): boolean {
+export function isPartLoading(part: CompactableToolPart): boolean {
   return (
     part.state === "input-streaming" ||
     part.state === "input-available" ||
@@ -83,7 +83,7 @@ function isPartLoading(part: CompactableToolPart): boolean {
   );
 }
 
-function isPartError(part: CompactableToolPart): boolean {
+export function isPartError(part: CompactableToolPart): boolean {
   if (part.state === "output-error" || part.state === "output-denied") {
     return true;
   }

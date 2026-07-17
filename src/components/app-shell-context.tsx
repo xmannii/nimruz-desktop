@@ -12,6 +12,7 @@ import type {
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { Expert } from "@/lib/settings/experts";
+import type { SubagentModel } from "@/lib/settings/subagents";
 import type { WorkspaceRoot, WorkspaceTrustSettings } from "@/lib/workspace";
 import {
   createContext,
@@ -35,6 +36,7 @@ export type AppShellContextValue = {
   personalization: PersonalizationSettings;
   memories: MemoryEntry[];
   experts: Expert[];
+  subagents: SubagentModel[];
   personalizationSaveState: "idle" | "saving" | "saved" | "error";
   credentialRefreshSignal: number;
   providers: ProviderConfig[];
@@ -82,6 +84,7 @@ export type AppShellContextValue = {
   handleMemoriesChange: (memories: MemoryEntry[]) => void;
   handleDeleteMemory: (id: string) => void;
   handleExpertsChange: (experts: Expert[]) => void;
+  handleSubagentsChange: (subagents: SubagentModel[]) => void;
   bumpCredentialRefresh: () => void;
   openOnboarding: () => void;
   refreshCatalog: () => Promise<ModelCatalogSnapshot>;

@@ -4,18 +4,20 @@ import { z } from "zod";
 export const expertManagementTools = {
   create_expert: {
     description:
-      "Create a specialist only when the user explicitly asks to create/add/configure an expert. Do not invent experts unprompted.",
+      "Create a reusable specialist only when the user explicitly asks to create, save, or configure one. Do not create experts merely to handle the current task.",
     inputSchema: z.object({
       name: z
         .string()
         .min(1)
         .max(EXPERT_LIMITS.name)
-        .describe("Friendly display name"),
+        .describe("Short, distinctive user-facing name"),
       slug: z
         .string()
         .min(1)
         .max(EXPERT_LIMITS.slug)
-        .describe("Lowercase command slug, for example linkedin-post"),
+        .describe(
+          "Unique lowercase kebab-case command slug, for example linkedin-post"
+        ),
       description: z
         .string()
         .min(1)
@@ -34,7 +36,9 @@ export const expertManagementTools = {
         .array(z.string().min(1).max(EXPERT_LIMITS.trigger))
         .max(EXPERT_LIMITS.triggers)
         .optional()
-        .describe("Natural-language phrases associated with this expert"),
+        .describe(
+          "Small set of distinctive routing phrases; avoid broad generic words"
+        ),
     }),
   },
 };

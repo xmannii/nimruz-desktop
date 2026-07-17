@@ -12,6 +12,7 @@ export type ToolCapability =
   | "network"
   | "memory"
   | "experts"
+  | "subagents"
   | "skills"
   | "artifacts"
   | "tasks";
@@ -162,6 +163,14 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     timeoutMs: 10_000,
     maxOutputBytes: 128_000,
   },
+  spawn_subagent: {
+    name: "spawn_subagent",
+    capability: "subagents",
+    risk: "read",
+    description: "Run an isolated read-only research subagent",
+    timeoutMs: 5 * 60_000,
+    maxOutputBytes: 512_000,
+  },
 };
 
 export type PolicyDecision =
@@ -193,6 +202,12 @@ export function evaluateToolPolicy(options: {
   // Expert delegation tools are dynamic; treat as read/network nested work.
   if (options.toolName.startsWith("expert_")) {
     return { type: "approved", reason: "Expert delegation is auto-approved." };
+  }
+  if (options.toolName === "spawn_subagent") {
+    return {
+      type: "approved",
+      reason: "Read-only subagent delegation is auto-approved.",
+    };
   }
 
   if (!meta) {

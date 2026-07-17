@@ -44,6 +44,7 @@ import { getChatErrorMessage } from "@/lib/chat/errors";
 import { generateChatTitle, fallbackTitleFromMessage } from "@/lib/chat/generate-chat-title";
 import { toast } from "sonner";
 import { getExpertValidationErrors, normalizeExpertSlug, upsertExpert, type Expert } from "@/lib/settings/experts";
+import type { SubagentModel } from "@/lib/settings/subagents";
 
 const CHAT_UPDATE_THROTTLE_MS = 50;
 let sessionTokenPromise: Promise<string> | undefined;
@@ -83,6 +84,7 @@ type ChatSessionProps = {
   personalization: PersonalizationSettings;
   memories: MemoryEntry[];
   experts: Expert[];
+  subagents: SubagentModel[];
   onMemoriesChange: (memories: MemoryEntry[]) => void;
   onExpertsChange: (experts: Expert[]) => void;
 };
@@ -94,6 +96,7 @@ export function ChatSession({
   personalization,
   memories,
   experts,
+  subagents,
   onMemoriesChange,
   onExpertsChange,
 }: ChatSessionProps) {
@@ -208,6 +211,7 @@ export function ChatSession({
           personalization,
           memories,
           experts,
+          subagents,
           chatId: chat.id,
           workspaceId: chat.workspaceId,
         };
@@ -316,6 +320,7 @@ export function ChatSession({
       personalization,
       memories,
       experts,
+      subagents,
       selectedExpertSlug: selectedExpertSlug ?? undefined,
       chatId: chat.id,
       workspaceId: chat.workspaceId ?? undefined,
@@ -324,6 +329,7 @@ export function ChatSession({
       chat.id,
       chat.workspaceId,
       experts,
+      subagents,
       memories,
       modelRef.modelId,
       modelRef.providerId,

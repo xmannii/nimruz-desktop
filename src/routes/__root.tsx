@@ -17,7 +17,7 @@ function RootLayout() {
         <DirectionProvider direction="rtl">
           <TooltipProvider>
             <Outlet />
-            <Toaster richColors position="top-center" dir="rtl" />
+            <Toaster richColors position="top-center" />
             {import.meta.env.DEV ? (
               <TanStackRouterDevtools position="bottom-left" />
             ) : null}

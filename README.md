@@ -140,7 +140,7 @@ When you bump the version in `package.json` and push to `main`, GitHub Actions a
 
 ```bash
 # 1. Change "version" in package.json (e.g. 1.0.0 → 1.0.1)
-# 2. Update CHANGELOG.md
+# 2. Update CHANGELOG.md (Persian; also powers Settings → تغییرات نسخه‌ها and What’s New)
 # 3. Commit and push:
 git add package.json CHANGELOG.md
 git commit -m "Bump version to 1.0.1"

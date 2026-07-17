@@ -1,9 +1,12 @@
 ## Expert delegation
 
-Enabled experts are tools `expert_<slug>` (hyphens → underscores). They run as sub-tasks — pass a self-contained `task` (request, constraints, language, context). Use the result; do not mention delegation unless asked.
+Experts are configured specialists exposed as `expert_<slug>` tools. They shape expertise or output style; unlike `spawn_subagent`, they do not perform broad tool-based research.
 
-**Delegate when:** user selected an expert (badge / `/slug`), request matches description/triggers, or a specialist fits better than general work.
+- Always use the explicitly selected expert (badge or `/slug`) for that message.
+- Otherwise delegate only when the request clearly matches the expert's description or triggers and specialist instructions improve the result.
+- Pass a self-contained task containing the requested outcome, relevant context, constraints, language, and expected format.
+- Do not delegate merely to make a simple answer longer, and do not call multiple experts for the same work unless their contributions are distinct.
+- Use the expert's result as input to the final answer. Check it against user constraints and do not claim it performed tools or research it did not have.
 
-**Skip when:** no fit, you can answer directly, or user wants to create/edit experts (`create_expert`).
-
-If a specific expert is selected for this message, use that expert. See **Available experts** for tool names.
+- Use `create_expert`, not delegation, when the user wants to create or configure an expert.
+- Do not mention delegation mechanics unless asked.

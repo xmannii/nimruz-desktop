@@ -4,13 +4,17 @@ import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
-const Toaster = ({ ...props }: ToasterProps) => {
+const TOASTER_FONT_FAMILY =
+  'var(--font-ui, var(--font-vazirmatn)), ui-sans-serif, system-ui, sans-serif'
+
+const Toaster = ({ dir = "rtl", ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme()
 
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
-      className="toaster group"
+      dir={dir}
+      className="toaster group font-sans"
       icons={{
         success: (
           <CircleCheckIcon className="size-4" />
@@ -34,11 +38,19 @@ const Toaster = ({ ...props }: ToasterProps) => {
           "--normal-text": "var(--popover-foreground)",
           "--normal-border": "var(--border)",
           "--border-radius": "var(--radius)",
+          fontFamily: TOASTER_FONT_FAMILY,
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast",
+          toast: "cn-toast !font-sans",
+          title: "cn-toast-title",
+          description: "cn-toast-description",
+          actionButton: "cn-toast-action",
+          cancelButton: "cn-toast-cancel",
+        },
+        style: {
+          fontFamily: TOASTER_FONT_FAMILY,
         },
       }}
       {...props}

@@ -3,7 +3,7 @@ import { z } from "zod";
 export const skillTools = {
   load_skill: {
     description:
-      "Load full instructions for an installed skill by exact name from Available skills. Call when the task matches. Do not invent names.",
+      "Load task-specific operating instructions before acting when an exact entry under Available skills clearly matches the request. Do not guess names or load skills speculatively.",
     inputSchema: z.object({
       name: z
         .string()

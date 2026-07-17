@@ -269,39 +269,37 @@ export async function handleChatRequest(
           : {}),
       }
     : undefined;
+  const routingAppendix = explicitExpert
+    ? [
+        "## Explicit specialist selection",
+        `The user explicitly selected \`${expertToolName(explicitExpert)}\`. Call that tool before answering, using a self-contained brief.`,
+      ].join("\n")
+    : "";
 
   const result = streamText({
     model: languageModel,
     abortSignal: options?.signal,
     ...(selectedReasoningEffort ? { reasoning: selectedReasoningEffort } : {}),
-    instructions: buildSystemInstructions(
-      personalization,
-      sanitizeMemories(memories),
-      sanitizedExperts,
-      skillsCatalog,
-      {
-        includeMemoryTools: Boolean(availableTools),
-        includeAgentTools: Boolean(availableTools),
-      }
-    ),
+    instructions: [
+      buildSystemInstructions(
+        personalization,
+        sanitizeMemories(memories),
+        sanitizedExperts,
+        skillsCatalog,
+        {
+          includeMemoryTools: Boolean(availableTools),
+          includeAgentTools: Boolean(availableTools),
+        }
+      ),
+      routingAppendix,
+    ]
+      .filter(Boolean)
+      .join("\n\n"),
     messages: await convertToModelMessages(messages),
     ...(availableTools
       ? {
           tools: availableTools,
           stopWhen: stepCountIs(8),
-          ...(explicitExpert
-            ? {
-                prepareStep: ({ stepNumber }: { stepNumber: number }) => ({
-                  toolChoice:
-                    stepNumber === 0
-                      ? {
-                          type: "tool" as const,
-                          toolName: expertToolName(explicitExpert),
-                        }
-                      : ("auto" as const),
-                }),
-              }
-            : {}),
         }
       : {}),
     experimental_transform: smoothStream({

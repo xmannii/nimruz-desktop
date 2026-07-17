@@ -4,16 +4,21 @@ import {
   deleteAllLocalChats,
   deleteLocalChat,
   loadLocalChats,
+  loadLocalWorkspaces,
   saveLocalChats,
   type LocalChat,
 } from "@/lib/chat/storage";
+import { resolveInitialActiveChat } from "@/lib/chat/startup-chat";
 import {
   DEFAULT_MODEL,
   DEFAULT_PROVIDER_ID,
   type ModelId,
 } from "@/lib/models";
 import type { ProviderModelRef } from "@/lib/models/catalog";
-import { HOME_WORKSPACE_ID } from "@/lib/workspace";
+import {
+  HOME_WORKSPACE_ID,
+  readStoredActiveWorkspaceId,
+} from "@/lib/workspace";
 import type { UIMessage } from "ai";
 import { nanoid } from "nanoid";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -121,11 +126,15 @@ export function useChatHistory(
 
     async function hydrate() {
       try {
-        const loadedChats = (await loadLocalChats()).map(normalizeChat);
-        const storedChats = loadedChats.filter(
+        const [loadedChats, loadedWorkspaces] = await Promise.all([
+          loadLocalChats(),
+          loadLocalWorkspaces(),
+        ]);
+        const normalizedChats = loadedChats.map(normalizeChat);
+        const storedChats = normalizedChats.filter(
           (chat) => chat.messages.length > 0
         );
-        const emptyStoredChats = loadedChats.filter(
+        const emptyStoredChats = normalizedChats.filter(
           (chat) => chat.messages.length === 0
         );
 
@@ -135,23 +144,21 @@ export function useChatHistory(
           );
         }
 
-        const requestedChat = initialChatId
-          ? storedChats.find((chat) => chat.id === initialChatId)
-          : undefined;
-        const draftChat = requestedChat
-          ? undefined
-          : createEmptyChat(
-              DEFAULT_MODEL,
-              initialChatId && /^[\w-]{1,128}$/.test(initialChatId)
-                ? initialChatId
-                : nanoid(),
-              HOME_WORKSPACE_ID,
-              DEFAULT_PROVIDER_ID
-            );
-        const initialChats = draftChat
-          ? [draftChat, ...storedChats]
-          : storedChats;
-        const initialActiveId = requestedChat?.id ?? draftChat?.id ?? null;
+        const activeWorkspaceId = readStoredActiveWorkspaceId(
+          loadedWorkspaces.map((workspace) => workspace.id)
+        );
+        const { chats: initialChats, activeChatId: initialActiveId } =
+          resolveInitialActiveChat(storedChats, {
+            initialChatId,
+            activeWorkspaceId,
+            createDraft: (workspaceId, id) =>
+              createEmptyChat(
+                DEFAULT_MODEL,
+                id ?? nanoid(),
+                workspaceId,
+                DEFAULT_PROVIDER_ID
+              ),
+          });
 
         if (!cancelled) {
           setChats(initialChats);

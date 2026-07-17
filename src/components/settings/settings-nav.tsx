@@ -14,9 +14,12 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BrainIcon,
   BotIcon,
+  CircleHelpIcon,
   CpuIcon,
   InfoIcon,
   PaletteIcon,
+  SearchIcon,
+  ScrollTextIcon,
   SparklesIcon,
   UserRoundIcon,
   type LucideIcon,
@@ -28,8 +31,11 @@ export const SETTINGS_NAV: Array<{
     | "/settings/memories"
     | "/settings/experts"
     | "/settings/models"
+    | "/settings/research-agents"
     | "/settings/skills"
     | "/settings/appearance"
+    | "/settings/changelog"
+    | "/settings/help"
     | "/settings/about";
   label: string;
   icon: LucideIcon;
@@ -48,6 +54,12 @@ export const SETTINGS_NAV: Array<{
     label: "مدل‌ها",
     icon: CpuIcon,
     match: (pathname) => pathname.startsWith("/settings/models"),
+  },
+  {
+    to: "/settings/research-agents",
+    label: "دستیارهای پژوهشی",
+    icon: SearchIcon,
+    match: (pathname) => pathname.startsWith("/settings/research-agents"),
   },
   {
     to: "/settings/memories",
@@ -73,6 +85,18 @@ export const SETTINGS_NAV: Array<{
     label: "ظاهر",
     icon: PaletteIcon,
     match: (pathname) => pathname.startsWith("/settings/appearance"),
+  },
+  {
+    to: "/settings/changelog",
+    label: "تغییرات نسخه‌ها",
+    icon: ScrollTextIcon,
+    match: (pathname) => pathname.startsWith("/settings/changelog"),
+  },
+  {
+    to: "/settings/help",
+    label: "راهنما",
+    icon: CircleHelpIcon,
+    match: (pathname) => pathname.startsWith("/settings/help"),
   },
   {
     to: "/settings/about",

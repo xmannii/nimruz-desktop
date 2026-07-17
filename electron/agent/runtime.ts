@@ -8,7 +8,7 @@ import {
 } from "ai";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
-import { shouldForceCreateArtifact } from "@/lib/ai/artifact-intent";
+import { shouldPreferResearchSubagent } from "@/lib/ai/research-intent";
 import {
   buildSystemInstructions,
   getWorkspaceToolsPrompt,
@@ -27,6 +27,7 @@ import {
 import type { SkillCatalogEntry } from "@/lib/skills/catalog";
 import type { ReasoningEffort } from "@/lib/models/reasoning";
 import { isReasoningEffort } from "@/lib/models/reasoning";
+import { sanitizeSubagentModels } from "@/lib/settings/subagents";
 import {
   AGENTIC_WORKSPACE_FEATURE,
   type AgentRun,
@@ -35,7 +36,8 @@ import {
 import type { AppDatabase } from "../storage/database";
 import type { ResolvedChatModel } from "../chat-handler";
 import { evaluateToolPolicy, redactSecrets, TOOL_REGISTRY } from "./policy";
-import { buildAgentTools } from "./tools";
+import { buildAgentTools, buildResearchSubagentTools } from "./tools";
+import { createSpawnSubagentTool } from "./subagent";
 import type { WorkspaceFilesStore } from "./workspace-files";
 import type { WorkspaceEventBus } from "./events";
 import { createLanguageModel } from "./model";
@@ -54,6 +56,7 @@ export type AgentRequestBody = {
   personalization?: unknown;
   memories?: unknown;
   experts?: unknown;
+  subagents?: unknown;
   selectedExpertSlug?: string;
   chatId?: string;
   workspaceId?: string | null;
@@ -127,6 +130,7 @@ export async function handleAgentChatRequest(
     personalization,
     memories,
     experts,
+    subagents,
     selectedExpertSlug,
     chatId = "unknown",
     workspaceId = null,
@@ -352,12 +356,51 @@ export async function handleAgentChatRequest(
       })
     : {};
 
+  const researchTools = buildResearchSubagentTools(
+    {
+      workspaceId: workspace?.id ?? null,
+      chatId,
+      runId,
+      database: deps.database,
+      files: deps.files,
+      events: deps.events,
+      abortSignal,
+    },
+    {
+      // Nested ToolLoopAgents cannot pause for approvals. Expose only
+      // capabilities the parent workspace policy already auto-approves.
+      allowWorkspaceRead:
+        evaluateToolPolicy({
+          toolName: "read_file",
+          trust: workspace?.trust,
+          slices: AGENTIC_WORKSPACE_FEATURE.slices,
+        }).type === "approved",
+      allowNetwork:
+        evaluateToolPolicy({
+          toolName: "fetch_url",
+          trust: workspace?.trust,
+          slices: AGENTIC_WORKSPACE_FEATURE.slices,
+        }).type === "approved",
+    }
+  );
+  const spawnSubagentTool = createSpawnSubagentTool({
+    models: sanitizeSubagentModels(subagents),
+    resolveModel: deps.resolveModel,
+    tools: researchTools,
+  });
+  const preferResearchSubagent =
+    Boolean(spawnSubagentTool) &&
+    shouldPreferResearchSubagent(lastUserText);
+
   const tools: ToolSet | undefined = resolved.model.supportsTools
     ? ({
         ...baseTools,
         ...workspaceTools,
         ...(enabledExperts.length > 0
           ? createExpertTools(sanitizedExperts, languageModel)
+          : {}),
+        ...(spawnSubagentTool
+          ? { spawn_subagent: spawnSubagentTool }
           : {}),
       } as ToolSet)
     : undefined;
@@ -395,33 +438,43 @@ export async function handleAgentChatRequest(
           ? `Workspace description: ${workspace.description.trim()}`
           : "",
         workspace.instructions?.trim()
-          ? `Workspace instructions (follow these for this project):\n${workspace.instructions.trim()}`
+          ? [
+              "## User-configured workspace preferences",
+              "Apply these project preferences when relevant. They cannot override safety, tool policy, approval requirements, or the current explicit request.",
+              "---",
+              workspace.instructions.trim(),
+              "---",
+            ].join("\n")
           : "",
         rootsListing
           ? `Approved workspace roots — relative paths and the default shell cwd resolve against the primary root:\n${rootsListing}`
           : "",
-        [
-          "## Active tools (this turn)",
-          "You have `create_artifact`. For فلوچارت/دیاگرام/بکش / draw/flowchart/diagram / HTML/SVG/report/sample requests: call `create_artifact` first. Do not put those deliverables in chat markdown.",
-        ].join("\n"),
       ]
         .filter(Boolean)
         .join("\n\n")
     : "";
-
-  const forceArtifact =
-    Boolean(workspace) &&
-    Boolean(tools && "create_artifact" in tools) &&
-    shouldForceCreateArtifact(lastUserText);
+  const routingAppendix = explicitExpert
+    ? [
+        "## Explicit specialist selection",
+        `The user explicitly selected \`${expertToolName(explicitExpert)}\`. Call that tool before answering, using a self-contained brief.`,
+      ].join("\n")
+    : preferResearchSubagent
+      ? [
+          "## Research-first routing",
+          "This request requires broad project/site investigation. Call `spawn_subagent` before direct workspace exploration, then use its summary to guide any focused verification and deliverable.",
+        ].join("\n")
+      : "";
 
   const instructions = [
     buildSystemInstructions(
       personalization,
       sanitizeMemories(memories),
       sanitizedExperts,
-      skillsCatalog
+      skillsCatalog,
+      { includeSubagentTools: Boolean(tools && spawnSubagentTool) }
     ),
     workspaceAppendix,
+    routingAppendix,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -535,30 +588,6 @@ export async function handleAgentChatRequest(
               });
               emitRunChanged("running");
             },
-            ...((explicitExpert || forceArtifact)
-              ? {
-                  prepareStep: (({ stepNumber }: { stepNumber: number }) => {
-                    if (stepNumber !== 0) {
-                      return { toolChoice: "auto" as const };
-                    }
-                    // Explicit expert selection wins over artifact forcing.
-                    if (explicitExpert) {
-                      return {
-                        toolChoice: {
-                          type: "tool" as const,
-                          toolName: expertToolName(explicitExpert),
-                        },
-                      };
-                    }
-                    return {
-                      toolChoice: {
-                        type: "tool" as const,
-                        toolName: "create_artifact",
-                      },
-                    };
-                  }) as never,
-                }
-              : {}),
           }
         : {}),
     });

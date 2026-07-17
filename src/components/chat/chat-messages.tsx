@@ -12,14 +12,18 @@ import { ChatSkillToolPart } from "@/components/chat/chat-skill-tool-part";
 import {
   ChatCompactToolBatch,
   COMPACT_TOOL_THRESHOLD,
+  isPartError,
+  isPartLoading,
   type CompactableToolPart,
 } from "@/components/chat/chat-compact-tool-batch";
 import {
   ChatToolInvocation,
   ChatToolStepGroup,
+  type ToolStepCollapsedSummary,
 } from "@/components/chat/chat-tool-invocation";
 import { ChatFetchUrlToolPart } from "@/components/chat/chat-web-tool-part";
 import { ChatWorkspaceToolPart } from "@/components/chat/chat-workspace-tool-part";
+import { ChatSubagentToolPart } from "@/components/chat/chat-subagent-tool-part";
 import { ToolApprovalCard } from "@/components/workspace/tool-approval-card";
 import {
   Attachment,
@@ -434,6 +438,7 @@ function isManualApprovalPart(part: UIMessage["parts"][number]): boolean {
 function isStackableToolPart(part: UIMessage["parts"][number]): boolean {
   if (part.type === "reasoning") return false;
   if (!part.type.startsWith("tool-")) return false;
+  if (part.type === "tool-spawn_subagent") return false;
   if (isManualApprovalPart(part)) return false;
   return true;
 }
@@ -563,6 +568,62 @@ type TimelineToolsSegment = {
 
 type TimelineSegment = TimelineReasoningSegment | TimelineToolsSegment;
 
+function countTimelineSteps(timeline: TimelineSegment[]): number {
+  let count = 0;
+  for (const segment of timeline) {
+    if (segment.kind === "reasoning") {
+      count += 1;
+      continue;
+    }
+    count +=
+      segment.parts.length >= COMPACT_TOOL_THRESHOLD ? 1 : segment.parts.length;
+  }
+  return count;
+}
+
+function isTimelineActive(
+  timeline: TimelineSegment[],
+  isReasoningStreaming: boolean,
+  lastPartIndex: number,
+  isStreaming: boolean,
+  hasFollowingContent: boolean
+): boolean {
+  const segmentActive = timeline.some((segment) => {
+    if (segment.kind === "reasoning") {
+      return isReasoningStreaming && segment.index === lastPartIndex;
+    }
+    return (segment.parts as CompactableToolPart[]).some(isPartLoading);
+  });
+
+  if (segmentActive) return true;
+
+  // Keep the connected stack visible until text (or other content) follows.
+  return isStreaming && !hasFollowingContent;
+}
+
+function timelineHasErrors(timeline: TimelineSegment[]): boolean {
+  return timeline.some(
+    (segment) =>
+      segment.kind === "tools" &&
+      (segment.parts as CompactableToolPart[]).some(isPartError)
+  );
+}
+
+function buildTimelineCollapsedSummary(
+  timeline: TimelineSegment[]
+): ToolStepCollapsedSummary | undefined {
+  const stepCount = countTimelineSteps(timeline);
+  if (stepCount <= 1) return undefined;
+
+  const hasError = timelineHasErrors(timeline);
+  const stepLabel = stepCount.toLocaleString("fa-IR");
+
+  return {
+    isError: hasError,
+    label: hasError ? `${stepLabel} مرحله · با خطا` : `${stepLabel} مرحله انجام شد`,
+  };
+}
+
 function renderReasoningStep({
   messageId,
   index,
@@ -661,7 +722,7 @@ function AssistantMessageParts({
     toolBufferStartIndex = 0;
   };
 
-  const flushTimeline = () => {
+  const flushTimeline = (hasFollowingContent = false) => {
     flushToolBuffer();
     if (timeline.length === 0) return;
 
@@ -693,7 +754,17 @@ function AssistantMessageParts({
     }
 
     renderedParts.push(
-      <ChatToolStepGroup key={timelineKey || `${message.id}-timeline`}>
+      <ChatToolStepGroup
+        key={timelineKey || `${message.id}-timeline`}
+        isActive={isTimelineActive(
+          timeline,
+          isReasoningStreaming,
+          lastPartIndex,
+          isStreaming,
+          hasFollowingContent
+        )}
+        collapsedSummary={buildTimelineCollapsedSummary(timeline)}
+      >
         {steps}
       </ChatToolStepGroup>
     );
@@ -705,7 +776,7 @@ function AssistantMessageParts({
     const key = `${message.id}-${index}`;
 
     if (isManualApprovalPart(part)) {
-      flushTimeline();
+      flushTimeline(true);
       const approvalPart = part as unknown as {
         type: string;
         toolCallId: string;
@@ -755,6 +826,18 @@ function AssistantMessageParts({
       return;
     }
 
+    if (part.type === "tool-spawn_subagent") {
+      flushTimeline(true);
+      renderedParts.push(
+        <ChatSubagentToolPart
+          key={key}
+          workspaceId={workspaceId}
+          part={part as never}
+        />
+      );
+      return;
+    }
+
     if (isStackableToolPart(part)) {
       if (toolBuffer.length === 0) {
         if (!timelineKey) timelineKey = `timeline-${key}`;
@@ -774,7 +857,7 @@ function AssistantMessageParts({
       return;
     }
 
-    flushTimeline();
+    flushTimeline(true);
 
     if (part.type !== "text") return;
 

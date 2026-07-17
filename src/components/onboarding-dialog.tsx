@@ -2,6 +2,7 @@
 
 import { NimruzLogo } from "@/components/logo";
 import { OnboardingAppearanceStep } from "@/components/onboarding-appearance-step";
+import { OnboardingPersonalizationStep } from "@/components/onboarding-personalization-step";
 import {
   Anthropic,
   DeepSeek,
@@ -26,6 +27,7 @@ import {
   MessageSquareTextIcon,
   PaletteIcon,
   SparklesIcon,
+  UserRoundIcon,
   type LucideIcon,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
@@ -39,6 +41,7 @@ type OnboardingStep = {
   bullets?: string[];
   showProviders?: boolean;
   showAppearance?: boolean;
+  showPersonalization?: boolean;
 };
 
 const PROVIDER_SHOWCASE: Array<{
@@ -88,6 +91,14 @@ const STEPS: OnboardingStep[] = [
     description:
       "حالت روشن یا تیره، پالت رنگ و فونت را همین حالا انتخاب کنید. بعداً از تنظیمات هم قابل تغییر است.",
     showAppearance: true,
+  },
+  {
+    id: "personalization",
+    icon: UserRoundIcon,
+    title: "شخصی‌سازی",
+    description:
+      "نام، سبک پاسخ و چند جزئیات دیگر را وارد کنید تا دستیار بهتر شما را بشناسد. همه فیلدها اختیاری‌اند و بعداً از تنظیمات قابل تغییر هستند.",
+    showPersonalization: true,
   },
   {
     id: "models",
@@ -185,7 +196,7 @@ export function OnboardingDialog({
         dir="rtl"
         className={cn(
           "sm:max-w-lg",
-          step.showAppearance && "sm:max-w-xl"
+          (step.showAppearance || step.showPersonalization) && "sm:max-w-xl"
         )}
         showCloseButton={false}
       >
@@ -231,6 +242,10 @@ export function OnboardingDialog({
         {step.showAppearance ? (
           <div className="max-h-[min(24rem,50vh)] overflow-y-auto rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5">
             <OnboardingAppearanceStep />
+          </div>
+        ) : step.showPersonalization ? (
+          <div className="max-h-[min(28rem,55vh)] overflow-y-auto rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5">
+            <OnboardingPersonalizationStep />
           </div>
         ) : step.showProviders || step.bullets?.length ? (
           <div className="space-y-3 rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5">

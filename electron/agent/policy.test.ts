@@ -107,6 +107,14 @@ test("expert delegation tools are auto-approved", () => {
   assert.equal(decision.type, "approved");
 });
 
+test("research subagent delegation is auto-approved", () => {
+  const decision = evaluateToolPolicy({
+    toolName: "spawn_subagent",
+    trust: DEFAULT_WORKSPACE_TRUST,
+  });
+  assert.equal(decision.type, "approved");
+});
+
 test("unknown tools require approval", () => {
   const decision = evaluateToolPolicy({
     toolName: "mystery_tool",

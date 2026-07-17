@@ -264,7 +264,12 @@ export function WorkspacePanel({
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col p-2.5">
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col",
+          active === "artifacts" ? "p-0" : "p-2.5"
+        )}
+      >
         {active === "files" ? (
           <WorkspaceFilesPanel
             key={workspaceId}

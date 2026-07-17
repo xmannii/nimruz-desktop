@@ -37,6 +37,10 @@ import {
 } from "@/lib/settings/memories";
 import { sanitizeExperts, type Expert } from "@/lib/settings/experts";
 import {
+  sanitizeSubagentModels,
+  type SubagentModel,
+} from "@/lib/settings/subagents";
+import {
   DEFAULT_SKILLS_PREFERENCES,
   sanitizeSkillsPreferences,
   type SkillsPreferences,
@@ -1315,6 +1319,32 @@ export class AppDatabase {
       )
       .run(JSON.stringify(settings), Date.now());
     return settings;
+  }
+
+  loadSubagents(): SubagentModel[] {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("subagents");
+    if (typeof row?.value_json !== "string") return [];
+    try {
+      return sanitizeSubagentModels(JSON.parse(row.value_json));
+    } catch {
+      return [];
+    }
+  }
+
+  saveSubagents(value: unknown): SubagentModel[] {
+    const models = sanitizeSubagentModels(value);
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('subagents', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(models), Date.now());
+    return models;
   }
 
   loadSkillsPreferences(): SkillsPreferences {

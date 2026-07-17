@@ -117,4 +117,23 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
+  [data-sonner-toaster] {
+    font-family: var(--font-ui, var(--font-vazirmatn)), ui-sans-serif, system-ui,
+      sans-serif !important;
+  }
+
+  [data-sonner-toaster][dir="rtl"] [data-sonner-toast] [data-content] {
+    text-align: right;
+  }
+
+  [data-sonner-toaster][dir="rtl"] [data-sonner-toast] [data-title],
+  [data-sonner-toaster][dir="rtl"] [data-sonner-toast] [data-description] {
+    text-align: right;
+  }
+
+  [data-sonner-toaster][dir="rtl"] [data-sonner-toast] [data-button],
+  [data-sonner-toaster][dir="rtl"] [data-sonner-toast] [data-cancel] {
+    font-family: inherit;
+  }
 }

@@ -5,7 +5,14 @@ import { SettingsSection } from "@/components/settings/settings-section";
 import { Button } from "@/components/ui/button";
 import { APP_NAME_FA, GITHUB_RELEASES_URL } from "@/lib/branding";
 import type { UpdateCheckResult } from "@/lib/updates";
-import { BookOpenIcon, ExternalLinkIcon, InfoIcon, RefreshCwIcon } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import {
+  BookOpenIcon,
+  ExternalLinkIcon,
+  InfoIcon,
+  RefreshCwIcon,
+  ScrollTextIcon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -100,10 +107,30 @@ export function AboutSettingsSection() {
             variant="ghost"
             size="sm"
             className="h-auto justify-start gap-1.5 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+            render={<Link to="/settings/changelog" />}
+          >
+            <ScrollTextIcon className="size-3.5" />
+            تغییرات نسخه‌ها
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto justify-start gap-1.5 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
+            render={<Link to="/settings/help" />}
+          >
+            <BookOpenIcon className="size-3.5" />
+            راهنمای کامل برنامه
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto justify-start gap-1.5 px-0 text-muted-foreground hover:bg-transparent hover:text-foreground"
             onClick={openOnboarding}
           >
             <BookOpenIcon className="size-3.5" />
-            نمایش مجدد راهنمای شروع
+            نمایش مجدد تور شروع
           </Button>
           <Button
             type="button"

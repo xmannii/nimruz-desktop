@@ -48,6 +48,7 @@ export function ChatView({ chatId, workspaceId }: ChatViewProps) {
     personalization,
     memories,
     experts,
+    subagents,
     credentialRefreshSignal,
     stopCurrentChatRef,
     getChatById,
@@ -202,6 +203,7 @@ export function ChatView({ chatId, workspaceId }: ChatViewProps) {
         personalization={personalization}
         memories={memories}
         experts={experts}
+        subagents={subagents}
         onMemoriesChange={handleMemoriesChange}
         onExpertsChange={handleExpertsChange}
       />

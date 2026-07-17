@@ -749,6 +749,9 @@ export class WorkspaceFilesStore {
     runId?: string | null;
     chatId?: string | null;
   }): ArtifactRecord {
+    if (Buffer.byteLength(options.content, "utf8") > MAX_WRITE_BYTES) {
+      throw new Error("Artifact payload exceeds size limit.");
+    }
     const artifactsDir = this.artifactsRootPath(options.workspaceId);
     mkdirSync(artifactsDir, { recursive: true });
     this.ensureManagedRoot(options.workspaceId);

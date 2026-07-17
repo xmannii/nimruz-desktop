@@ -10,6 +10,8 @@ import {
   DEFAULT_WORKSPACE_TRUST,
   HOME_WORKSPACE_ID,
   isHomeWorkspace,
+  readStoredActiveWorkspaceId,
+  writeStoredActiveWorkspaceId,
   type LocalWorkspace,
   type WorkspaceInput,
   type WorkspaceRoot,
@@ -39,8 +41,6 @@ function sortWorkspaces(workspaces: LocalWorkspace[]): LocalWorkspace[] {
     return b.updatedAt - a.updatedAt;
   });
 }
-
-const ACTIVE_WORKSPACE_KEY = "nimruz-active-workspace-id";
 
 export function useWorkspaces() {
   const [workspaces, setWorkspaces] = useState<LocalWorkspace[]>([]);
@@ -77,12 +77,9 @@ export function useWorkspaces() {
         next = sortWorkspaces(next);
         setWorkspaces(next);
 
-        const storedId = window.localStorage.getItem(ACTIVE_WORKSPACE_KEY);
-        const active =
-          next.find((workspace) => workspace.id === storedId)?.id ??
-          HOME_WORKSPACE_ID;
+        const active = readStoredActiveWorkspaceId(next.map((workspace) => workspace.id));
         setActiveWorkspaceIdState(active);
-        window.localStorage.setItem(ACTIVE_WORKSPACE_KEY, active);
+        writeStoredActiveWorkspaceId(active);
       })
       .catch((error) => {
         console.error("Failed to load workspaces:", error);
@@ -120,7 +117,7 @@ export function useWorkspaces() {
   const setActiveWorkspaceId = useCallback((id: string | null) => {
     const next = id ?? HOME_WORKSPACE_ID;
     setActiveWorkspaceIdState(next);
-    window.localStorage.setItem(ACTIVE_WORKSPACE_KEY, next);
+    writeStoredActiveWorkspaceId(next);
   }, []);
 
   const createWorkspace = useCallback((input: WorkspaceInput) => {

@@ -17,6 +17,7 @@ import type { PersonalizationSettings } from "@/lib/settings/personalization";
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
 import type { Expert } from "@/lib/settings/experts";
+import type { SubagentModel } from "@/lib/settings/subagents";
 import type {
   AgentRun,
   AgentRunStep,
@@ -254,6 +255,8 @@ export type DesktopAPI = {
     saveMemories: (memories: MemoryEntry[]) => Promise<MemoryEntry[]>;
     loadExperts: () => Promise<Expert[]>;
     saveExperts: (experts: Expert[]) => Promise<Expert[]>;
+    loadSubagents: () => Promise<SubagentModel[]>;
+    saveSubagents: (models: SubagentModel[]) => Promise<SubagentModel[]>;
     importLegacyData: (
       snapshot: LegacyDataSnapshot
     ) => Promise<LegacyImportResult>;

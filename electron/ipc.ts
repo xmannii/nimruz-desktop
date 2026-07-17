@@ -6,6 +6,7 @@ import type { LegacyImportResult } from "@/lib/desktop-api";
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { AppearanceSettings } from "@/lib/settings/appearance";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import type { SubagentModel } from "@/lib/settings/subagents";
 import type {
   SkillDocument,
   SkillSummary,
@@ -581,6 +582,13 @@ export function registerIpcHandlers(options: {
   );
   handle("storage:load-experts", () => database.loadExperts());
   handle("storage:save-experts", (value: unknown) => database.saveExperts(value));
+  handle(
+    "storage:load-subagents",
+    (): SubagentModel[] => database.loadSubagents()
+  );
+  handle("storage:save-subagents", (value: unknown) =>
+    database.saveSubagents(value)
+  );
   handle(
     "storage:import-legacy",
     (value: unknown): LegacyImportResult =>
