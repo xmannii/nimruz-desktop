@@ -47,6 +47,8 @@ test("reports a missing bundled root Codex package", async () => {
 test("reports a missing target-specific optional package", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nimruz-runtime-root-"));
   try {
+    const missingPlatform: NodeJS.Platform =
+      process.platform === "win32" ? "linux" : "win32";
     await writePackageJson(
       path.join(directory, "node_modules", "@openai", "codex"),
       "@openai/codex"
@@ -55,11 +57,11 @@ test("reports a missing target-specific optional package", async () => {
     assert.throws(
       () =>
         resolveCodexExecutable({
-          platform: "linux",
+          platform: missingPlatform,
           arch: "x64",
           requireFrom,
         }),
-      /runtime for linux\/x64 is missing/
+      new RegExp(`runtime for ${missingPlatform}/x64 is missing`)
     );
   } finally {
     await rm(directory, { recursive: true, force: true });
