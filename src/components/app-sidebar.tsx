@@ -1,8 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChatRenameDialog } from "@/components/chat-rename-dialog";
 import { WorkspaceDialog } from "@/components/workspace-dialog";
+import { SidebarChatRow } from "@/components/chat/sidebar/sidebar-chat-row";
+import { SidebarProjectGroup } from "@/components/chat/sidebar/sidebar-project-group";
+import { SidebarSection } from "@/components/chat/sidebar/sidebar-section";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,11 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
 import {
   Command,
   CommandDialog,
@@ -30,57 +29,46 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupAction,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubItem,
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
 import type { LocalChat, LocalWorkspace } from "@/lib/chat/storage";
-import { exportChatJson, exportChatMarkdown } from "@/lib/chat/export-chat";
 import type { WorkspaceInput } from "@/hooks/use-workspaces";
 import { SettingsSidebarNav } from "@/components/settings/settings-nav";
 import { ChatSidebarTitle } from "@/components/chat/chat-sidebar-title";
-import { cn } from "@/lib/utils";
 import { HOME_WORKSPACE_ID, isHomeWorkspace } from "@/lib/workspace";
 import {
-  ChevronDownIcon,
-  DownloadIcon,
+  ArrowRightIcon,
+  CogIcon,
   FolderIcon,
   HistoryIcon,
   HomeIcon,
   MoreHorizontalIcon,
-  PencilIcon,
   PinIcon,
-  PinOffIcon,
   PlusIcon,
   SearchIcon,
-  CogIcon,
   SquarePenIcon,
   Trash2Icon,
-  ArrowRightIcon,
 } from "lucide-react";
 
 type AppSidebarProps = {
   chats: LocalChat[];
   workspaces: LocalWorkspace[];
   activeChatId: string | null;
+  activeWorkspaceId?: string | null;
   onNewChat: () => void;
   onNewWorkspaceChat: (workspaceId: string) => void;
   onOpenWorkspace: (workspaceId: string) => void;
@@ -99,65 +87,11 @@ type AppSidebarProps = {
   memoryCount?: number;
 };
 
-function ChatItemMenu({
-  chat,
-  onRename,
-  onDelete,
-  onPin,
-}: {
-  chat: LocalChat;
-  onRename: (chat: LocalChat) => void;
-  onDelete: (chat: LocalChat) => void;
-  onPin: (chat: LocalChat, pinned: boolean) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <SidebarMenuAction
-            showOnHover
-            aria-label={`گزینه‌های ${chat.title}`}
-            title="گزینه‌های گفتگو"
-          />
-        }
-      >
-        <MoreHorizontalIcon />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" dir="rtl">
-        <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => onPin(chat, !chat.pinned)}>
-            {chat.pinned ? <PinOffIcon /> : <PinIcon />}
-            {chat.pinned ? "برداشتن سنجاق" : "سنجاق کردن"}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => exportChatMarkdown(chat)}>
-            <DownloadIcon />
-            خروجی Markdown
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => exportChatJson(chat)}>
-            <DownloadIcon />
-            خروجی JSON
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => onRename(chat)}>
-            <PencilIcon />
-            تغییر نام
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => onDelete(chat)}
-          >
-            <Trash2Icon />
-            حذف گفتگو
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 export function AppSidebar({
   chats,
   workspaces,
   activeChatId,
+  activeWorkspaceId = null,
   onNewChat,
   onNewWorkspaceChat,
   onOpenWorkspace,
@@ -186,19 +120,32 @@ export function AppSidebar({
   const [chatToRename, setChatToRename] = useState<LocalChat | null>(null);
   const [deleteAllOpen, setDeleteAllOpen] = useState(false);
   const isIconMode = state === "collapsed" && !isMobile;
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.key === "k" &&
+        (event.metaKey || event.ctrlKey) &&
+        !settingsActive
+      ) {
+        event.preventDefault();
+        setHistoryOpen(true);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [settingsActive]);
+
+  const workspaceById = useMemo(
+    () => new Map(workspaces.map((workspace) => [workspace.id, workspace])),
+    [workspaces]
+  );
   const workspaceIds = useMemo(
     () => new Set(workspaces.map((workspace) => workspace.id)),
     [workspaces]
   );
-  const pinnedUnassignedChats = useMemo(
-    () =>
-      chats.filter(
-        (chat) =>
-          chat.pinned &&
-          (!chat.workspaceId || !workspaceIds.has(chat.workspaceId))
-      ),
-    [chats, workspaceIds]
-  );
+
   const chatsByWorkspace = useMemo(() => {
     const grouped = new Map<string, LocalChat[]>();
 
@@ -210,13 +157,25 @@ export function AppSidebar({
         chat.workspaceId && workspaceIds.has(chat.workspaceId)
           ? chat.workspaceId
           : HOME_WORKSPACE_ID;
-      if (grouped.has(workspaceId)) {
-        grouped.get(workspaceId)?.push(chat);
-      }
+      grouped.get(workspaceId)?.push(chat);
     }
 
     return grouped;
   }, [chats, workspaceIds, workspaces]);
+
+  const pinnedChats = useMemo(
+    () => chats.filter((chat) => chat.pinned),
+    [chats]
+  );
+
+  const userProjects = useMemo(
+    () => workspaces.filter((workspace) => !isHomeWorkspace(workspace)),
+    [workspaces]
+  );
+  const homeWorkspace = useMemo(
+    () => workspaces.find((workspace) => isHomeWorkspace(workspace)),
+    [workspaces]
+  );
 
   function closeMobileSidebar() {
     if (isMobile) setOpenMobile(false);
@@ -261,6 +220,29 @@ export function AppSidebar({
     }
   }
 
+  function getWorkspaceLabel(chat: LocalChat): string | undefined {
+    const workspaceId =
+      chat.workspaceId && workspaceIds.has(chat.workspaceId)
+        ? chat.workspaceId
+        : HOME_WORKSPACE_ID;
+    const workspace = workspaceById.get(workspaceId);
+    if (!workspace || isHomeWorkspace(workspace)) return undefined;
+    return workspace.title;
+  }
+
+  function isProjectNavActive(workspaceId: string): boolean {
+    const normalizedActive = activeWorkspaceId ?? HOME_WORKSPACE_ID;
+    if (workspaceId !== normalizedActive) return false;
+    if (!activeChatId) return true;
+    const activeChat = chats.find((chat) => chat.id === activeChatId);
+    if (!activeChat) return true;
+    const chatWorkspaceId =
+      activeChat.workspaceId && workspaceIds.has(activeChat.workspaceId)
+        ? activeChat.workspaceId
+        : HOME_WORKSPACE_ID;
+    return chatWorkspaceId !== workspaceId;
+  }
+
   return (
     <>
       <Sidebar
@@ -271,13 +253,13 @@ export function AppSidebar({
         {settingsActive ? null : (
           <SidebarHeader
             dir="rtl"
-            className="gap-0.5 border-b border-sidebar-border px-2 pt-2.5 pb-2 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2"
+            className="gap-2 border-b border-sidebar-border px-2.5 pt-3 pb-2.5 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2"
           >
-            <SidebarMenu className="gap-0.5">
+            <SidebarMenu className="gap-1">
               <SidebarMenuItem>
                 <SidebarMenuButton
                   tooltip={{ children: "گفتگوی جدید", side: "left" }}
-                  className="h-8 text-[13px]"
+                  className="h-9 bg-primary text-[13px] font-medium text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground"
                   onClick={() => {
                     onNewChat();
                     closeMobileSidebar();
@@ -288,230 +270,203 @@ export function AppSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
 
-              <SidebarMenuItem>
+              <SidebarMenuItem className="mt-2">
                 <SidebarMenuButton
                   tooltip={{ children: "جستجوی گفتگوها", side: "left" }}
-                  className="h-8 text-[13px] text-muted-foreground"
+                  className="h-8 border border-sidebar-border/60 bg-sidebar-accent/30 text-[13px] text-muted-foreground shadow-none hover:bg-sidebar-accent/60"
                   onClick={() => setHistoryOpen(true)}
                 >
                   {isIconMode ? <HistoryIcon /> : <SearchIcon />}
-                  <span>
-                    {isIconMode ? "تاریخچه گفتگوها" : "جستجو"}
+                  <span className="flex-1 text-start">
+                    {isIconMode ? "تاریخچه" : "جستجوی گفتگوها…"}
                   </span>
+                  {!isIconMode ? (
+                    <kbd className="pointer-events-none hidden rounded border border-sidebar-border bg-background/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground sm:inline">
+                      ⌘K
+                    </kbd>
+                  ) : null}
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarHeader>
         )}
 
-        <SidebarContent dir="rtl" className="gap-0">
+        <SidebarContent dir="rtl" className="gap-0 overflow-hidden">
           {settingsActive ? (
             <SettingsSidebarNav memoryCount={memoryCount} />
-          ) : !isIconMode ? (
-            <div className="no-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
-              <SidebarGroup className="px-2 pt-3">
-                <SidebarGroupLabel className="mb-0.5 h-6 px-2 text-[11px] font-medium tracking-[0.08em] text-muted-foreground pe-8">
-                  پروژه‌ها
-                </SidebarGroupLabel>
-                <SidebarGroupAction
-                  type="button"
-                  className="top-3 size-6 rounded-md text-muted-foreground hover:bg-transparent hover:text-foreground"
-                  aria-label="ساخت پروژه جدید"
-                  title="پروژه جدید"
-                  onClick={openCreateWorkspaceDialog}
-                >
-                  <PlusIcon className="size-3.5" />
-                </SidebarGroupAction>
-                <SidebarGroupContent>
-                  {workspaces.length > 0 ? (
-                    <SidebarMenu className="gap-0">
-                      {workspaces.map((workspace) => {
-                        const workspaceChats =
-                          chatsByWorkspace.get(workspace.id) ?? [];
-                        const home = isHomeWorkspace(workspace);
+          ) : isIconMode ? (
+            <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
+              <SidebarMenu className="gap-1 px-2 py-2">
+                {userProjects.map((workspace) => (
+                  <SidebarMenuItem key={workspace.id}>
+                    <SidebarMenuButton
+                      tooltip={{
+                        children: workspace.title,
+                        side: "left",
+                      }}
+                      isActive={isProjectNavActive(workspace.id)}
+                      className="text-muted-foreground"
+                      onClick={() => handleOpenWorkspace(workspace.id)}
+                    >
+                      <FolderIcon />
+                      <span>{workspace.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
 
-                        return (
-                          <Collapsible
-                            key={workspace.id}
-                            defaultOpen={home}
-                            render={<SidebarMenuItem />}
-                          >
-                            <CollapsibleTrigger
-                              render={
-                                <SidebarMenuButton
-                                  title={workspace.description || undefined}
-                                  className="h-8 text-[13px] text-muted-foreground hover:text-foreground"
-                                />
-                              }
-                            >
-                              {home ? (
-                                <HomeIcon className="size-3.5 opacity-70" />
-                              ) : (
-                                <FolderIcon className="size-3.5 opacity-70" />
-                              )}
-                              <span className="min-w-0 flex-1 truncate text-start font-normal">
-                                {workspace.title}
-                              </span>
-                              <ChevronDownIcon className="size-3 shrink-0 opacity-50 transition-transform in-data-[panel-open]:rotate-180" />
-                            </CollapsibleTrigger>
+                {homeWorkspace ? (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      tooltip={{
+                        children: homeWorkspace.title,
+                        side: "left",
+                      }}
+                      isActive={isProjectNavActive(homeWorkspace.id)}
+                      onClick={() => handleOpenWorkspace(homeWorkspace.id)}
+                    >
+                      <FolderIcon />
+                      <span>{homeWorkspace.title}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ) : null}
 
-                            <DropdownMenu>
-                              <DropdownMenuTrigger
-                                render={
-                                  <SidebarMenuAction
-                                    showOnHover
-                                    aria-label={`گزینه‌های ${workspace.title}`}
-                                    title="گزینه‌های پروژه"
-                                  />
-                                }
-                              >
-                                <MoreHorizontalIcon />
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" dir="rtl">
-                                <DropdownMenuGroup>
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      handleOpenWorkspace(workspace.id)
-                                    }
-                                  >
-                                    {home ? <HomeIcon /> : <FolderIcon />}
-                                    {home
-                                      ? "باز کردن خانه"
-                                      : "باز کردن پروژه"}
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      handleNewWorkspaceChat(workspace.id)
-                                    }
-                                  >
-                                    <PlusIcon />
-                                    گفتگوی جدید
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onClick={() =>
-                                      openEditWorkspaceDialog(workspace)
-                                    }
-                                  >
-                                    <PencilIcon />
-                                    ویرایش
-                                  </DropdownMenuItem>
-                                  {home ? null : (
-                                    <DropdownMenuItem
-                                      variant="destructive"
-                                      onClick={() =>
-                                        setWorkspaceToDelete(workspace)
-                                      }
-                                    >
-                                      <Trash2Icon />
-                                      حذف پروژه
-                                    </DropdownMenuItem>
-                                  )}
-                                </DropdownMenuGroup>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-
-                            <CollapsibleContent>
-                              <SidebarMenuSub className="mx-0 me-0 ms-2.5 border-s border-sidebar-border px-0 ps-1.5">
-                                {workspaceChats.length === 0 ? (
-                                  <SidebarMenuSubItem>
-                                    <p className="px-2 py-1.5 text-xs text-muted-foreground">
-                                      گفتگویی نیست
-                                    </p>
-                                  </SidebarMenuSubItem>
-                                ) : (
-                                  workspaceChats.map((chat) => (
-                                    <SidebarMenuSubItem
-                                      key={chat.id}
-                                      className="group/menu-item"
-                                    >
-                                      <SidebarMenuButton
-                                        size="sm"
-                                        isActive={chat.id === activeChatId}
-                                        className={cn(
-                                          "h-7 text-[13px] font-normal",
-                                          chat.id === activeChatId &&
-                                            "bg-sidebar-accent/80 font-medium text-sidebar-accent-foreground"
-                                        )}
-                                        onClick={() =>
-                                          handleSelectChat(chat.id)
-                                        }
-                                      >
-                                        <ChatSidebarTitle
-                                          title={chat.title}
-                                          typingTitle={typingTitles[chat.id]}
-                                        />
-                                      </SidebarMenuButton>
-                                      <ChatItemMenu
-                                        chat={chat}
-                                        onRename={setChatToRename}
-                                        onDelete={setChatToDelete}
-                                        onPin={(item, pinned) =>
-                                          onPinChat(item.id, pinned)
-                                        }
-                                      />
-                                    </SidebarMenuSubItem>
-                                  ))
-                                )}
-                              </SidebarMenuSub>
-                            </CollapsibleContent>
-                          </Collapsible>
-                        );
-                      })}
-                    </SidebarMenu>
-                  ) : null}
-                </SidebarGroupContent>
-              </SidebarGroup>
-
-              {pinnedUnassignedChats.length > 0 ? (
-                <SidebarGroup className="px-2 pt-2">
-                  <SidebarGroupLabel className="h-6 px-2 text-[11px] font-medium tracking-[0.08em] text-muted-foreground">
-                    سنجاق‌شده
-                  </SidebarGroupLabel>
-                  <SidebarGroupContent>
-                    <SidebarMenu className="gap-0">
-                      {pinnedUnassignedChats.map((chat) => (
-                        <SidebarMenuItem key={chat.id}>
-                          <SidebarMenuButton
-                            isActive={chat.id === activeChatId}
-                            className={cn(
-                              "h-7 text-[13px] font-normal",
-                              chat.id === activeChatId &&
-                                "bg-sidebar-accent/80 font-medium text-sidebar-accent-foreground"
-                            )}
-                            onClick={() => handleSelectChat(chat.id)}
-                          >
-                            <PinIcon className="size-3.5 opacity-50" />
-                            <ChatSidebarTitle
-                              title={chat.title}
-                              typingTitle={typingTitles[chat.id]}
-                            />
-                          </SidebarMenuButton>
-                          <ChatItemMenu
-                            chat={chat}
-                            onRename={setChatToRename}
-                            onDelete={setChatToDelete}
-                            onPin={(item, pinned) =>
-                              onPinChat(item.id, pinned)
-                            }
-                          />
-                        </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip={{ children: "پروژه جدید", side: "left" }}
+                    className="text-muted-foreground"
+                    onClick={openCreateWorkspaceDialog}
+                  >
+                    <PlusIcon />
+                    <span>پروژه جدید</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </ScrollArea>
+          ) : (
+            <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
+              <div className="pb-3">
+                {pinnedChats.length > 0 ? (
+                  <SidebarSection
+                    title="سنجاق‌شده"
+                    count={pinnedChats.length}
+                    className="pt-2"
+                  >
+                    <SidebarMenu className="gap-0.5">
+                      {pinnedChats.map((chat) => (
+                        <SidebarChatRow
+                          key={`pinned-${chat.id}`}
+                          chat={chat}
+                          activeChatId={activeChatId}
+                          typingTitles={typingTitles}
+                          workspaceLabel={getWorkspaceLabel(chat)}
+                          onSelect={handleSelectChat}
+                          onRename={setChatToRename}
+                          onDelete={setChatToDelete}
+                          onPin={(item, pinned) =>
+                            onPinChat(item.id, pinned)
+                          }
+                        />
                       ))}
                     </SidebarMenu>
-                  </SidebarGroupContent>
-                </SidebarGroup>
-              ) : null}
+                  </SidebarSection>
+                ) : null}
 
-              {workspaces.length === 0 && chats.length === 0 ? (
-                <SidebarGroup className="px-4 pt-8">
-                  <p className="text-center text-xs leading-6 text-muted-foreground">
-                    هنوز گفتگویی نیست.
-                    <br />
-                    با گفتگوی جدید شروع کنید.
-                  </p>
-                </SidebarGroup>
-              ) : null}
-            </div>
-          ) : null}
+                {pinnedChats.length > 0 && workspaces.length > 0 ? (
+                  <Separator className="mx-3 my-2 bg-sidebar-border/60" />
+                ) : null}
+
+                <SidebarSection
+                  title="پروژه‌ها"
+                  count={workspaces.length}
+                  className={pinnedChats.length === 0 ? "pt-2" : undefined}
+                  action={
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="size-6 text-muted-foreground hover:text-foreground"
+                      aria-label="ساخت پروژه جدید"
+                      title="پروژه جدید"
+                      onClick={openCreateWorkspaceDialog}
+                    >
+                      <PlusIcon className="size-3.5" />
+                    </Button>
+                  }
+                >
+                  {workspaces.length > 0 ? (
+                    <SidebarMenu className="gap-0.5">
+                      {userProjects.map((workspace) => (
+                        <SidebarProjectGroup
+                          key={workspace.id}
+                          workspace={workspace}
+                          chats={chatsByWorkspace.get(workspace.id) ?? []}
+                          activeChatId={activeChatId}
+                          activeWorkspaceId={activeWorkspaceId}
+                          typingTitles={typingTitles}
+                          onSelectChat={handleSelectChat}
+                          onNewChat={handleNewWorkspaceChat}
+                          onOpenWorkspace={handleOpenWorkspace}
+                          onEditWorkspace={openEditWorkspaceDialog}
+                          onDeleteWorkspace={setWorkspaceToDelete}
+                          onRenameChat={setChatToRename}
+                          onDeleteChat={setChatToDelete}
+                          onPinChat={(item, pinned) =>
+                            onPinChat(item.id, pinned)
+                          }
+                        />
+                      ))}
+
+                      {homeWorkspace ? (
+                        <SidebarProjectGroup
+                          workspace={homeWorkspace}
+                          chats={chatsByWorkspace.get(homeWorkspace.id) ?? []}
+                          activeChatId={activeChatId}
+                          activeWorkspaceId={activeWorkspaceId}
+                          typingTitles={typingTitles}
+                          defaultOpen
+                          onSelectChat={handleSelectChat}
+                          onNewChat={handleNewWorkspaceChat}
+                          onOpenWorkspace={handleOpenWorkspace}
+                          onEditWorkspace={openEditWorkspaceDialog}
+                          onDeleteWorkspace={setWorkspaceToDelete}
+                          onRenameChat={setChatToRename}
+                          onDeleteChat={setChatToDelete}
+                          onPinChat={(item, pinned) =>
+                            onPinChat(item.id, pinned)
+                          }
+                        />
+                      ) : null}
+                    </SidebarMenu>
+                  ) : null}
+
+                  {userProjects.length === 0 ? (
+                    <div className="mx-1 rounded-lg border border-dashed border-sidebar-border/80 bg-sidebar-accent/20 px-3 py-4 text-center">
+                      <FolderIcon
+                        aria-hidden
+                        className="mx-auto mb-2 size-5 text-muted-foreground/60"
+                      />
+                      <p className="text-xs leading-5 text-muted-foreground">
+                        پروژه‌ای ندارید.
+                        <br />
+                        پروژه‌ها گفتگوها و فایل‌های مرتبط را کنار هم نگه
+                        می‌دارند.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 h-7 text-xs"
+                        onClick={openCreateWorkspaceDialog}
+                      >
+                        <PlusIcon aria-hidden className="size-3.5" />
+                        ساخت پروژه
+                      </Button>
+                    </div>
+                  ) : null}
+                </SidebarSection>
+              </div>
+            </ScrollArea>
+          )}
         </SidebarContent>
 
         <SidebarFooter
@@ -588,9 +543,30 @@ export function AppSidebar({
         description="جستجو و انتخاب گفتگو"
       >
         <Command dir="rtl">
-          <CommandInput placeholder="جستجوی گفتگو..." />
+          <CommandInput placeholder="جستجوی گفتگو…" />
           <CommandList>
             <CommandEmpty>گفتگویی یافت نشد</CommandEmpty>
+            {pinnedChats.length > 0 ? (
+              <CommandGroup heading="سنجاق‌شده">
+                {pinnedChats.map((chat) => (
+                  <CommandItem
+                    key={`search-pinned-${chat.id}`}
+                    value={`${chat.title} pinned ${getWorkspaceLabel(chat) ?? ""}`}
+                    data-checked={
+                      chat.id === activeChatId ? true : undefined
+                    }
+                    onSelect={() => handleSelectChat(chat.id)}
+                  >
+                    <PinIcon />
+                    <ChatSidebarTitle
+                      title={chat.title}
+                      typingTitle={typingTitles[chat.id]}
+                      className="truncate"
+                    />
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            ) : null}
             {workspaces.map((workspace) => {
               const workspaceChats = chatsByWorkspace.get(workspace.id) ?? [];
               if (workspaceChats.length === 0) return null;
@@ -606,7 +582,13 @@ export function AppSidebar({
                       }
                       onSelect={() => handleSelectChat(chat.id)}
                     >
-                      <FolderIcon />
+                      {chat.pinned ? (
+                        <PinIcon />
+                      ) : isHomeWorkspace(workspace) ? (
+                        <HomeIcon />
+                      ) : (
+                        <FolderIcon />
+                      )}
                       <ChatSidebarTitle
                         title={chat.title}
                         typingTitle={typingTitles[chat.id]}
@@ -705,7 +687,7 @@ export function AppSidebar({
       >
         <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
-            <AlertDialogTitle>حذف فضای کاری؟</AlertDialogTitle>
+            <AlertDialogTitle>حذف پروژه؟</AlertDialogTitle>
             <AlertDialogDescription>
               پروژه «{workspaceToDelete?.title}» حذف می‌شود؛ گفتگوهای آن به
               خانه منتقل می‌شوند.
@@ -722,7 +704,7 @@ export function AppSidebar({
                 }
               }}
             >
-              حذف فضای کاری
+              حذف پروژه
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

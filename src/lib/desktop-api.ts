@@ -169,8 +169,38 @@ export type DesktopAPI = {
     searchWorkspaceFiles: (
       workspaceId: string,
       query: string,
-      options?: { glob?: string; maxMatches?: number }
-    ) => Promise<Array<{ path: string; line: number; text: string }>>;
+      options?: {
+        glob?: string;
+        maxMatches?: number;
+        scope?: "all" | "filename" | "content";
+        path?: string;
+        caseSensitive?: boolean;
+      }
+    ) => Promise<{
+      query: string;
+      filenameMatches: Array<{
+        path: string;
+        name: string;
+        matchType: "filename" | "content";
+        line?: number;
+        text: string;
+      }>;
+      contentMatches: Array<{
+        path: string;
+        name: string;
+        matchType: "filename" | "content";
+        line?: number;
+        text: string;
+      }>;
+      matches: Array<{
+        path: string;
+        name: string;
+        matchType: "filename" | "content";
+        line?: number;
+        text: string;
+      }>;
+      truncated: boolean;
+    }>;
     importWorkspaceFiles: (
       workspaceId: string,
       files: Array<{ name: string; base64: string; mimeType?: string }>

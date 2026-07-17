@@ -23,6 +23,7 @@ const TOOL_META: Record<string, { label: string; risk: RiskLevel }> = {
   list_directory: { label: "فهرست پوشه", risk: "read" },
   read_file: { label: "خواندن فایل", risk: "read" },
   search_files: { label: "جستجوی فایل", risk: "read" },
+  grep: { label: "جستجوی فایل", risk: "read" },
   write_file: { label: "نوشتن فایل", risk: "write" },
   apply_patch: { label: "ویرایش فایل", risk: "write" },
   move_file: { label: "جابه‌جایی فایل", risk: "write" },

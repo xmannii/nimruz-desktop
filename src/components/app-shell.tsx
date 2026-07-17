@@ -360,7 +360,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   return (
     <AppShellProvider value={shellValue}>
       <SidebarProvider
-        defaultOpen={false}
+        defaultOpen={true}
         dir="ltr"
         className="!min-h-0 h-dvh max-h-dvh flex-col overflow-hidden"
         style={{ "--app-header-height": APP_HEADER_HEIGHT } as CSSProperties}
@@ -395,6 +395,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
             chats={chats}
             workspaces={workspaces}
             activeChatId={isSettingsRoute ? null : activeChatId}
+            activeWorkspaceId={activeWorkspaceId}
             settingsActive={isSettingsRoute}
             memoryCount={memories.length}
             onNewChat={handleNewChat}

@@ -15,7 +15,7 @@ import {
   type ReasoningEffort,
 } from "@/lib/models/reasoning";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
-import type { WorkspaceTrustSettings } from "@/lib/workspace";
+import { HOME_WORKSPACE_ID, type WorkspaceTrustSettings } from "@/lib/workspace";
 import {
   addMemory,
   deleteMemory,
@@ -60,6 +60,7 @@ const TOOL_TRUST_KEY: Record<string, AutoApproveKey> = {
   list_directory: "autoApproveReads",
   read_file: "autoApproveReads",
   search_files: "autoApproveReads",
+  grep: "autoApproveReads",
   load_skill: "autoApproveReads",
   write_file: "autoApproveWrites",
   apply_patch: "autoApproveWrites",
@@ -129,6 +130,10 @@ export function ChatSession({
       modelId: chat.model,
     });
   }, [chat.id, chat.model, chat.providerId]);
+
+  useEffect(() => {
+    setActiveWorkspaceId(chat.workspaceId ?? HOME_WORKSPACE_ID);
+  }, [chat.id, chat.workspaceId, setActiveWorkspaceId]);
 
   useEffect(() => {
     if (
@@ -567,7 +572,7 @@ export function ChatSession({
                 dir="rtl"
                 className="mb-4 text-right text-xl font-medium tracking-tight text-foreground sm:text-2xl"
               >
-                از کجا شروع کنیم؟ ✨
+                از کجا شروع کنیم؟
               </p>
               {composer}
             </div>

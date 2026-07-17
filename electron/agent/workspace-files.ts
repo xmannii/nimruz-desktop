@@ -30,6 +30,84 @@ const MAX_LIST_ENTRIES = 500;
 const MAX_UPLOAD_COUNT = 20;
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 
+const SEARCH_SKIP_DIRS = new Set([
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  "out",
+  ".next",
+  ".nuxt",
+  "coverage",
+  "__pycache__",
+  ".venv",
+  "venv",
+  "target",
+  ".turbo",
+  ".cache",
+]);
+
+export type WorkspaceSearchMatchType = "filename" | "content";
+
+export type WorkspaceSearchMatch = {
+  path: string;
+  name: string;
+  matchType: WorkspaceSearchMatchType;
+  /** 1-based line number for content matches; omitted for filename hits. */
+  line?: number;
+  /** Matching line (content) or file name (filename). */
+  text: string;
+};
+
+export type WorkspaceSearchOptions = {
+  /** Where to look. Default: both filenames and file contents. */
+  scope?: "all" | "filename" | "content";
+  /** Optional filename filter, e.g. `*.ts` or `*.{ts,tsx}`. */
+  glob?: string;
+  /** Limit search to a directory under an approved root. */
+  path?: string;
+  maxMatches?: number;
+  caseSensitive?: boolean;
+};
+
+function globToRegExp(glob: string): RegExp {
+  // Expand `{ts,tsx}` → `(?:ts|tsx)`, then convert `*` wildcards.
+  let pattern = "";
+  for (let i = 0; i < glob.length; i += 1) {
+    const ch = glob[i];
+    if (ch === "{") {
+      const end = glob.indexOf("}", i + 1);
+      if (end === -1) {
+        pattern += "\\{";
+        continue;
+      }
+      const alts = glob
+        .slice(i + 1, end)
+        .split(",")
+        .map((part) => part.trim().replace(/[.+^${}()|[\]\\]/g, "\\$&"))
+        .join("|");
+      pattern += `(?:${alts})`;
+      i = end;
+      continue;
+    }
+    if (ch === "*") {
+      pattern += "[^/\\\\]*";
+      continue;
+    }
+    if (ch === "?") {
+      pattern += "[^/\\\\]";
+      continue;
+    }
+    pattern += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${pattern}$`, "i");
+}
+
+function matchesGlob(fileName: string, glob: string | undefined): boolean {
+  if (!glob) return true;
+  return globToRegExp(glob).test(fileName);
+}
+
 function looksLikeCsv(content: string): boolean {
   const firstLine = content.split(/\r?\n/, 1)[0] ?? "";
   return firstLine.includes(",") || firstLine.includes("\t");
@@ -514,41 +592,98 @@ export class WorkspaceFilesStore {
   searchFiles(
     workspaceId: string,
     query: string,
-    options?: { glob?: string; maxMatches?: number }
-  ): Array<{ path: string; line: number; text: string }> {
-    if (!query.trim()) return [];
+    options?: WorkspaceSearchOptions
+  ): {
+    query: string;
+    filenameMatches: WorkspaceSearchMatch[];
+    contentMatches: WorkspaceSearchMatch[];
+    /** Filename hits first, then content — capped to maxMatches. */
+    matches: WorkspaceSearchMatch[];
+    truncated: boolean;
+  } {
+    const needleRaw = query.trim();
+    if (!needleRaw) {
+      return {
+        query: needleRaw,
+        filenameMatches: [],
+        contentMatches: [],
+        matches: [],
+        truncated: false,
+      };
+    }
+
     const maxMatches = Math.min(options?.maxMatches ?? 50, 200);
-    const roots = this.getApprovedRoots(workspaceId);
-    const matches: Array<{ path: string; line: number; text: string }> = [];
-    const needle = query.toLowerCase();
+    const scope = options?.scope ?? "all";
+    const caseSensitive = options?.caseSensitive ?? false;
+    const needle = caseSensitive ? needleRaw : needleRaw.toLowerCase();
+    const includeNames = scope === "all" || scope === "filename";
+    const includeContent = scope === "all" || scope === "content";
+
+    // Collect each kind up to maxMatches so one kind cannot starve the other
+    // before we merge (filename-first) for the combined list.
+    const filenameMatches: WorkspaceSearchMatch[] = [];
+    const contentMatches: WorkspaceSearchMatch[] = [];
+    let truncated = false;
+
+    const containsNeedle = (value: string) => {
+      const haystack = caseSensitive ? value : value.toLowerCase();
+      return haystack.includes(needle);
+    };
 
     const walk = (dir: string) => {
-      if (matches.length >= maxMatches) return;
+      const namesFull = !includeNames || filenameMatches.length >= maxMatches;
+      const contentFull = !includeContent || contentMatches.length >= maxMatches;
+      if (namesFull && contentFull) return;
+
       let entries;
       try {
         entries = readdirSync(dir, { withFileTypes: true });
       } catch {
         return;
       }
+
       for (const entry of entries) {
-        if (matches.length >= maxMatches) return;
+        const namesDone = !includeNames || filenameMatches.length >= maxMatches;
+        const contentDone =
+          !includeContent || contentMatches.length >= maxMatches;
+        if (namesDone && contentDone) return;
+
         const full = path.join(dir, entry.name);
         if (entry.isDirectory()) {
+          if (SEARCH_SKIP_DIRS.has(entry.name)) continue;
           if (
-            entry.name === "node_modules" ||
-            entry.name === ".git" ||
-            entry.name === "dist"
+            includeNames &&
+            filenameMatches.length < maxMatches &&
+            containsNeedle(entry.name)
           ) {
-            continue;
+            filenameMatches.push({
+              path: full,
+              name: entry.name,
+              matchType: "filename",
+              text: entry.name,
+            });
           }
           walk(full);
           continue;
         }
         if (!entry.isFile()) continue;
-        if (options?.glob) {
-          const pattern = options.glob.replaceAll("*", ".*");
-          if (!new RegExp(`^${pattern}$`, "i").test(entry.name)) continue;
+        if (!matchesGlob(entry.name, options?.glob)) continue;
+
+        if (
+          includeNames &&
+          filenameMatches.length < maxMatches &&
+          containsNeedle(entry.name)
+        ) {
+          filenameMatches.push({
+            path: full,
+            name: entry.name,
+            matchType: "filename",
+            text: entry.name,
+          });
         }
+
+        if (!includeContent || contentMatches.length >= maxMatches) continue;
+
         try {
           const stats = statSync(full);
           if (stats.size > MAX_READ_BYTES) continue;
@@ -557,13 +692,17 @@ export class WorkspaceFilesStore {
           const text = content.toString("utf8");
           const lines = text.split(/\r?\n/);
           for (let i = 0; i < lines.length; i += 1) {
-            if (lines[i].toLowerCase().includes(needle)) {
-              matches.push({
-                path: full,
-                line: i + 1,
-                text: lines[i].slice(0, 400),
-              });
-              if (matches.length >= maxMatches) return;
+            if (!containsNeedle(lines[i])) continue;
+            contentMatches.push({
+              path: full,
+              name: entry.name,
+              matchType: "content",
+              line: i + 1,
+              text: lines[i].slice(0, 400),
+            });
+            if (contentMatches.length >= maxMatches) {
+              truncated = true;
+              break;
             }
           }
         } catch {
@@ -572,10 +711,32 @@ export class WorkspaceFilesStore {
       }
     };
 
-    for (const root of roots) {
-      if (existsSync(root)) walk(root);
+    const roots = this.getApprovedRoots(workspaceId);
+    if (options?.path?.trim()) {
+      const scoped = this.resolvePath(workspaceId, options.path.trim());
+      if (existsSync(scoped)) walk(scoped);
+    } else {
+      for (const root of roots) {
+        if (existsSync(root)) walk(root);
+      }
     }
-    return matches;
+
+    if (filenameMatches.length >= maxMatches || contentMatches.length >= maxMatches) {
+      truncated = true;
+    }
+
+    const matches = [...filenameMatches, ...contentMatches].slice(0, maxMatches);
+    if (filenameMatches.length + contentMatches.length > maxMatches) {
+      truncated = true;
+    }
+
+    return {
+      query: needleRaw,
+      filenameMatches,
+      contentMatches,
+      matches,
+      truncated,
+    };
   }
 
   createArtifact(options: {

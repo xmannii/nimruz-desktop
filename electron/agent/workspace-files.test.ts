@@ -114,10 +114,36 @@ test("deleteFile removes a file", async () => {
 test("searchFiles finds matching lines", async () => {
   await withStore((store) => {
     store.writeFile(WORKSPACE_ID, "doc.txt", "alpha\nbeta needle\ngamma");
-    const matches = store.searchFiles(WORKSPACE_ID, "needle");
-    assert.equal(matches.length, 1);
-    assert.equal(matches[0].line, 2);
-    assert.match(matches[0].text, /needle/);
+    const result = store.searchFiles(WORKSPACE_ID, "needle");
+    assert.equal(result.contentMatches.length, 1);
+    assert.equal(result.contentMatches[0].line, 2);
+    assert.match(result.contentMatches[0].text, /needle/);
+    assert.equal(result.contentMatches[0].matchType, "content");
+  });
+});
+
+test("searchFiles finds matching filenames", async () => {
+  await withStore((store) => {
+    store.writeFile(WORKSPACE_ID, "auth-service.ts", "export const x = 1;\n");
+    store.writeFile(WORKSPACE_ID, "other.ts", "nope\n");
+    const result = store.searchFiles(WORKSPACE_ID, "auth", {
+      scope: "filename",
+    });
+    assert.equal(result.filenameMatches.length, 1);
+    assert.equal(result.filenameMatches[0].name, "auth-service.ts");
+    assert.equal(result.filenameMatches[0].matchType, "filename");
+    assert.equal(result.contentMatches.length, 0);
+  });
+});
+
+test("searchFiles returns filename hits before content hits", async () => {
+  await withStore((store) => {
+    store.writeFile(WORKSPACE_ID, "needle.txt", "plain\n");
+    store.writeFile(WORKSPACE_ID, "notes.md", "has needle inside\n");
+    const result = store.searchFiles(WORKSPACE_ID, "needle");
+    assert.ok(result.filenameMatches.length >= 1);
+    assert.ok(result.contentMatches.length >= 1);
+    assert.equal(result.matches[0].matchType, "filename");
   });
 });
 

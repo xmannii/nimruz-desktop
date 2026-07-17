@@ -455,7 +455,13 @@ export function registerIpcHandlers(options: {
     (
       workspaceId: string,
       query: string,
-      options?: { glob?: string; maxMatches?: number }
+      options?: {
+        glob?: string;
+        maxMatches?: number;
+        scope?: "all" | "filename" | "content";
+        path?: string;
+        caseSensitive?: boolean;
+      }
     ) => workspaceFiles.searchFiles(workspaceId, query, options)
   );
   handle(

@@ -75,23 +75,77 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
     }),
     search_files: tool({
       description:
-        "Search text across approved roots. Prefer over shell grep when locating symbols/phrases before reading many files.",
+        "Grep the workspace for a keyword in file/folder NAMES and file CONTENTS. Prefer this over shell grep. Returns filename hits first, then content line hits. Use scope=filename to find files by name, scope=content for code/text only.",
       inputSchema: z.object({
-        query: z.string().min(1).describe("Case-insensitive text to find"),
+        query: z
+          .string()
+          .min(1)
+          .describe("Keyword or phrase to find (case-insensitive by default)"),
+        scope: z
+          .enum(["all", "filename", "content"])
+          .optional()
+          .describe(
+            "all (default)=names+contents; filename=paths/names only; content=file text only"
+          ),
+        path: z
+          .string()
+          .optional()
+          .describe("Optional directory to search under (relative or approved absolute)"),
         glob: z
           .string()
           .optional()
-          .describe("Optional filename filter, e.g. *.md or *.ts"),
+          .describe("Optional filename filter, e.g. *.ts, *.tsx, *.{ts,tsx}"),
+        caseSensitive: z
+          .boolean()
+          .optional()
+          .describe("Match exact case when true (default false)"),
         maxMatches: z.number().int().min(1).max(200).optional(),
       }),
-      execute: async ({ query, glob, maxMatches }) => {
+      execute: async ({ query, scope, path: searchPath, glob, caseSensitive, maxMatches }) => {
         const workspaceId = requireWorkspaceId(ctx);
-        return {
-          matches: ctx.files.searchFiles(workspaceId, query, {
-            glob,
-            maxMatches,
-          }),
-        };
+        return ctx.files.searchFiles(workspaceId, query, {
+          scope,
+          path: searchPath,
+          glob,
+          caseSensitive,
+          maxMatches,
+        });
+      },
+    }),
+    grep: tool({
+      description:
+        "Alias of search_files. Grep keyword across workspace file names and contents.",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .min(1)
+          .describe("Keyword or phrase to find (case-insensitive by default)"),
+        scope: z
+          .enum(["all", "filename", "content"])
+          .optional()
+          .describe(
+            "all (default)=names+contents; filename=paths/names only; content=file text only"
+          ),
+        path: z
+          .string()
+          .optional()
+          .describe("Optional directory to search under"),
+        glob: z
+          .string()
+          .optional()
+          .describe("Optional filename filter, e.g. *.ts or *.{ts,tsx}"),
+        caseSensitive: z.boolean().optional(),
+        maxMatches: z.number().int().min(1).max(200).optional(),
+      }),
+      execute: async ({ query, scope, path: searchPath, glob, caseSensitive, maxMatches }) => {
+        const workspaceId = requireWorkspaceId(ctx);
+        return ctx.files.searchFiles(workspaceId, query, {
+          scope,
+          path: searchPath,
+          glob,
+          caseSensitive,
+          maxMatches,
+        });
       },
     }),
     write_file: tool({

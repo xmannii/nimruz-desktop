@@ -31,6 +31,7 @@ const TOOL_ICONS: Record<string, ReactNode> = {
   list_directory: <FolderIcon />,
   read_file: <FileTextIcon />,
   search_files: <SearchIcon />,
+  grep: <SearchIcon />,
   write_file: <FilePlus2Icon />,
   apply_patch: <PencilIcon />,
   move_file: <MoveIcon />,
@@ -44,6 +45,7 @@ const TOOL_LOADING_LABELS: Record<string, string> = {
   list_directory: "در حال فهرست‌کردن فایل‌ها…",
   read_file: "در حال خواندن فایل…",
   search_files: "در حال جستجو در فایل‌ها…",
+  grep: "در حال جستجو در فایل‌ها…",
   write_file: "در حال نوشتن فایل…",
   apply_patch: "در حال اعمال تغییر…",
   move_file: "در حال انتقال فایل…",
@@ -57,6 +59,7 @@ const TOOL_DONE_LABELS: Record<string, string> = {
   list_directory: "فهرست فایل‌ها دریافت شد",
   read_file: "فایل خوانده شد",
   search_files: "جستجو انجام شد",
+  grep: "جستجو انجام شد",
   write_file: "فایل ذخیره شد",
   apply_patch: "تغییر اعمال شد",
   move_file: "فایل منتقل شد",
@@ -70,6 +73,7 @@ const TOOL_ERROR_LABELS: Record<string, string> = {
   list_directory: "خطا در فهرست‌کردن فایل‌ها",
   read_file: "خطا در خواندن فایل",
   search_files: "خطا در جستجو",
+  grep: "خطا در جستجو",
   write_file: "خطا در نوشتن فایل",
   apply_patch: "خطا در اعمال تغییر",
   move_file: "خطا در انتقال فایل",
@@ -120,8 +124,23 @@ function getResultSummary(
       return typeof out.replacements === "number"
         ? `${out.replacements.toLocaleString("fa-IR")} جایگزینی`
         : null;
-    case "search_files": {
+    case "search_files":
+    case "grep": {
       const matches = Array.isArray(out.matches) ? out.matches.length : null;
+      const filenameCount = Array.isArray(out.filenameMatches)
+        ? out.filenameMatches.length
+        : null;
+      const contentCount = Array.isArray(out.contentMatches)
+        ? out.contentMatches.length
+        : null;
+      if (filenameCount !== null && contentCount !== null) {
+        const parts = [
+          `${filenameCount.toLocaleString("fa-IR")} نام`,
+          `${contentCount.toLocaleString("fa-IR")} محتوا`,
+        ];
+        if (out.truncated === true) parts.push("کوتاه‌شده");
+        return parts.join(" · ");
+      }
       return matches !== null
         ? `${matches.toLocaleString("fa-IR")} نتیجه`
         : null;

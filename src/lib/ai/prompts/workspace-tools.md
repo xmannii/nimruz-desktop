@@ -13,7 +13,8 @@ You have tools for files, search, shell, **artifacts**, and tasks. Use them — 
 
 | Goal | Tool |
 | --- | --- |
-| Discover structure | `list_directory` → `search_files` |
+| Discover structure | `list_directory` → `search_files` / `grep` |
+| Find by keyword (name or content) | `search_files` / `grep` (`scope=filename` or `content`) |
 | Understand a file | `read_file` (offset/limit if large) |
 | Small edit | `apply_patch` (exact `oldText`) |
 | New/overwrite project file | `write_file` |

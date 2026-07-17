@@ -29,11 +29,11 @@ import type {
 import {
   ActivityIcon,
   CheckIcon,
+  ChevronDownIcon,
   FileTextIcon,
   FolderIcon,
   ListTodoIcon,
   PanelLeftCloseIcon,
-  PlusIcon,
   SettingsIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState, type ComponentType } from "react";
@@ -218,35 +218,30 @@ export function WorkspacePanel({
           </div>
         </div>
 
-        <div className="mt-3 flex items-center gap-1.5">
-          <div
-            className={cn(
-              "flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-muted/70 px-2.5 py-1.5 dark:bg-muted/40",
-              pulseSection === active &&
-                "animate-in zoom-in-95 fade-in-0 duration-300 ring-2 ring-sidebar-foreground/25"
-            )}
-          >
-            <ActiveIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate text-xs font-medium">
-              {activeSection.label}
-            </span>
-          </div>
-
+        <div className="mt-3">
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button
+                <button
                   type="button"
-                  variant="outline"
-                  size="icon"
-                  className="size-8 shrink-0 rounded-xl"
-                  aria-label="انتخاب نمای پنل"
+                  className={cn(
+                    "flex h-9 w-full items-center gap-2 rounded-xl bg-muted/70 px-2.5 text-start transition-colors",
+                    "hover:bg-muted dark:bg-muted/40 dark:hover:bg-muted/60",
+                    "outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                    pulseSection === active &&
+                      "animate-in zoom-in-95 fade-in-0 duration-300 ring-2 ring-sidebar-foreground/25"
+                  )}
+                  aria-label={`نمای فعلی: ${activeSection.label}. برای تعویض کلیک کنید`}
                 >
-                  <PlusIcon className="size-4" />
-                </Button>
+                  <ActiveIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-xs font-medium">
+                    {activeSection.label}
+                  </span>
+                  <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                </button>
               }
             />
-            <DropdownMenuContent align="end" dir="rtl" className="min-w-44">
+            <DropdownMenuContent align="start" dir="rtl" className="min-w-44">
               {sections.map((section) => {
                 const Icon = section.icon;
                 const isActive = section.id === active;
