@@ -132,6 +132,21 @@ test("persists onboarding completion and the active workspace", async () => {
   });
 });
 
+test("persists the last-seen what's-new version", async () => {
+  await withDatabase((database) => {
+    assert.equal(database.loadLastSeenVersion(), null);
+
+    database.saveLastSeenVersion("1.0.1");
+    assert.equal(database.loadLastSeenVersion(), "1.0.1");
+
+    database.saveLastSeenVersion(" 1.0.2 ");
+    assert.equal(database.loadLastSeenVersion(), "1.0.2");
+
+    database.saveLastSeenVersion("   ");
+    assert.equal(database.loadLastSeenVersion(), "1.0.2");
+  });
+});
+
 test("imports legacy data only once", async () => {
   await withDatabase((database) => {
     const snapshot: LegacyDataSnapshot = {

@@ -565,6 +565,13 @@ export function registerIpcHandlers(options: {
   handle("storage:save-onboarding-completed", (completed: boolean) =>
     database.saveOnboardingCompleted(completed === true)
   );
+  handle("storage:load-last-seen-version", () =>
+    database.loadLastSeenVersion()
+  );
+  handle("storage:save-last-seen-version", (version: string) => {
+    if (typeof version !== "string") return;
+    database.saveLastSeenVersion(version);
+  });
   handle("storage:load-active-workspace-id", () =>
     database.loadActiveWorkspaceId()
   );

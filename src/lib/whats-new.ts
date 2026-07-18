@@ -7,7 +7,7 @@ import { isNewerVersion, normalizeVersion } from "@/lib/updates";
 
 export const LAST_SEEN_VERSION_STORAGE_KEY = "nimruz:last-seen-version";
 
-export function getLastSeenVersion(): string | null {
+function readLegacyLastSeenVersion(): string | null {
   try {
     const value = localStorage.getItem(LAST_SEEN_VERSION_STORAGE_KEY);
     if (!value) return null;
@@ -18,13 +18,40 @@ export function getLastSeenVersion(): string | null {
   }
 }
 
-export function markVersionSeen(version: string) {
+export async function getLastSeenVersion(): Promise<string | null> {
   try {
-    const normalized = normalizeVersion(version);
-    if (!normalized) return;
+    const value = await window.desktop.storage.loadLastSeenVersion();
+    if (value) {
+      const normalized = normalizeVersion(value);
+      return normalized || null;
+    }
+  } catch {
+    // Fall back to the legacy renderer preference.
+  }
+
+  const legacy = readLegacyLastSeenVersion();
+  if (legacy) {
+    void window.desktop.storage
+      .saveLastSeenVersion(legacy)
+      .catch(() => undefined);
+  }
+  return legacy;
+}
+
+export async function markVersionSeen(version: string): Promise<void> {
+  const normalized = normalizeVersion(version);
+  if (!normalized) return;
+
+  try {
     localStorage.setItem(LAST_SEEN_VERSION_STORAGE_KEY, normalized);
   } catch {
-    // Ignore quota / private mode failures.
+    // SQLite remains the durable source of truth.
+  }
+
+  try {
+    await window.desktop.storage.saveLastSeenVersion(normalized);
+  } catch {
+    // Ignore quota / private mode / bridge failures.
   }
 }
 
@@ -32,9 +59,9 @@ export function markVersionSeen(version: string) {
  * First install: seed silently so onboarding does not lead into “what’s new”.
  * Call while onboarding has not completed yet.
  */
-export function seedLastSeenVersionIfNeeded(currentVersion: string) {
-  if (getLastSeenVersion() !== null) return;
-  markVersionSeen(currentVersion);
+export async function seedLastSeenVersionIfNeeded(currentVersion: string) {
+  if ((await getLastSeenVersion()) !== null) return;
+  await markVersionSeen(currentVersion);
 }
 
 /**
@@ -42,11 +69,13 @@ export function seedLastSeenVersionIfNeeded(currentVersion: string) {
  * last acknowledged one. If there is no last-seen marker yet (upgrade into a
  * build that introduced this feature), treat as “show current release notes”.
  */
-export function shouldShowWhatsNew(currentVersion: string): boolean {
+export async function shouldShowWhatsNew(
+  currentVersion: string
+): Promise<boolean> {
   const current = normalizeVersion(currentVersion);
   if (!current) return false;
 
-  const lastSeen = getLastSeenVersion();
+  const lastSeen = await getLastSeenVersion();
   if (lastSeen === null) return true;
   return isNewerVersion(current, lastSeen);
 }

@@ -168,6 +168,10 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("storage:load-onboarding-completed"),
     saveOnboardingCompleted: (completed) =>
       ipcRenderer.invoke("storage:save-onboarding-completed", completed),
+    loadLastSeenVersion: () =>
+      ipcRenderer.invoke("storage:load-last-seen-version"),
+    saveLastSeenVersion: (version) =>
+      ipcRenderer.invoke("storage:save-last-seen-version", version),
     loadActiveWorkspaceId: () =>
       ipcRenderer.invoke("storage:load-active-workspace-id"),
     saveActiveWorkspaceId: (workspaceId) =>

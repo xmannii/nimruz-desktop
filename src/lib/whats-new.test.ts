@@ -11,6 +11,7 @@ import {
 } from "./whats-new";
 
 const memoryStore = new Map<string, string>();
+const durableStore = new Map<string, string>();
 
 const localStorageMock = {
   getItem(key: string) {
@@ -26,6 +27,22 @@ const localStorageMock = {
 
 Object.defineProperty(globalThis, "localStorage", {
   value: localStorageMock,
+  configurable: true,
+});
+
+Object.defineProperty(globalThis, "window", {
+  value: {
+    desktop: {
+      storage: {
+        async loadLastSeenVersion() {
+          return durableStore.get("last-seen-version") ?? null;
+        },
+        async saveLastSeenVersion(version: string) {
+          durableStore.set("last-seen-version", version);
+        },
+      },
+    },
+  },
   configurable: true,
 });
 
@@ -49,31 +66,40 @@ const SAMPLE_ENTRIES: ChangelogEntry[] = [
 
 function clearStorage() {
   memoryStore.delete(LAST_SEEN_VERSION_STORAGE_KEY);
+  durableStore.clear();
 }
 
-test("markVersionSeen and getLastSeenVersion round-trip", () => {
+test("markVersionSeen and getLastSeenVersion round-trip via durable storage", async () => {
   clearStorage();
-  assert.equal(getLastSeenVersion(), null);
-  markVersionSeen("v1.0.0");
-  assert.equal(getLastSeenVersion(), "1.0.0");
+  assert.equal(await getLastSeenVersion(), null);
+  await markVersionSeen("v1.0.0");
+  assert.equal(await getLastSeenVersion(), "1.0.0");
+  assert.equal(durableStore.get("last-seen-version"), "1.0.0");
 });
 
-test("seedLastSeenVersionIfNeeded only writes once", () => {
+test("getLastSeenVersion migrates legacy localStorage into durable storage", async () => {
   clearStorage();
-  seedLastSeenVersionIfNeeded("0.3.1");
-  assert.equal(getLastSeenVersion(), "0.3.1");
-  seedLastSeenVersionIfNeeded("1.0.0");
-  assert.equal(getLastSeenVersion(), "0.3.1");
+  memoryStore.set(LAST_SEEN_VERSION_STORAGE_KEY, "0.3.1");
+  assert.equal(await getLastSeenVersion(), "0.3.1");
+  assert.equal(durableStore.get("last-seen-version"), "0.3.1");
 });
 
-test("shouldShowWhatsNew is true for upgrades and first marker-less launch", () => {
+test("seedLastSeenVersionIfNeeded only writes once", async () => {
   clearStorage();
-  assert.equal(shouldShowWhatsNew("1.0.0"), true);
-  markVersionSeen("0.3.1");
-  assert.equal(shouldShowWhatsNew("1.0.0"), true);
-  assert.equal(shouldShowWhatsNew("0.3.1"), false);
-  markVersionSeen("1.0.0");
-  assert.equal(shouldShowWhatsNew("1.0.0"), false);
+  await seedLastSeenVersionIfNeeded("0.3.1");
+  assert.equal(await getLastSeenVersion(), "0.3.1");
+  await seedLastSeenVersionIfNeeded("1.0.0");
+  assert.equal(await getLastSeenVersion(), "0.3.1");
+});
+
+test("shouldShowWhatsNew is true for upgrades and first marker-less launch", async () => {
+  clearStorage();
+  assert.equal(await shouldShowWhatsNew("1.0.0"), true);
+  await markVersionSeen("0.3.1");
+  assert.equal(await shouldShowWhatsNew("1.0.0"), true);
+  assert.equal(await shouldShowWhatsNew("0.3.1"), false);
+  await markVersionSeen("1.0.0");
+  assert.equal(await shouldShowWhatsNew("1.0.0"), false);
 });
 
 test("resolveWhatsNewEntries uses range when last-seen is known", () => {

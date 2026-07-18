@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getAppChangelog } from "@/lib/app-changelog";
+import type { ChangelogEntry } from "@/lib/changelog";
 import {
   getLastSeenVersion,
   markVersionSeen,
@@ -18,7 +19,7 @@ import {
 } from "@/lib/whats-new";
 import { useNavigate } from "@tanstack/react-router";
 import { SparklesIcon } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 
 type WhatsNewDialogProps = {
   open: boolean;
@@ -33,37 +34,47 @@ export function WhatsNewDialog({
   currentVersion,
 }: WhatsNewDialogProps) {
   const navigate = useNavigate();
-  const entries = useMemo(
-    () =>
-      resolveWhatsNewEntries(
-        currentVersion,
-        getLastSeenVersion(),
-        getAppChangelog()
-      ),
-    [currentVersion]
-  );
+  const [entries, setEntries] = useState<ChangelogEntry[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getLastSeenVersion().then((lastSeen) => {
+      if (cancelled) return;
+      setEntries(
+        resolveWhatsNewEntries(
+          currentVersion,
+          lastSeen,
+          getAppChangelog()
+        )
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentVersion]);
 
   const title =
     entries.length === 1
       ? `تازه‌های نسخه ${entries[0]!.version}`
       : "تازه‌های این نسخه";
 
-  function acknowledgeAndClose() {
-    markVersionSeen(currentVersion);
+  async function acknowledgeAndClose() {
+    await markVersionSeen(currentVersion);
     onOpenChange(false);
   }
 
   function handleOpenChange(next: boolean) {
     if (!next) {
-      acknowledgeAndClose();
+      void acknowledgeAndClose();
       return;
     }
     onOpenChange(next);
   }
 
   function handleOpenFullChangelog() {
-    acknowledgeAndClose();
-    void navigate({ to: "/settings/changelog" });
+    void acknowledgeAndClose().then(() => {
+      void navigate({ to: "/settings/changelog" });
+    });
   }
 
   return (
@@ -104,7 +115,7 @@ export function WhatsNewDialog({
         </div>
 
         <DialogFooter className="mt-3 gap-2 border-t border-border/60 pt-3 sm:justify-start">
-          <Button type="button" onClick={acknowledgeAndClose}>
+          <Button type="button" onClick={() => void acknowledgeAndClose()}>
             متوجه شدم
           </Button>
           <Button type="button" variant="ghost" onClick={handleOpenFullChangelog}>

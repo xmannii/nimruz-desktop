@@ -1289,6 +1289,33 @@ export class AppDatabase {
       .run(JSON.stringify(completed), Date.now());
   }
 
+  loadLastSeenVersion(): string | null {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("last-seen-version");
+    if (typeof row?.value_json !== "string") return null;
+    try {
+      const value = JSON.parse(row.value_json);
+      return typeof value === "string" && value.trim() ? value.trim() : null;
+    } catch {
+      return null;
+    }
+  }
+
+  saveLastSeenVersion(version: string): void {
+    const normalized = version.trim();
+    if (!normalized) return;
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('last-seen-version', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(normalized), Date.now());
+  }
+
   loadActiveWorkspaceId(): string | null {
     const row = this.database
       .prepare("SELECT value_json FROM settings WHERE key = ?")

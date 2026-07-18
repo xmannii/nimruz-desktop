@@ -165,17 +165,26 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       return;
     }
 
-    // First install: remember the installed version so onboarding does not
-    // hand off into a "what's new" dialog for v1.
-    if (!onboardingCompleted) {
-      seedLastSeenVersionIfNeeded(appVersion);
-      return;
-    }
+    let cancelled = false;
 
-    if (onboardingOpen || whatsNewOpen) return;
-    if (!shouldShowWhatsNew(appVersion)) return;
+    void (async () => {
+      // First install: remember the installed version so onboarding does not
+      // hand off into a "what's new" dialog for v1.
+      if (!onboardingCompleted) {
+        await seedLastSeenVersionIfNeeded(appVersion);
+        return;
+      }
 
-    setWhatsNewOpen(true);
+      if (onboardingOpen || whatsNewOpen) return;
+      if (!(await shouldShowWhatsNew(appVersion))) return;
+      if (cancelled) return;
+
+      setWhatsNewOpen(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [
     areSettingsHydrated,
     isCatalogHydrated,
