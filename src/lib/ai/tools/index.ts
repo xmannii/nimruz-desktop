@@ -1,11 +1,13 @@
 import { memoryTools } from "./memory";
 import { expertManagementTools } from "./expert-management";
+import { askUserQuestionTools } from "./ask-user-question";
 import { skillTools } from "./skill";
 import { webTools } from "./web";
 import type { ToolSet } from "ai";
 
 export { memoryTools } from "./memory";
 export { expertManagementTools } from "./expert-management";
+export { askUserQuestionTools } from "./ask-user-question";
 export { skillTools } from "./skill";
 export { webTools } from "./web";
 export { createExpertTools, expertToolName } from "./expert-delegation";
@@ -14,6 +16,11 @@ export { createExpertTools, expertToolName } from "./expert-delegation";
 export const clientSideTools = {
   ...memoryTools,
   ...expertManagementTools,
+};
+
+/** Client-handled tools only registered in plan mode. */
+export const planClientTools = {
+  ...askUserQuestionTools,
 };
 
 type BuildChatToolsOptions = {

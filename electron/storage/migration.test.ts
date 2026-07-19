@@ -146,7 +146,7 @@ test("migrates a v3 database to the latest schema version", async () => {
     ).database
       .prepare("PRAGMA user_version")
       .get() as { user_version: number };
-    assert.equal(version.user_version, 6);
+    assert.equal(version.user_version, 7);
   });
 });
 
@@ -186,8 +186,31 @@ test("creates the new agent tables so writes succeed", async () => {
   await withMigratedDatabase((database) => {
     assert.deepEqual(database.loadWorkspaceRoots("proj-1"), []);
     assert.deepEqual(database.listTasks("proj-1"), []);
+    assert.deepEqual(database.listPlans("proj-1"), []);
     assert.deepEqual(database.listArtifacts("proj-1"), []);
     assert.deepEqual(database.listAgentRuns({ workspaceId: "proj-1" }), []);
+  });
+});
+
+test("adds agent_mode to chats and supports plan persistence", async () => {
+  await withMigratedDatabase((database) => {
+    const chats = database.loadChats();
+    assert.equal(chats[0]?.agentMode, "general");
+    database.savePlan({
+      id: "plan-1",
+      workspaceId: "proj-1",
+      runId: null,
+      chatId: "chat-1",
+      title: "Test plan",
+      markdown: "## Goal\n\n- [ ] Step one",
+      status: "active",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const plans = database.listPlans("proj-1");
+    assert.equal(plans.length, 1);
+    assert.equal(plans[0]?.title, "Test plan");
+    assert.equal(plans[0]?.status, "active");
   });
 });
 
@@ -218,7 +241,7 @@ test("supports the is_primary column added in v5", async () => {
   });
 });
 
-test("migrates the old combined Codex v4 lineage into agentic schema v6", async () => {
+test("migrates the old combined Codex v4 lineage into agentic schema v7", async () => {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "nimruz-migrate-codex-v4-")
   );
@@ -235,7 +258,7 @@ test("migrates the old combined Codex v4 lineage into agentic schema v6", async 
     const version = database.database
       .prepare("PRAGMA user_version")
       .get() as { user_version: number };
-    assert.equal(version.user_version, 6);
+    assert.equal(version.user_version, 7);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
@@ -287,7 +310,7 @@ test("adds Codex thread storage to the official agentic v5 lineage", async () =>
     const version = migrated.database
       .prepare("PRAGMA user_version")
       .get() as { user_version: number };
-    assert.equal(version.user_version, 6);
+    assert.equal(version.user_version, 7);
   } finally {
     migrated.close();
     await rm(directory, { recursive: true, force: true });

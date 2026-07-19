@@ -3,6 +3,11 @@ import type {
   LegacyDataSnapshot,
   LegacyImportResult,
 } from "@/lib/desktop-api";
+import {
+  DEFAULT_AGENT_MODE,
+  sanitizeAgentMode,
+  type AgentMode,
+} from "@/lib/chat/agent-mode";
 import type { LocalChat } from "@/lib/chat/storage";
 import type { CodexChatThread, CodexModelDescriptor } from "@/lib/codex";
 import {
@@ -58,6 +63,8 @@ import {
   type ApprovalRecord,
   type ArtifactRecord,
   type LocalWorkspace,
+  type PlanRecord,
+  type PlanStatus,
   type TaskRecord,
   type ToolCallRecord,
   type WorkspaceRoot,
@@ -483,6 +490,36 @@ export class AppDatabase {
       });
     }
 
+    if (currentVersion < 7) {
+      this.transaction(() => {
+        if (!hasTableColumn(this.database, "chats", "agent_mode")) {
+          this.database.exec(
+            "ALTER TABLE chats ADD COLUMN agent_mode TEXT NOT NULL DEFAULT 'general'"
+          );
+        }
+
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS plans (
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            run_id TEXT REFERENCES agent_runs(id) ON DELETE SET NULL,
+            chat_id TEXT,
+            title TEXT NOT NULL,
+            markdown TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS plans_workspace_id_idx
+            ON plans(workspace_id);
+          CREATE INDEX IF NOT EXISTS plans_workspace_updated_idx
+            ON plans(workspace_id, updated_at DESC);
+        `);
+
+        this.database.exec("PRAGMA user_version = 7");
+      });
+    }
+
     if (currentVersion >= 2) {
       this.ensureBuiltinCatalog();
     }
@@ -603,8 +640,8 @@ export class AppDatabase {
   loadChats(): LocalChat[] {
     return this.database
       .prepare(
-        `SELECT id, title, provider_id, model, messages_json, workspace_id, created_at,
-                updated_at, title_is_custom, pinned, pinned_at
+        `SELECT id, title, provider_id, model, messages_json, workspace_id, agent_mode,
+                created_at, updated_at, title_is_custom, pinned, pinned_at
            FROM chats
           ORDER BY pinned DESC, COALESCE(pinned_at, updated_at) DESC, updated_at DESC`
       )
@@ -621,6 +658,7 @@ export class AppDatabase {
         messages: parseMessages(row.messages_json),
         workspaceId:
           typeof row.workspace_id === "string" ? row.workspace_id : null,
+        agentMode: sanitizeAgentMode(row.agent_mode) as AgentMode,
         createdAt: asNumber(row.created_at),
         updatedAt: asNumber(row.updated_at),
         titleIsCustom: asBoolean(row.title_is_custom),
@@ -633,15 +671,16 @@ export class AppDatabase {
   saveChats(chats: LocalChat[]): void {
     const statement = this.database.prepare(`
       INSERT INTO chats (
-        id, title, provider_id, model, messages_json, workspace_id, created_at, updated_at,
-        title_is_custom, pinned, pinned_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        id, title, provider_id, model, messages_json, workspace_id, agent_mode,
+        created_at, updated_at, title_is_custom, pinned, pinned_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         provider_id = excluded.provider_id,
         model = excluded.model,
         messages_json = excluded.messages_json,
         workspace_id = excluded.workspace_id,
+        agent_mode = excluded.agent_mode,
         created_at = excluded.created_at,
         updated_at = excluded.updated_at,
         title_is_custom = excluded.title_is_custom,
@@ -659,6 +698,7 @@ export class AppDatabase {
           String(chat.model),
           JSON.stringify(chat.messages),
           validateId(chat.workspaceId) ? chat.workspaceId : null,
+          sanitizeAgentMode(chat.agentMode ?? DEFAULT_AGENT_MODE),
           Number(chat.createdAt),
           Number(chat.updatedAt),
           chat.titleIsCustom ? 1 : 0,
@@ -1263,6 +1303,124 @@ export class AppDatabase {
       .prepare("SELECT workspace_id FROM tasks WHERE id = ?")
       .get(id);
     return typeof row?.workspace_id === "string" ? row.workspace_id : null;
+  }
+
+  savePlan(plan: PlanRecord): void {
+    if (!validateId(plan.id) || !validateId(plan.workspaceId)) {
+      throw new Error("Invalid plan.");
+    }
+    this.database
+      .prepare(
+        `INSERT INTO plans (
+           id, workspace_id, run_id, chat_id, title, markdown, status,
+           created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           title = excluded.title,
+           markdown = excluded.markdown,
+           status = excluded.status,
+           run_id = excluded.run_id,
+           chat_id = excluded.chat_id,
+           updated_at = excluded.updated_at`
+      )
+      .run(
+        plan.id,
+        plan.workspaceId,
+        validateId(plan.runId) ? plan.runId : null,
+        plan.chatId,
+        plan.title,
+        plan.markdown,
+        plan.status,
+        plan.createdAt,
+        plan.updatedAt
+      );
+  }
+
+  listPlans(workspaceId: string): PlanRecord[] {
+    if (!validateId(workspaceId)) return [];
+    return this.database
+      .prepare(
+        `SELECT id, workspace_id, run_id, chat_id, title, markdown, status,
+                created_at, updated_at
+           FROM plans
+          WHERE workspace_id = ?
+          ORDER BY updated_at DESC`
+      )
+      .all(workspaceId)
+      .map((row) => ({
+        id: String(row.id),
+        workspaceId: String(row.workspace_id),
+        runId: typeof row.run_id === "string" ? row.run_id : null,
+        chatId: typeof row.chat_id === "string" ? row.chat_id : null,
+        title: String(row.title),
+        markdown: String(row.markdown ?? ""),
+        status: row.status as PlanStatus,
+        createdAt: asNumber(row.created_at),
+        updatedAt: asNumber(row.updated_at),
+      }));
+  }
+
+  getPlan(id: string): PlanRecord | null {
+    if (!validateId(id)) return null;
+    const row = this.database
+      .prepare(
+        `SELECT id, workspace_id, run_id, chat_id, title, markdown, status,
+                created_at, updated_at
+           FROM plans
+          WHERE id = ?`
+      )
+      .get(id);
+    if (!row) return null;
+    return {
+      id: String(row.id),
+      workspaceId: String(row.workspace_id),
+      runId: typeof row.run_id === "string" ? row.run_id : null,
+      chatId: typeof row.chat_id === "string" ? row.chat_id : null,
+      title: String(row.title),
+      markdown: String(row.markdown ?? ""),
+      status: row.status as PlanStatus,
+      createdAt: asNumber(row.created_at),
+      updatedAt: asNumber(row.updated_at),
+    };
+  }
+
+  deletePlan(id: string): void {
+    if (!validateId(id)) throw new Error("Invalid plan id.");
+    this.database.prepare("DELETE FROM plans WHERE id = ?").run(id);
+  }
+
+  getPlanWorkspaceId(id: string): string | null {
+    if (!validateId(id)) return null;
+    const row = this.database
+      .prepare("SELECT workspace_id FROM plans WHERE id = ?")
+      .get(id);
+    return typeof row?.workspace_id === "string" ? row.workspace_id : null;
+  }
+
+  /** Marks every active plan in the workspace completed except `exceptPlanId`. */
+  completeActivePlans(workspaceId: string, exceptPlanId?: string): void {
+    if (!validateId(workspaceId)) return;
+    const now = Date.now();
+    if (exceptPlanId && validateId(exceptPlanId)) {
+      this.database
+        .prepare(
+          `UPDATE plans
+              SET status = 'completed', updated_at = ?
+            WHERE workspace_id = ?
+              AND status = 'active'
+              AND id != ?`
+        )
+        .run(now, workspaceId, exceptPlanId);
+      return;
+    }
+    this.database
+      .prepare(
+        `UPDATE plans
+            SET status = 'completed', updated_at = ?
+          WHERE workspace_id = ?
+            AND status = 'active'`
+      )
+      .run(now, workspaceId);
   }
 
   loadOnboardingCompleted(): boolean {

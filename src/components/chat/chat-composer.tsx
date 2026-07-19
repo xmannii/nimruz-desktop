@@ -18,10 +18,16 @@ import {
   type ComposerAttachment,
 } from "@/lib/chat/composer-context";
 import { classifyFile } from "@/lib/workspace";
+import { AgentModePicker } from "@/components/chat/agent-mode-picker";
+import {
+  AskUserQuestionBar,
+  type PendingAskUserQuestion,
+} from "@/components/chat/ask-user-question-bar";
 import { ModelPicker } from "@/components/chat/model-picker";
 import { ReasoningEffortSlider } from "@/components/chat/reasoning-effort-slider";
 import { SelectedExpertBadge } from "@/components/chat/selected-expert-badge";
 import { useAppShell } from "@/components/app-shell-context";
+import { nextAgentMode, type AgentMode } from "@/lib/chat/agent-mode";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import {
   filterExpertSuggestions,
@@ -80,6 +86,10 @@ type ChatComposerProps = {
   onModelChange: (model: ProviderModelRef) => void;
   reasoningEffort: ReasoningEffort;
   onReasoningEffortChange: (effort: ReasoningEffort) => void;
+  agentMode: AgentMode;
+  onAgentModeChange: (mode: AgentMode) => void;
+  pendingQuestion?: PendingAskUserQuestion | null;
+  onAnswerQuestion?: (answers: { id: string; label: string }[]) => void;
   selectedExpertSlug: string | null;
   onSelectedExpertChange: (slug: string | null) => void;
   status: ChatStatus;
@@ -100,6 +110,10 @@ export function ChatComposer({
   onModelChange,
   reasoningEffort,
   onReasoningEffortChange,
+  agentMode,
+  onAgentModeChange,
+  pendingQuestion = null,
+  onAnswerQuestion,
   selectedExpertSlug,
   onSelectedExpertChange,
   status,
@@ -327,7 +341,9 @@ export function ChatComposer({
   }
 
   const canSend =
-    Boolean(text.trim()) || (canUseWorkspaceContext && attachments.length > 0);
+    !pendingQuestion &&
+    (Boolean(text.trim()) ||
+      (canUseWorkspaceContext && attachments.length > 0));
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -351,6 +367,14 @@ export function ChatComposer({
   }
 
   function handleKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Tab" && e.shiftKey) {
+      if (!isBusy && !pendingQuestion) {
+        e.preventDefault();
+        onAgentModeChange(nextAgentMode(agentMode));
+      }
+      return;
+    }
+
     if (hasMentionPicker) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -436,14 +460,14 @@ export function ChatComposer({
     onChange: (e: ChangeEvent<HTMLTextAreaElement>) =>
       handleTextChange(e.currentTarget),
     onKeyDown: handleKeyDown,
-    disabled: isBusy,
+    disabled: isBusy || Boolean(pendingQuestion),
   };
 
   const badgeProps = selectedExpert
     ? {
         name: selectedExpert.name,
         onClear: clearExpert,
-        disabled: isBusy,
+        disabled: isBusy || Boolean(pendingQuestion),
       }
     : null;
 
@@ -508,6 +532,10 @@ export function ChatComposer({
         onReasoningEffortChange={onReasoningEffortChange}
         showReasoningEffort={showReasoningEffort}
         reasoningEffortLevels={reasoningEffortLevels}
+        agentMode={agentMode}
+        onAgentModeChange={onAgentModeChange}
+        pendingQuestion={pendingQuestion}
+        onAnswerQuestion={onAnswerQuestion}
         isBusy={isBusy}
         canAttach={canAttach}
         canImport={canImport}
@@ -542,6 +570,10 @@ export function ChatComposer({
         onReasoningEffortChange={onReasoningEffortChange}
         showReasoningEffort={showReasoningEffort}
         reasoningEffortLevels={reasoningEffortLevels}
+        agentMode={agentMode}
+        onAgentModeChange={onAgentModeChange}
+        pendingQuestion={pendingQuestion}
+        onAnswerQuestion={onAnswerQuestion}
         isBusy={isBusy}
         canAttach={canAttach}
         canImport={canImport}
@@ -552,6 +584,7 @@ export function ChatComposer({
           centered ||
           isExpanded ||
           Boolean(selectedExpert) ||
+          Boolean(pendingQuestion) ||
           attachments.length > 0 ||
           mentions.length > 0 ||
           isImporting
@@ -638,6 +671,10 @@ type ComposerSharedProps = {
   onReasoningEffortChange: (effort: ReasoningEffort) => void;
   showReasoningEffort: boolean;
   reasoningEffortLevels?: readonly ReasoningEffort[];
+  agentMode: AgentMode;
+  onAgentModeChange: (mode: AgentMode) => void;
+  pendingQuestion?: PendingAskUserQuestion | null;
+  onAnswerQuestion?: (answers: { id: string; label: string }[]) => void;
   isBusy: boolean;
   canAttach: boolean;
   canImport?: boolean;
@@ -660,6 +697,10 @@ function MobileComposer({
   onReasoningEffortChange,
   showReasoningEffort,
   reasoningEffortLevels,
+  agentMode,
+  onAgentModeChange,
+  pendingQuestion = null,
+  onAnswerQuestion,
   isBusy,
   canAttach,
   canImport = false,
@@ -679,6 +720,15 @@ function MobileComposer({
     >
       {badgeProps ? (
         <SelectedExpertBadge {...badgeProps} className="pb-0" />
+      ) : null}
+
+      {pendingQuestion && onAnswerQuestion ? (
+        <AskUserQuestionBar
+          key={pendingQuestion.toolCallId}
+          pending={pendingQuestion}
+          onAnswer={onAnswerQuestion}
+          disabled={isBusy}
+        />
       ) : null}
 
       {attachments}
@@ -711,6 +761,13 @@ function MobileComposer({
           >
             <PlusIcon />
           </InputGroupButton>
+
+          <AgentModePicker
+            value={agentMode}
+            onValueChange={onAgentModeChange}
+            disabled={isBusy || Boolean(pendingQuestion)}
+            compact
+          />
 
           <ModelPicker
             value={model}
@@ -766,6 +823,10 @@ function DesktopComposer({
   onReasoningEffortChange,
   showReasoningEffort,
   reasoningEffortLevels,
+  agentMode,
+  onAgentModeChange,
+  pendingQuestion = null,
+  onAnswerQuestion,
   isBusy,
   canAttach,
   canImport = false,
@@ -783,7 +844,11 @@ function DesktopComposer({
   isExpanded: boolean;
   centered?: boolean;
 }) {
-  const showExpandedLayout = isExpanded || Boolean(badgeProps) || Boolean(attachments);
+  const showExpandedLayout =
+    isExpanded ||
+    Boolean(badgeProps) ||
+    Boolean(attachments) ||
+    Boolean(pendingQuestion);
 
   return (
     <div
@@ -796,6 +861,15 @@ function DesktopComposer({
       )}
     >
       {badgeProps ? <SelectedExpertBadge {...badgeProps} /> : null}
+
+      {pendingQuestion && onAnswerQuestion ? (
+        <AskUserQuestionBar
+          key={pendingQuestion.toolCallId}
+          pending={pendingQuestion}
+          onAnswer={onAnswerQuestion}
+          disabled={isBusy}
+        />
+      ) : null}
 
       {attachments}
 
@@ -832,6 +906,12 @@ function DesktopComposer({
             >
               <PlusIcon />
             </InputGroupButton>
+
+            <AgentModePicker
+              value={agentMode}
+              onValueChange={onAgentModeChange}
+              disabled={isBusy || Boolean(pendingQuestion)}
+            />
 
             <ModelPicker
               value={model}

@@ -2,9 +2,16 @@
 
 import type { ChatUpdate } from "@/hooks/use-chat-history";
 import { useAppShell } from "@/components/app-shell-context";
+import type { PendingAskUserQuestion } from "@/components/chat/ask-user-question-bar";
+import {
+  DEFAULT_AGENT_MODE,
+  sanitizeAgentMode,
+  type AgentMode,
+} from "@/lib/chat/agent-mode";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import type { LocalChat } from "@/lib/chat/storage";
 import { DEFAULT_PROVIDER_ID, type ModelId } from "@/lib/models";
+import { requestReveal } from "@/lib/workspace";
 import {
   CODEX_PROVIDER_ID,
   type ProviderModelRef,
@@ -68,10 +75,73 @@ const TOOL_TRUST_KEY: Record<string, AutoApproveKey> = {
   move_file: "autoApproveWrites",
   create_artifact: "autoApproveWrites",
   update_task: "autoApproveWrites",
+  write_plan: "autoApproveWrites",
+  update_plan: "autoApproveWrites",
+  read_active_plan: "autoApproveReads",
+  update_plan_progress: "autoApproveWrites",
+  update_plan_status: "autoApproveWrites",
   run_command: "autoApproveShell",
   fetch_url: "autoApproveNetwork",
   web_search: "autoApproveNetwork",
 };
+
+function findPendingAskUserQuestion(
+  messages: ChatUIMessage[]
+): PendingAskUserQuestion | null {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i];
+    if (message.role !== "assistant") continue;
+    for (const part of [...message.parts].reverse()) {
+      if (part.type !== "tool-ask_user_question") continue;
+      const toolPart = part as {
+        type: string;
+        toolCallId: string;
+        state?: string;
+        input?: {
+          question?: string;
+          options?: { id?: string; label?: string }[];
+          allowMultiple?: boolean;
+        };
+        output?: unknown;
+      };
+      if (
+        toolPart.state === "output-available" ||
+        toolPart.state === "output-error" ||
+        toolPart.state === "output-denied" ||
+        toolPart.output != null
+      ) {
+        continue;
+      }
+      if (
+        toolPart.state !== "input-available" &&
+        toolPart.state !== "input-streaming"
+      ) {
+        continue;
+      }
+      const question = toolPart.input?.question?.trim();
+      const options = (toolPart.input?.options ?? [])
+        .filter(
+          (option): option is { id: string; label: string } =>
+            typeof option?.id === "string" &&
+            option.id.trim().length > 0 &&
+            typeof option?.label === "string" &&
+            option.label.trim().length > 0
+        )
+        .map((option) => ({
+          id: option.id.trim(),
+          label: option.label.trim(),
+        }));
+      if (!question || options.length < 2) continue;
+      return {
+        toolCallId: toolPart.toolCallId,
+        question,
+        options,
+        allowMultiple: Boolean(toolPart.input?.allowMultiple),
+      };
+    }
+  }
+  return null;
+}
 
 function trustKeyForToolType(toolType: string): AutoApproveKey | null {
   return TOOL_TRUST_KEY[toolType.replace(/^tool-/, "")] ?? null;
@@ -126,13 +196,22 @@ export function ChatSession({
   });
   const [reasoningEffort, setReasoningEffort] =
     useState<ReasoningEffort>(DEFAULT_REASONING_EFFORT);
+  const [agentMode, setAgentMode] = useState<AgentMode>(() =>
+    sanitizeAgentMode(chat.agentMode ?? DEFAULT_AGENT_MODE)
+  );
   const hasMounted = useRef(false);
+  const handledWritePlanIds = useRef(new Set<string>());
   useEffect(() => {
     setModelRef({
       providerId: chat.providerId || DEFAULT_PROVIDER_ID,
       modelId: chat.model,
     });
   }, [chat.id, chat.model, chat.providerId]);
+
+  useEffect(() => {
+    setAgentMode(sanitizeAgentMode(chat.agentMode ?? DEFAULT_AGENT_MODE));
+    handledWritePlanIds.current = new Set();
+  }, [chat.id]);
 
   useEffect(() => {
     setActiveWorkspaceId(chat.workspaceId ?? HOME_WORKSPACE_ID);
@@ -212,9 +291,15 @@ export function ChatSession({
           memories,
           experts,
           subagents,
+          agentMode,
           chatId: chat.id,
           workspaceId: chat.workspaceId,
         };
+
+        // Clarifying questions wait for the composer UI; do not auto-resolve.
+        if (toolCall.toolName === "ask_user_question") {
+          return;
+        }
 
         if (toolCall.toolName === "save_memory") {
           const input = toolCall.input as {
@@ -322,10 +407,12 @@ export function ChatSession({
       experts,
       subagents,
       selectedExpertSlug: selectedExpertSlug ?? undefined,
+      agentMode,
       chatId: chat.id,
       workspaceId: chat.workspaceId ?? undefined,
     }),
     [
+      agentMode,
       chat.id,
       chat.workspaceId,
       experts,
@@ -361,8 +448,112 @@ export function ChatSession({
       messages,
       model: modelRef.modelId as ModelId,
       providerId: modelRef.providerId,
+      agentMode,
     });
-  }, [chat.id, messages, modelRef, onChatChange, status]);
+  }, [agentMode, chat.id, messages, modelRef, onChatChange, status]);
+
+  const handleAgentModeChange = useCallback(
+    (nextMode: AgentMode) => {
+      let nextModelRef = modelRef;
+      if (nextMode === "plan") {
+        const currentModel = resolveModel(modelRef);
+        if (
+          modelRef.providerId === CODEX_PROVIDER_ID ||
+          !currentModel?.supportsTools
+        ) {
+          const fallback = enabledModelGroups
+            .flatMap((group) => group.models)
+            .find(
+              (model) =>
+                model.providerId !== CODEX_PROVIDER_ID && model.supportsTools
+            );
+          if (!fallback) {
+            toast.error(
+              "برای حالت پلن، یک مدل ابزارمحور غیر Codex را فعال کنید."
+            );
+            return;
+          }
+          nextModelRef = {
+            providerId: fallback.providerId,
+            modelId: fallback.modelId,
+          };
+          setModelRef(nextModelRef);
+          toast.info(`مدل پلن به ${fallback.name} تغییر کرد.`);
+        }
+      }
+      setAgentMode(nextMode);
+      onChatChange(chat.id, {
+        messages,
+        model: nextModelRef.modelId as ModelId,
+        providerId: nextModelRef.providerId,
+        agentMode: nextMode,
+      });
+    },
+    [
+      chat.id,
+      enabledModelGroups,
+      messages,
+      modelRef,
+      onChatChange,
+      resolveModel,
+    ]
+  );
+
+  const pendingQuestion = useMemo(
+    () => findPendingAskUserQuestion(messages),
+    [messages]
+  );
+
+  const handleAnswerQuestion = useCallback(
+    (answers: { id: string; label: string }[]) => {
+      if (!pendingQuestion) return;
+      addToolOutput({
+        tool: "ask_user_question",
+        toolCallId: pendingQuestion.toolCallId,
+        output: {
+          success: true,
+          answers,
+        },
+        options: {
+          body: getRequestBody(),
+        },
+      });
+    },
+    [addToolOutput, getRequestBody, pendingQuestion]
+  );
+
+  // After a live write_plan success in plan mode, reveal the plan and return to general.
+  useEffect(() => {
+    for (const message of messages) {
+      if (message.role !== "assistant") continue;
+      for (const part of message.parts) {
+        if (part.type !== "tool-write_plan") continue;
+        const toolPart = part as {
+          toolCallId?: string;
+          state?: string;
+          output?: { id?: string; success?: boolean };
+        };
+        const key = toolPart.toolCallId;
+        if (!key) continue;
+        if (toolPart.state !== "output-available") continue;
+        if (toolPart.output?.success === false) continue;
+        if (agentMode !== "plan") continue;
+        if (handledWritePlanIds.current.has(key)) continue;
+        handledWritePlanIds.current.add(key);
+        const planId = toolPart.output?.id;
+        if (typeof planId === "string" && planId && chat.workspaceId) {
+          requestReveal({
+            kind: "plan",
+            workspaceId: chat.workspaceId,
+            planId,
+          });
+        }
+        if (agentMode === "plan") {
+          handleAgentModeChange("general");
+        }
+      }
+    }
+  }, [agentMode, chat.workspaceId, handleAgentModeChange, messages]);
 
   const handleModelChange = useCallback(
     (next: ProviderModelRef) => {
@@ -451,6 +642,10 @@ export function ChatSession({
 
   function handleSubmit() {
     const trimmed = text.trim();
+    if (pendingQuestion) {
+      toast.info("ابتدا سؤال بالای کادر پیام را پاسخ دهید.");
+      return;
+    }
     if ((!trimmed && attachments.length === 0) || isBusy) return;
 
     const isCodexProvider = modelRef.providerId === CODEX_PROVIDER_ID;
@@ -552,6 +747,10 @@ export function ChatSession({
       onModelChange={handleModelChange}
       reasoningEffort={reasoningEffort}
       onReasoningEffortChange={handleReasoningEffortChange}
+      agentMode={agentMode}
+      onAgentModeChange={handleAgentModeChange}
+      pendingQuestion={pendingQuestion}
+      onAnswerQuestion={handleAnswerQuestion}
       selectedExpertSlug={selectedExpertSlug}
       onSelectedExpertChange={setSelectedExpertSlug}
       status={status}

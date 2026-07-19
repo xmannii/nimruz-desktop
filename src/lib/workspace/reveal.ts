@@ -8,6 +8,7 @@ export type RevealTarget =
   | { kind: "file"; workspaceId: string; path: string }
   | { kind: "artifact"; workspaceId: string; artifactId: string }
   | { kind: "task"; workspaceId: string; taskId: string }
+  | { kind: "plan"; workspaceId: string; planId: string }
   | { kind: "run"; workspaceId: string; runId: string };
 
 const EVENT_NAME = "nimruz:workspace-reveal";

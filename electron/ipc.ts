@@ -34,6 +34,7 @@ import { isTrustedRendererUrl } from "./renderer-security";
 import {
   validateChatsPayload,
   validateLegacySnapshot,
+  validatePlanPayload,
   validateWorkspacePayload,
 } from "./storage/validation";
 import {
@@ -540,6 +541,32 @@ export function registerIpcHandlers(options: {
     database.deleteTask(taskId);
     if (workspaceId) {
       workspaceEvents.emit({ type: "task-changed", workspaceId, taskId });
+    }
+  });
+
+  handle("storage:list-plans", (workspaceId: string) =>
+    database.listPlans(workspaceId)
+  );
+  handle("storage:save-plan", (value: unknown) => {
+    const plan = validatePlanPayload(value);
+    if (plan.status === "active" && plan.workspaceId) {
+      database.completeActivePlans(plan.workspaceId, plan.id);
+    }
+    database.savePlan(plan);
+    if (plan.workspaceId) {
+      workspaceEvents.emit({
+        type: "plan-changed",
+        workspaceId: plan.workspaceId,
+        planId: plan.id,
+      });
+    }
+    return plan;
+  });
+  handle("storage:delete-plan", (planId: string) => {
+    const workspaceId = database.getPlanWorkspaceId(planId);
+    database.deletePlan(planId);
+    if (workspaceId) {
+      workspaceEvents.emit({ type: "plan-changed", workspaceId, planId });
     }
   });
 

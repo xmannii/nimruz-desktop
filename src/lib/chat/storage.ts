@@ -1,3 +1,4 @@
+import type { AgentMode } from "@/lib/chat/agent-mode";
 import type { ModelId } from "@/lib/models";
 import { ensureLegacyMigration } from "@/lib/storage/migrate-legacy";
 import type { LocalWorkspace, WorkspaceRoot } from "@/lib/workspace";
@@ -10,6 +11,7 @@ export type LocalChat = {
   model: ModelId;
   messages: UIMessage[];
   workspaceId: string | null;
+  agentMode?: AgentMode;
   createdAt: number;
   updatedAt: number;
   titleIsCustom?: boolean;

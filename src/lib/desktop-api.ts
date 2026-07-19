@@ -24,6 +24,7 @@ import type {
   ApprovalRecord,
   ArtifactRecord,
   LocalWorkspace,
+  PlanRecord,
   TaskRecord,
   ToolCallRecord,
   WorkspaceFileEntry,
@@ -239,6 +240,9 @@ export type DesktopAPI = {
     listTasks: (workspaceId: string) => Promise<TaskRecord[]>;
     saveTask: (task: TaskRecord) => Promise<TaskRecord>;
     deleteTask: (taskId: string) => Promise<void>;
+    listPlans: (workspaceId: string) => Promise<PlanRecord[]>;
+    savePlan: (plan: PlanRecord) => Promise<PlanRecord>;
+    deletePlan: (planId: string) => Promise<void>;
     listAgentRuns: (options?: {
       workspaceId?: string;
       chatId?: string;

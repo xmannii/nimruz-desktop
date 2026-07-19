@@ -13,6 +13,9 @@ import skillToolsMd from "@/lib/ai/prompts/skill-tools.md";
 import webToolsMd from "@/lib/ai/prompts/web-tools.md";
 import workspaceToolsMd from "@/lib/ai/prompts/workspace-tools.md";
 import spawnSubagentToolsMd from "@/lib/ai/prompts/spawn-subagent-tools.md";
+import planModeMd from "@/lib/ai/prompts/plan-mode.md";
+import agentModeMd from "@/lib/ai/prompts/agent-mode.md";
+import planSpawnSubagentToolsMd from "@/lib/ai/prompts/plan-spawn-subagent-tools.md";
 
 export function getBaseSystemPrompt() {
   return systemPromptMd.trim();
@@ -44,6 +47,18 @@ export function getWorkspaceToolsPrompt() {
 
 export function getSpawnSubagentToolsPrompt() {
   return spawnSubagentToolsMd.trim();
+}
+
+export function getPlanModePrompt() {
+  return planModeMd.trim();
+}
+
+export function getAgentModePrompt() {
+  return agentModeMd.trim();
+}
+
+export function getPlanSpawnSubagentToolsPrompt() {
+  return planSpawnSubagentToolsMd.trim();
 }
 
 /** Current date appendix in Gregorian (English) and Jalali (Persian). */
@@ -104,4 +119,20 @@ export function buildSystemInstructions(
   ].filter(Boolean);
 
   return sections.join("\n\n");
+}
+
+export function buildPlanSystemInstructions(
+  personalization?: unknown,
+  memories?: unknown,
+  options?: { includeSubagentTools?: boolean }
+) {
+  return [
+    getPlanModePrompt(),
+    buildCurrentDateAppendix(),
+    options?.includeSubagentTools ? getPlanSpawnSubagentToolsPrompt() : "",
+    buildPersonalizationAppendix(personalization),
+    buildMemoriesAppendix(memories),
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }

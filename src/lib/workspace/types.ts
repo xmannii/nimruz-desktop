@@ -191,6 +191,20 @@ export type TaskRecord = {
   updatedAt: number;
 };
 
+export type PlanStatus = "draft" | "active" | "completed" | "cancelled";
+
+export type PlanRecord = {
+  id: string;
+  workspaceId: string;
+  runId: string | null;
+  chatId: string | null;
+  title: string;
+  markdown: string;
+  status: PlanStatus;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type WorkspaceFileEntry = {
   path: string;
   name: string;
@@ -210,6 +224,7 @@ export type WorkspaceEvent =
   | { type: "file-moved"; workspaceId: string; from: string; to: string }
   | { type: "artifact-changed"; workspaceId: string; artifactId?: string }
   | { type: "task-changed"; workspaceId: string; taskId?: string }
+  | { type: "plan-changed"; workspaceId: string; planId?: string }
   | {
       type: "run-changed";
       workspaceId: string | null;

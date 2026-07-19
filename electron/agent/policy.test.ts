@@ -115,6 +115,29 @@ test("research subagent delegation is auto-approved", () => {
   assert.equal(decision.type, "approved");
 });
 
+test("plan mode denies execution tools regardless of workspace trust", () => {
+  const decision = evaluateToolPolicy({
+    toolName: "write_file",
+    agentMode: "plan",
+    trust: {
+      ...DEFAULT_WORKSPACE_TRUST,
+      level: "auto_shell",
+      autoApproveWrites: true,
+      autoApproveShell: true,
+    },
+  });
+  assert.equal(decision.type, "denied");
+});
+
+test("plan mode allows its dedicated plan tools", () => {
+  const decision = evaluateToolPolicy({
+    toolName: "write_plan",
+    agentMode: "plan",
+    trust: DEFAULT_WORKSPACE_TRUST,
+  });
+  assert.equal(decision.type, "approved");
+});
+
 test("unknown tools require approval", () => {
   const decision = evaluateToolPolicy({
     toolName: "mystery_tool",

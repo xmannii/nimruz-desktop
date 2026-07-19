@@ -39,6 +39,12 @@ const TOOL_ICONS: Record<string, ReactNode> = {
   run_command: <TerminalIcon />,
   create_artifact: <FileSearchIcon />,
   update_task: <ListTodoIcon />,
+  write_plan: <ListTodoIcon />,
+  update_plan: <ListTodoIcon />,
+  read_active_plan: <ListTodoIcon />,
+  update_plan_progress: <ListTodoIcon />,
+  update_plan_status: <ListTodoIcon />,
+  ask_user_question: <ListTodoIcon />,
 };
 
 const TOOL_LOADING_LABELS: Record<string, string> = {
@@ -53,6 +59,12 @@ const TOOL_LOADING_LABELS: Record<string, string> = {
   run_command: "در حال اجرای دستور…",
   create_artifact: "در حال ساخت آرتیفکت…",
   update_task: "در حال به‌روزرسانی تسک…",
+  write_plan: "در حال ذخیره پلن…",
+  update_plan: "در حال به‌روزرسانی پلن…",
+  read_active_plan: "در حال خواندن پلن…",
+  update_plan_progress: "در حال ثبت پیشرفت پلن…",
+  update_plan_status: "در حال تغییر وضعیت پلن…",
+  ask_user_question: "در انتظار پاسخ شما…",
 };
 
 const TOOL_DONE_LABELS: Record<string, string> = {
@@ -67,6 +79,12 @@ const TOOL_DONE_LABELS: Record<string, string> = {
   run_command: "دستور اجرا شد",
   create_artifact: "آرتیفکت ساخته شد",
   update_task: "تسک به‌روزرسانی شد",
+  write_plan: "پلن ذخیره شد",
+  update_plan: "پلن به‌روزرسانی شد",
+  read_active_plan: "پلن خوانده شد",
+  update_plan_progress: "پیشرفت پلن ثبت شد",
+  update_plan_status: "وضعیت پلن تغییر کرد",
+  ask_user_question: "پاسخ ثبت شد",
 };
 
 const TOOL_ERROR_LABELS: Record<string, string> = {
@@ -81,6 +99,12 @@ const TOOL_ERROR_LABELS: Record<string, string> = {
   run_command: "خطا در اجرای دستور",
   create_artifact: "خطا در ساخت آرتیفکت",
   update_task: "خطا در به‌روزرسانی تسک",
+  write_plan: "خطا در ذخیره پلن",
+  update_plan: "خطا در به‌روزرسانی پلن",
+  read_active_plan: "خطا در خواندن پلن",
+  update_plan_progress: "خطا در ثبت پیشرفت پلن",
+  update_plan_status: "خطا در تغییر وضعیت پلن",
+  ask_user_question: "خطا در ثبت پاسخ",
 };
 
 function getToolName(type: string): string {
@@ -90,7 +114,12 @@ function getToolName(type: string): string {
 function getSubject(toolName: string, input?: Record<string, unknown>): string | null {
   if (!input) return null;
   const candidate =
-    input.path ?? input.command ?? input.title ?? input.query ?? input.from;
+    input.path ??
+    input.command ??
+    input.title ??
+    input.query ??
+    input.question ??
+    input.from;
   if (typeof candidate === "string" && candidate.trim()) {
     return candidate.trim();
   }
@@ -172,6 +201,26 @@ function getResultSummary(
     }
     case "update_task":
       return typeof out.status === "string" ? String(out.status) : null;
+    case "write_plan":
+    case "update_plan":
+    case "update_plan_status":
+      return typeof out.status === "string" ? String(out.status) : null;
+    case "update_plan_progress":
+      return typeof out.itemIndex === "number"
+        ? `مورد ${Number(out.itemIndex) + 1}`
+        : null;
+    case "ask_user_question": {
+      const answers = out.answers;
+      if (!Array.isArray(answers) || answers.length === 0) return null;
+      return answers
+        .map((answer) =>
+          answer && typeof answer === "object" && "label" in answer
+            ? String((answer as { label: unknown }).label)
+            : null
+        )
+        .filter(Boolean)
+        .join(" · ");
+    }
     default:
       return null;
   }
@@ -198,6 +247,13 @@ function getRevealAction(
     return {
       label: "نمایش تسک",
       run: () => requestReveal({ kind: "task", workspaceId, taskId: "" }),
+    };
+  }
+  if (toolName === "write_plan" || toolName === "update_plan") {
+    const planId = typeof out.id === "string" ? out.id : "";
+    return {
+      label: "نمایش پلن",
+      run: () => requestReveal({ kind: "plan", workspaceId, planId }),
     };
   }
   const filePath =
@@ -264,11 +320,13 @@ export function ChatWorkspaceToolPart({
     const wasLoading = wasLoadingRef.current;
     wasLoadingRef.current = isLoading;
     if (!wasLoading || isLoading || isError || !workspaceId) return;
-    if (toolName !== "create_artifact") return;
     if (part.output == null || typeof part.output !== "object") return;
-    const artifactId = (part.output as { id?: unknown }).id;
-    if (typeof artifactId !== "string" || !artifactId) return;
-    requestReveal({ kind: "artifact", workspaceId, artifactId });
+    if (toolName === "create_artifact") {
+      const artifactId = (part.output as { id?: unknown }).id;
+      if (typeof artifactId !== "string" || !artifactId) return;
+      requestReveal({ kind: "artifact", workspaceId, artifactId });
+      return;
+    }
   }, [isLoading, isError, toolName, workspaceId, part.output]);
 
   const baseLabel = isLoading

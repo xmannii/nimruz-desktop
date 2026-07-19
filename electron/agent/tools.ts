@@ -5,7 +5,7 @@ import type { AppDatabase } from "../storage/database";
 import type { WorkspaceFilesStore } from "./workspace-files";
 import type { WorkspaceEventBus } from "./events";
 import { defaultShellCwd, runScopedCommand } from "./shell";
-import type { TaskStatus } from "@/lib/workspace";
+import type { PlanStatus, TaskStatus } from "@/lib/workspace";
 import { fetchPage } from "@/lib/web/fetch-page";
 
 export type AgentToolContext = {
@@ -327,6 +327,238 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
   };
 }
 
+function buildPlanPersistenceTools(ctx: AgentToolContext): ToolSet {
+  return {
+    write_plan: tool({
+      description:
+        "Persist a complete markdown implementation plan to the workspace Plan sidebar. Call once after clarifying questions and any needed research. Marks this plan active and completes any previous active plan.",
+      inputSchema: z.object({
+        title: z
+          .string()
+          .min(1)
+          .max(200)
+          .describe("Short plan title for the sidebar list"),
+        markdown: z
+          .string()
+          .min(400)
+          .max(100_000)
+          .describe(
+            "Complete execution-ready Markdown: goal, decisions, researched architecture/evidence, Mermaid diagrams when useful, sectioned GFM checklists, files to change, verification, risks, and Agent-mode handoff"
+          ),
+      }),
+      execute: async ({ title, markdown }) => {
+        const workspaceId = requireWorkspaceId(ctx);
+        const now = Date.now();
+        const planId = nanoid();
+        ctx.database.completeActivePlans(workspaceId);
+        const plan = {
+          id: planId,
+          workspaceId,
+          runId: ctx.runId,
+          chatId: ctx.chatId,
+          title,
+          markdown,
+          status: "active" as PlanStatus,
+          createdAt: now,
+          updatedAt: now,
+        };
+        ctx.database.savePlan(plan);
+        ctx.events?.emit({
+          type: "plan-changed",
+          workspaceId,
+          planId: plan.id,
+        });
+        return {
+          id: plan.id,
+          title: plan.title,
+          status: plan.status,
+          success: true,
+        };
+      },
+    }),
+    update_plan: tool({
+      description:
+        "Update an existing workspace plan's title, markdown, or status. Use to revise a plan after new answers or to mark it completed/cancelled.",
+      inputSchema: z.object({
+        id: z.string().min(1).describe("Existing plan id to update"),
+        title: z
+          .string()
+          .min(1)
+          .max(200)
+          .optional()
+          .describe("Updated short title"),
+        markdown: z
+          .string()
+          .min(1)
+          .max(100_000)
+          .optional()
+          .describe("Updated full plan markdown"),
+        status: z
+          .enum(["draft", "active", "completed", "cancelled"])
+          .optional()
+          .describe("Updated plan status"),
+      }),
+      execute: async ({ id, title, markdown, status }) => {
+        const workspaceId = requireWorkspaceId(ctx);
+        const existing = ctx.database.getPlan(id);
+        if (!existing || existing.workspaceId !== workspaceId) {
+          return {
+            success: false,
+            error: "Plan not found in the active workspace.",
+          };
+        }
+        const nextStatus = (status ?? existing.status) as PlanStatus;
+        if (nextStatus === "active" && existing.status !== "active") {
+          ctx.database.completeActivePlans(workspaceId, existing.id);
+        }
+        const plan = {
+          ...existing,
+          title: title ?? existing.title,
+          markdown: markdown ?? existing.markdown,
+          status: nextStatus,
+          runId: ctx.runId,
+          chatId: ctx.chatId,
+          updatedAt: Date.now(),
+        };
+        ctx.database.savePlan(plan);
+        ctx.events?.emit({
+          type: "plan-changed",
+          workspaceId,
+          planId: plan.id,
+        });
+        return {
+          id: plan.id,
+          title: plan.title,
+          status: plan.status,
+          success: true,
+        };
+      },
+    }),
+  } satisfies ToolSet;
+}
+
+function setChecklistItem(
+  markdown: string,
+  itemIndex: number,
+  completed: boolean
+): string | null {
+  let currentIndex = -1;
+  let changed = false;
+  const next = markdown
+    .split("\n")
+    .map((line) => {
+      if (!/^\s*[-*+]\s+\[[ xX]\]\s/.test(line)) return line;
+      currentIndex += 1;
+      if (currentIndex !== itemIndex) return line;
+      changed = true;
+      return line.replace(
+        /^(\s*[-*+]\s+)\[[ xX]\]/,
+        `$1[${completed ? "x" : " "}]`
+      );
+    })
+    .join("\n");
+  return changed ? next : null;
+}
+
+/** Plan-reading and progress tools for the execution agent. */
+export function buildPlanExecutionTools(ctx: AgentToolContext): ToolSet {
+  return {
+    read_active_plan: tool({
+      description:
+        "Read the workspace's active execution plan, including its full Markdown checklist. Use before implementing or continuing an agreed plan.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const workspaceId = requireWorkspaceId(ctx);
+        const plan =
+          ctx.database
+            .listPlans(workspaceId)
+            .find((candidate) => candidate.status === "active") ?? null;
+        return plan
+          ? { success: true, plan }
+          : { success: false, error: "No active plan exists." };
+      },
+    }),
+    update_plan_progress: tool({
+      description:
+        "Mark one checklist item in the active plan complete or incomplete after implementation and verification. Item indexes are zero-based in Markdown order.",
+      inputSchema: z.object({
+        id: z.string().min(1).describe("Active plan id"),
+        itemIndex: z
+          .number()
+          .int()
+          .min(0)
+          .describe("Zero-based checklist item index"),
+        completed: z.boolean().describe("Verified completion state"),
+      }),
+      execute: async ({ id, itemIndex, completed }) => {
+        const workspaceId = requireWorkspaceId(ctx);
+        const existing = ctx.database.getPlan(id);
+        if (
+          !existing ||
+          existing.workspaceId !== workspaceId ||
+          existing.status !== "active"
+        ) {
+          return { success: false, error: "Active plan not found." };
+        }
+        const markdown = setChecklistItem(
+          existing.markdown,
+          itemIndex,
+          completed
+        );
+        if (markdown == null) {
+          return {
+            success: false,
+            error: `Checklist item ${itemIndex} was not found.`,
+          };
+        }
+        const plan = {
+          ...existing,
+          markdown,
+          runId: ctx.runId,
+          chatId: ctx.chatId,
+          updatedAt: Date.now(),
+        };
+        ctx.database.savePlan(plan);
+        ctx.events?.emit({
+          type: "plan-changed",
+          workspaceId,
+          planId: plan.id,
+        });
+        return { success: true, id: plan.id, itemIndex, completed };
+      },
+    }),
+    update_plan_status: tool({
+      description:
+        "Mark the active plan completed or cancelled. Complete it only after all required checklist items are implemented and verified.",
+      inputSchema: z.object({
+        id: z.string().min(1).describe("Active plan id"),
+        status: z.enum(["completed", "cancelled"]),
+      }),
+      execute: async ({ id, status }) => {
+        const workspaceId = requireWorkspaceId(ctx);
+        const existing = ctx.database.getPlan(id);
+        if (!existing || existing.workspaceId !== workspaceId) {
+          return { success: false, error: "Plan not found." };
+        }
+        const plan = {
+          ...existing,
+          status: status as PlanStatus,
+          runId: ctx.runId,
+          chatId: ctx.chatId,
+          updatedAt: Date.now(),
+        };
+        ctx.database.savePlan(plan);
+        ctx.events?.emit({
+          type: "plan-changed",
+          workspaceId,
+          planId: plan.id,
+        });
+        return { success: true, id: plan.id, status: plan.status };
+      },
+    }),
+  } satisfies ToolSet;
+}
+
 /** Restricted, approval-free tool set for nested research subagents. */
 export function buildResearchSubagentTools(
   ctx: AgentToolContext,
@@ -345,5 +577,21 @@ export function buildResearchSubagentTools(
         }
       : {}),
     ...(options.allowNetwork !== false ? { fetch_url: tools.fetch_url } : {}),
+  } as ToolSet;
+}
+
+/** Read-only workspace tools plus plan persistence for plan mode. */
+export function buildPlanAgentTools(ctx: AgentToolContext): ToolSet {
+  const tools = buildAgentTools(ctx);
+  return {
+    ...(ctx.workspaceId
+      ? {
+          list_directory: tools.list_directory,
+          read_file: tools.read_file,
+          search_files: tools.search_files,
+          ...buildPlanPersistenceTools(ctx),
+        }
+      : {}),
+    fetch_url: tools.fetch_url,
   } as ToolSet;
 }

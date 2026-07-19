@@ -1,5 +1,6 @@
 import { getModelById } from "@/lib/models";
 import type { LegacyDataSnapshot } from "@/lib/desktop-api";
+import { sanitizeAgentMode } from "@/lib/chat/agent-mode";
 import type { LocalChat } from "@/lib/chat/storage";
 import { sanitizeMemories } from "@/lib/settings/memories";
 import { sanitizePersonalizationSettings } from "@/lib/settings/personalization";
@@ -14,6 +15,7 @@ import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
 import {
   sanitizeWorkspace,
   type LocalWorkspace,
+  type PlanRecord,
 } from "@/lib/workspace";
 
 const MAX_IPC_PAYLOAD_BYTES = 25 * 1024 * 1024;
@@ -63,6 +65,7 @@ function parseChat(value: unknown): LocalChat | null {
     model,
     messages: chat.messages,
     workspaceId,
+    agentMode: sanitizeAgentMode(chat.agentMode),
     createdAt: Number(chat.createdAt),
     updatedAt: Number(chat.updatedAt),
     titleIsCustom: Boolean(chat.titleIsCustom),
@@ -87,6 +90,43 @@ export function validateChatsPayload(value: unknown): LocalChat[] {
 export function validateWorkspacePayload(value: unknown): LocalWorkspace {
   assertPayloadSize(value);
   return sanitizeWorkspace(value);
+}
+
+export function validatePlanPayload(value: unknown): PlanRecord {
+  assertPayloadSize(value);
+  if (!value || typeof value !== "object") {
+    throw new Error("Plan payload is invalid.");
+  }
+  const plan = value as Partial<PlanRecord>;
+  if (
+    !isId(plan.id) ||
+    !isId(plan.workspaceId) ||
+    (plan.runId != null && !isId(plan.runId)) ||
+    (plan.chatId != null && !isId(plan.chatId)) ||
+    typeof plan.title !== "string" ||
+    !plan.title.trim() ||
+    plan.title.length > 200 ||
+    typeof plan.markdown !== "string" ||
+    plan.markdown.length > 100_000 ||
+    !["draft", "active", "completed", "cancelled"].includes(
+      String(plan.status)
+    ) ||
+    !Number.isFinite(plan.createdAt) ||
+    !Number.isFinite(plan.updatedAt)
+  ) {
+    throw new Error("Plan payload is invalid.");
+  }
+  return {
+    id: plan.id,
+    workspaceId: plan.workspaceId,
+    runId: plan.runId ?? null,
+    chatId: plan.chatId ?? null,
+    title: plan.title.trim(),
+    markdown: plan.markdown,
+    status: plan.status as PlanRecord["status"],
+    createdAt: Number(plan.createdAt),
+    updatedAt: Number(plan.updatedAt),
+  };
 }
 
 /** @deprecated Use validateWorkspacePayload */

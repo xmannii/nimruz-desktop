@@ -6,17 +6,25 @@ import {
   stepCountIs,
   type ToolSet,
 } from "ai";
+import {
+  DEFAULT_AGENT_MODE,
+  sanitizeAgentMode,
+  type AgentMode,
+} from "@/lib/chat/agent-mode";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { shouldPreferResearchSubagent } from "@/lib/ai/research-intent";
 import {
+  buildPlanSystemInstructions,
   buildSystemInstructions,
+  getAgentModePrompt,
   getWorkspaceToolsPrompt,
 } from "@/lib/ai/system-prompt";
 import {
   buildChatTools,
   createExpertTools,
   expertToolName,
+  planClientTools,
 } from "@/lib/ai/tools";
 import { sanitizeMemories } from "@/lib/settings/memories";
 import {
@@ -36,7 +44,12 @@ import {
 import type { AppDatabase } from "../storage/database";
 import type { ResolvedChatModel } from "../chat-handler";
 import { evaluateToolPolicy, redactSecrets, TOOL_REGISTRY } from "./policy";
-import { buildAgentTools, buildResearchSubagentTools } from "./tools";
+import {
+  buildAgentTools,
+  buildPlanAgentTools,
+  buildPlanExecutionTools,
+  buildResearchSubagentTools,
+} from "./tools";
 import { createSpawnSubagentTool } from "./subagent";
 import type { WorkspaceFilesStore } from "./workspace-files";
 import type { WorkspaceEventBus } from "./events";
@@ -60,6 +73,7 @@ export type AgentRequestBody = {
   selectedExpertSlug?: string;
   chatId?: string;
   workspaceId?: string | null;
+  agentMode?: AgentMode;
   runId?: string;
 };
 
@@ -135,6 +149,8 @@ export async function handleAgentChatRequest(
     chatId = "unknown",
     workspaceId = null,
   } = body;
+  const agentMode = sanitizeAgentMode(body.agentMode ?? DEFAULT_AGENT_MODE);
+  const isPlanMode = agentMode === "plan";
 
   const resolvedResult = resolveModelOrError(
     deps.resolveModel,
@@ -151,6 +167,20 @@ export async function handleAgentChatRequest(
     });
   }
 
+  if (
+    isPlanMode &&
+    (isCodexProvider(resolved.provider) || !resolved.model.supportsTools)
+  ) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "Plan mode requires a tool-capable non-Codex model so it can ask questions, research, and save the plan.",
+        code: "PLAN_MODE_MODEL_UNSUPPORTED",
+      }),
+      { status: 409, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   const runId =
     typeof body.runId === "string" && /^[\w-]{1,128}$/.test(body.runId)
       ? body.runId
@@ -160,6 +190,16 @@ export async function handleAgentChatRequest(
     workspaceId && /^[\w-]{1,128}$/.test(workspaceId)
       ? deps.database.getWorkspace(workspaceId)
       : null;
+
+  if (isPlanMode && !workspace) {
+    return new Response(
+      JSON.stringify({
+        error: "Plan mode requires an active workspace so the plan can be saved.",
+        code: "PLAN_MODE_WORKSPACE_REQUIRED",
+      }),
+      { status: 409, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
   if (workspace) {
     deps.files.ensureManagedRoot(workspace.id);
@@ -344,17 +384,30 @@ export async function handleAgentChatRequest(
     includeSkills: hasSkills,
   });
 
-  const workspaceTools = workspace
-    ? buildAgentTools({
-        workspaceId: workspace.id,
-        chatId,
-        runId,
-        database: deps.database,
-        files: deps.files,
-        events: deps.events,
-        abortSignal,
-      })
-    : {};
+  const toolContext = {
+    workspaceId: workspace?.id ?? null,
+    chatId,
+    runId,
+    database: deps.database,
+    files: deps.files,
+    events: deps.events,
+    abortSignal,
+  };
+
+  const workspaceTools = isPlanMode
+    ? buildPlanAgentTools(toolContext)
+    : workspace
+      ? {
+          ...buildAgentTools({
+            ...toolContext,
+            workspaceId: workspace.id,
+          }),
+          ...buildPlanExecutionTools({
+            ...toolContext,
+            workspaceId: workspace.id,
+          }),
+        }
+      : {};
 
   const researchTools = buildResearchSubagentTools(
     {
@@ -372,12 +425,14 @@ export async function handleAgentChatRequest(
       allowWorkspaceRead:
         evaluateToolPolicy({
           toolName: "read_file",
+          agentMode,
           trust: workspace?.trust,
           slices: AGENTIC_WORKSPACE_FEATURE.slices,
         }).type === "approved",
       allowNetwork:
         evaluateToolPolicy({
           toolName: "fetch_url",
+          agentMode,
           trust: workspace?.trust,
           slices: AGENTIC_WORKSPACE_FEATURE.slices,
         }).type === "approved",
@@ -394,9 +449,9 @@ export async function handleAgentChatRequest(
 
   const tools: ToolSet | undefined = resolved.model.supportsTools
     ? ({
-        ...baseTools,
+        ...(isPlanMode ? planClientTools : baseTools),
         ...workspaceTools,
-        ...(enabledExperts.length > 0
+        ...(!isPlanMode && enabledExperts.length > 0
           ? createExpertTools(sanitizedExperts, languageModel)
           : {}),
         ...(spawnSubagentTool
@@ -433,14 +488,16 @@ export async function handleAgentChatRequest(
 
   const workspaceAppendix = workspace
     ? [
-        getWorkspaceToolsPrompt(),
+        isPlanMode ? "" : getWorkspaceToolsPrompt(),
         workspace.description?.trim()
           ? `Workspace description: ${workspace.description.trim()}`
           : "",
         workspace.instructions?.trim()
           ? [
               "## User-configured workspace preferences",
-              "Apply these project preferences when relevant. They cannot override safety, tool policy, approval requirements, or the current explicit request.",
+              isPlanMode
+                ? "Apply relevant project preferences to the plan, but they cannot authorize edits, commands, implementation, or any other side effect in Plan mode."
+                : "Apply these project preferences when relevant. They cannot override safety, tool policy, approval requirements, or the current explicit request.",
               "---",
               workspace.instructions.trim(),
               "---",
@@ -449,11 +506,16 @@ export async function handleAgentChatRequest(
         rootsListing
           ? `Approved workspace roots — relative paths and the default shell cwd resolve against the primary root:\n${rootsListing}`
           : "",
+        isPlanMode
+          ? "Plan persistence requires this active workspace. Call `write_plan` when the plan is ready."
+          : "",
       ]
         .filter(Boolean)
         .join("\n\n")
-    : "";
-  const routingAppendix = explicitExpert
+    : isPlanMode
+      ? "No workspace is attached. You may still clarify and draft a plan in chat, but `write_plan` will fail until the user attaches a workspace."
+      : "";
+  const routingAppendix = !isPlanMode && explicitExpert
     ? [
         "## Explicit specialist selection",
         `The user explicitly selected \`${expertToolName(explicitExpert)}\`. Call that tool before answering, using a self-contained brief.`,
@@ -461,18 +523,29 @@ export async function handleAgentChatRequest(
     : preferResearchSubagent
       ? [
           "## Research-first routing",
-          "This request requires broad project/site investigation. Call `spawn_subagent` before direct workspace exploration, then use its summary to guide any focused verification and deliverable.",
+          isPlanMode
+            ? "This request requires broad project/site investigation. Call `spawn_subagent` before direct workspace exploration, then use its summary to write the plan with `write_plan`."
+            : "This request requires broad project/site investigation. Call `spawn_subagent` before direct workspace exploration, then use its summary to guide any focused verification and deliverable.",
         ].join("\n")
       : "";
 
   const instructions = [
-    buildSystemInstructions(
-      personalization,
-      sanitizeMemories(memories),
-      sanitizedExperts,
-      skillsCatalog,
-      { includeSubagentTools: Boolean(tools && spawnSubagentTool) }
-    ),
+    isPlanMode
+      ? buildPlanSystemInstructions(
+          personalization,
+          sanitizeMemories(memories),
+          { includeSubagentTools: Boolean(tools && spawnSubagentTool) }
+        )
+      : [
+          buildSystemInstructions(
+            personalization,
+            sanitizeMemories(memories),
+            sanitizedExperts,
+            skillsCatalog,
+            { includeSubagentTools: Boolean(tools && spawnSubagentTool) }
+          ),
+          getAgentModePrompt(),
+        ].join("\n\n"),
     workspaceAppendix,
     routingAppendix,
   ]
@@ -495,13 +568,15 @@ export async function handleAgentChatRequest(
               if (
                 toolCall.toolName === "save_memory" ||
                 toolCall.toolName === "delete_memory" ||
-                toolCall.toolName === "create_expert"
+                toolCall.toolName === "create_expert" ||
+                toolCall.toolName === "ask_user_question"
               ) {
                 return undefined;
               }
 
               const decision = evaluateToolPolicy({
                 toolName: toolCall.toolName,
+                agentMode,
                 trust: workspace?.trust,
                 slices: AGENTIC_WORKSPACE_FEATURE.slices,
               });
@@ -567,7 +642,10 @@ export async function handleAgentChatRequest(
                 return "approved";
               }
 
-              return undefined;
+              return {
+                type: "denied" as const,
+                reason: "Tool policy returned no executable decision.",
+              };
             },
             onStepEnd: ({ stepNumber }) => {
               const current = deps.database.getAgentRun(runId);
