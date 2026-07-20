@@ -114,6 +114,8 @@ const desktopApi: DesktopAPI = {
         workspaceId,
         path
       ),
+    listWorkspaceChanges: (workspaceId) =>
+      ipcRenderer.invoke("storage:list-workspace-changes", workspaceId),
     searchWorkspaceFiles: (workspaceId, query, options) =>
       ipcRenderer.invoke(
         "storage:search-workspace-files",

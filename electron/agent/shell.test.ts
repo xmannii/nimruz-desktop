@@ -3,7 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { assertCommandAllowed, runScopedCommand } from "./shell";
+import {
+  assertCommandAllowed,
+  runScopedCommand,
+  streamScopedCommand,
+} from "./shell";
 import { PathPolicyError } from "./path-policy";
 
 test("assertCommandAllowed rejects empty commands", () => {
@@ -51,6 +55,27 @@ test("runScopedCommand runs a command inside an approved root", async () => {
     });
     assert.equal(result.exitCode, 0);
     assert.match(result.stdout, /scoped-ok/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("streamScopedCommand yields live snapshots before the final result", async () => {
+  if (process.platform === "win32") return;
+  const dir = await mkdtemp(path.join(os.tmpdir(), "nimruz-shell-"));
+  try {
+    const results = [];
+    for await (const result of streamScopedCommand({
+      command: "printf first; sleep 0.2; printf second",
+      cwd: dir,
+      roots: [dir],
+    })) {
+      results.push(result);
+    }
+    assert.ok(results.some((result) => result.status === "running"));
+    assert.equal(results.at(-1)?.status, "completed");
+    assert.equal(results.at(-1)?.stdout, "firstsecond");
+    assert.equal(results.at(-1)?.exitCode, 0);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

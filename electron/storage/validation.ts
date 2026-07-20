@@ -108,6 +108,8 @@ export function validatePlanPayload(value: unknown): PlanRecord {
     plan.title.length > 200 ||
     typeof plan.markdown !== "string" ||
     plan.markdown.length > 100_000 ||
+    !Array.isArray(plan.steps) ||
+    plan.steps.length > 100 ||
     !["draft", "active", "completed", "cancelled"].includes(
       String(plan.status)
     ) ||
@@ -116,6 +118,31 @@ export function validatePlanPayload(value: unknown): PlanRecord {
   ) {
     throw new Error("Plan payload is invalid.");
   }
+  const steps = plan.steps.map((value) => {
+    if (!value || typeof value !== "object") {
+      throw new Error("Plan step is invalid.");
+    }
+    const step = value as PlanRecord["steps"][number];
+    if (
+      !isId(step.id) ||
+      typeof step.title !== "string" ||
+      !step.title.trim() ||
+      step.title.length > 200 ||
+      typeof step.description !== "string" ||
+      step.description.length > 2_000 ||
+      !["pending", "in_progress", "completed", "blocked"].includes(
+        String(step.status)
+      )
+    ) {
+      throw new Error("Plan step is invalid.");
+    }
+    return {
+      id: step.id,
+      title: step.title.trim(),
+      description: step.description.trim(),
+      status: step.status,
+    };
+  });
   return {
     id: plan.id,
     workspaceId: plan.workspaceId,
@@ -123,6 +150,7 @@ export function validatePlanPayload(value: unknown): PlanRecord {
     chatId: plan.chatId ?? null,
     title: plan.title.trim(),
     markdown: plan.markdown,
+    steps,
     status: plan.status as PlanRecord["status"],
     createdAt: Number(plan.createdAt),
     updatedAt: Number(plan.updatedAt),

@@ -89,6 +89,60 @@ function validateId(id: unknown): id is string {
   return typeof id === "string" && /^[\w-]{1,128}$/.test(id);
 }
 
+function parsePlanSteps(value: unknown): PlanRecord["steps"] {
+  if (typeof value !== "string") return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((candidate) => {
+      if (!candidate || typeof candidate !== "object") return [];
+      const step = candidate as Partial<PlanRecord["steps"][number]>;
+      if (
+        !validateId(step.id) ||
+        typeof step.title !== "string" ||
+        typeof step.description !== "string" ||
+        !["pending", "in_progress", "completed", "blocked"].includes(
+          String(step.status)
+        )
+      ) {
+        return [];
+      }
+      return [{
+        id: step.id,
+        title: step.title,
+        description: step.description,
+        status: step.status as PlanRecord["steps"][number]["status"],
+      }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function migrateLegacyPlanChecklist(markdown: string): {
+  markdown: string;
+  steps: PlanRecord["steps"];
+} {
+  const steps: PlanRecord["steps"] = [];
+  const migratedMarkdown = markdown
+    .split("\n")
+    .map((line) => {
+      const match = /^(\s*)([-*+])\s+\[([ xX])\]\s+(.+)$/.exec(line);
+      if (!match) return line;
+      const [, indent, bullet, mark, body] = match;
+      const index = steps.length + 1;
+      steps.push({
+        id: `legacy-step-${index}`,
+        title: body.trim().slice(0, 200) || `Step ${index}`,
+        description: "Migrated from the legacy Markdown plan checklist.",
+        status: mark.toLowerCase() === "x" ? "completed" : "pending",
+      });
+      return `${indent}${bullet} ${body}`;
+    })
+    .join("\n");
+  return { markdown: migratedMarkdown, steps };
+}
+
 function validateModelRowId(id: unknown): id is string {
   return typeof id === "string" && /^[\w.:/-]{1,256}$/.test(id);
 }
@@ -517,6 +571,32 @@ export class AppDatabase {
         `);
 
         this.database.exec("PRAGMA user_version = 7");
+      });
+    }
+
+    if (currentVersion < 8) {
+      this.transaction(() => {
+        if (!hasTableColumn(this.database, "plans", "steps_json")) {
+          this.database.exec(
+            "ALTER TABLE plans ADD COLUMN steps_json TEXT NOT NULL DEFAULT '[]'"
+          );
+        }
+        const legacyPlans = this.database
+          .prepare("SELECT id, markdown FROM plans WHERE steps_json = '[]'")
+          .all();
+        const updateLegacyPlan = this.database.prepare(
+          "UPDATE plans SET markdown = ?, steps_json = ? WHERE id = ?"
+        );
+        for (const row of legacyPlans) {
+          const migrated = migrateLegacyPlanChecklist(String(row.markdown ?? ""));
+          if (migrated.steps.length === 0) continue;
+          updateLegacyPlan.run(
+            migrated.markdown,
+            JSON.stringify(migrated.steps),
+            String(row.id)
+          );
+        }
+        this.database.exec("PRAGMA user_version = 8");
       });
     }
 
@@ -1312,12 +1392,13 @@ export class AppDatabase {
     this.database
       .prepare(
         `INSERT INTO plans (
-           id, workspace_id, run_id, chat_id, title, markdown, status,
-           created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           id, workspace_id, run_id, chat_id, title, markdown, steps_json,
+           status, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            title = excluded.title,
            markdown = excluded.markdown,
+           steps_json = excluded.steps_json,
            status = excluded.status,
            run_id = excluded.run_id,
            chat_id = excluded.chat_id,
@@ -1330,6 +1411,7 @@ export class AppDatabase {
         plan.chatId,
         plan.title,
         plan.markdown,
+        JSON.stringify(plan.steps),
         plan.status,
         plan.createdAt,
         plan.updatedAt
@@ -1340,7 +1422,7 @@ export class AppDatabase {
     if (!validateId(workspaceId)) return [];
     return this.database
       .prepare(
-        `SELECT id, workspace_id, run_id, chat_id, title, markdown, status,
+        `SELECT id, workspace_id, run_id, chat_id, title, markdown, steps_json, status,
                 created_at, updated_at
            FROM plans
           WHERE workspace_id = ?
@@ -1354,6 +1436,7 @@ export class AppDatabase {
         chatId: typeof row.chat_id === "string" ? row.chat_id : null,
         title: String(row.title),
         markdown: String(row.markdown ?? ""),
+        steps: parsePlanSteps(row.steps_json),
         status: row.status as PlanStatus,
         createdAt: asNumber(row.created_at),
         updatedAt: asNumber(row.updated_at),
@@ -1364,7 +1447,7 @@ export class AppDatabase {
     if (!validateId(id)) return null;
     const row = this.database
       .prepare(
-        `SELECT id, workspace_id, run_id, chat_id, title, markdown, status,
+        `SELECT id, workspace_id, run_id, chat_id, title, markdown, steps_json, status,
                 created_at, updated_at
            FROM plans
           WHERE id = ?`
@@ -1378,6 +1461,7 @@ export class AppDatabase {
       chatId: typeof row.chat_id === "string" ? row.chat_id : null,
       title: String(row.title),
       markdown: String(row.markdown ?? ""),
+      steps: parsePlanSteps(row.steps_json),
       status: row.status as PlanStatus,
       createdAt: asNumber(row.created_at),
       updatedAt: asNumber(row.updated_at),

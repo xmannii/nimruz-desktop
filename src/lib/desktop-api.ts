@@ -27,6 +27,7 @@ import type {
   PlanRecord,
   TaskRecord,
   ToolCallRecord,
+  WorkspaceFileChange,
   WorkspaceFileEntry,
   WorkspaceEvent,
   WorkspaceRoot,
@@ -168,6 +169,9 @@ export type DesktopAPI = {
       mimeType: string;
       sizeBytes: number;
     }>;
+    listWorkspaceChanges: (
+      workspaceId: string
+    ) => Promise<WorkspaceFileChange[]>;
     searchWorkspaceFiles: (
       workspaceId: string,
       query: string,

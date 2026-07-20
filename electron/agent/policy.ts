@@ -259,6 +259,7 @@ export function evaluateToolPolicy(options: {
       "fetch_url",
       "write_plan",
       "update_plan",
+      "read_active_plan",
       "spawn_subagent",
     ]);
     if (!planAllowedTools.has(options.toolName)) {

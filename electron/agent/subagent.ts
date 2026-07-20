@@ -15,6 +15,24 @@ import { isCodexProvider, requiresProviderApiKey } from "./provider-routing";
 
 const SUBAGENT_RESEARCH_STEPS = 12;
 const SUBAGENT_MAX_STEPS = SUBAGENT_RESEARCH_STEPS + 1;
+const SUBAGENT_MAX_ATTEMPTS = 2;
+
+export type SubagentRunStatus =
+  | "running"
+  | "retrying"
+  | "completed"
+  | "partial";
+
+export type SubagentRunMetadata = {
+  status: SubagentRunStatus;
+  attempt: number;
+  maxAttempts: number;
+  error?: string;
+};
+
+type SubagentMessageMetadata = Record<string, unknown> & {
+  subagent?: SubagentRunMetadata;
+};
 
 export function prepareSubagentStep({
   stepNumber,
@@ -39,13 +57,89 @@ type SpawnSubagentOptions = {
 
 export function getFinalSubagentText(message: UIMessage | undefined): string {
   if (!message) return "The research subagent completed without a summary.";
-  const text = message.parts
-    .findLast(
+  const metadata = message.metadata as SubagentMessageMetadata | undefined;
+  const textParts = message.parts
+    .filter(
       (part): part is Extract<(typeof message.parts)[number], { type: "text" }> =>
-        part.type === "text"
+        part.type === "text" && Boolean(part.text.trim())
     )
-    ?.text.trim();
-  return text || "The research subagent completed without a summary.";
+    .map((part) => part.text.trim());
+
+  if (metadata?.subagent?.status === "partial") {
+    const partialSummary = textParts.join("\n\n").slice(-20_000);
+    const reason = metadata.subagent.error
+      ? ` Reason: ${metadata.subagent.error}`
+      : "";
+    return partialSummary
+      ? `${partialSummary}\n\n[The research subagent stopped early; this is a partial result.${reason}]`
+      : `The research subagent stopped early without a summary.${reason}`;
+  }
+
+  return (
+    textParts.at(-1) || "The research subagent completed without a summary."
+  );
+}
+
+export function hasIncompleteSubagentToolCalls(
+  message: UIMessage | undefined
+): boolean {
+  return Boolean(
+    message?.parts.some((part) => {
+      if (!part.type.startsWith("tool-")) return false;
+      const state = (part as { state?: string }).state;
+      return state === "input-streaming" || state === "input-available";
+    })
+  );
+}
+
+function errorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    message.trim().replace(/\s+/g, " ") ||
+    "The subagent stream ended unexpectedly."
+  ).slice(0, 500);
+}
+
+function withSubagentStatus(
+  message: UIMessage,
+  status: SubagentRunStatus,
+  attempt: number,
+  error?: string
+): UIMessage {
+  const metadata =
+    message.metadata && typeof message.metadata === "object"
+      ? (message.metadata as Record<string, unknown>)
+      : {};
+
+  return {
+    ...message,
+    metadata: {
+      ...metadata,
+      subagent: {
+        status,
+        attempt,
+        maxAttempts: SUBAGENT_MAX_ATTEMPTS,
+        ...(error ? { error } : {}),
+      },
+    },
+  };
+}
+
+function createStatusMessage(
+  status: SubagentRunStatus,
+  attempt: number,
+  error?: string
+): UIMessage {
+  return withSubagentStatus(
+    {
+      id: `subagent-${status}-${attempt}`,
+      role: "assistant",
+      parts: [],
+    },
+    status,
+    attempt,
+    error
+  );
 }
 
 export function createSpawnSubagentTool({
@@ -150,15 +244,79 @@ export function createSpawnSubagentTool({
         stopWhen: stepCountIs(SUBAGENT_MAX_STEPS),
       });
 
-      const result = await researchAgent.stream({ prompt: task, abortSignal });
-      for await (const message of readUIMessageStream({
-        stream: toUIMessageStream({
-          stream: result.stream,
-          tools,
-          sendReasoning: true,
-        }),
-      })) {
-        yield message;
+      let lastMessage: UIMessage | undefined;
+
+      for (let attempt = 1; attempt <= SUBAGENT_MAX_ATTEMPTS; attempt += 1) {
+        try {
+          const retryContext =
+            attempt === 1
+              ? task
+              : `${task}\n\nThe previous research stream failed before completion. Restart the read-only investigation, prioritize the essential evidence, and make sure to produce a compact final summary.`;
+          const result = await researchAgent.stream({
+            prompt: retryContext,
+            abortSignal,
+            timeout: {
+              // The parent run owns the overall five-minute wall clock. These
+              // limits only recover individual stalled model/tool operations
+              // without shortening healthy multi-step research.
+              stepMs: 90_000,
+              chunkMs: 60_000,
+              toolMs: 60_000,
+            },
+          });
+          let attemptMessage: UIMessage | undefined;
+
+          for await (const message of readUIMessageStream({
+            stream: toUIMessageStream({
+              stream: result.stream,
+              tools,
+              sendReasoning: true,
+            }),
+            // The default silently closes after an error, which can turn an
+            // unfinished nested tool call into an apparently final result.
+            terminateOnError: true,
+          })) {
+            attemptMessage = message;
+            lastMessage = message;
+            yield withSubagentStatus(
+              message,
+              attempt === 1 ? "running" : "retrying",
+              attempt
+            );
+          }
+
+          if (!attemptMessage) {
+            throw new Error("The subagent stream ended without a response.");
+          }
+          if (hasIncompleteSubagentToolCalls(attemptMessage)) {
+            throw new Error(
+              "The subagent stream ended during a nested tool call."
+            );
+          }
+
+          yield withSubagentStatus(attemptMessage, "completed", attempt);
+          return;
+        } catch (error) {
+          if (abortSignal?.aborted) throw error;
+
+          const failure = errorMessage(error);
+          if (attempt < SUBAGENT_MAX_ATTEMPTS) {
+            yield lastMessage
+              ? withSubagentStatus(
+                  lastMessage,
+                  "retrying",
+                  attempt + 1,
+                  failure
+                )
+              : createStatusMessage("retrying", attempt + 1, failure);
+            continue;
+          }
+
+          yield lastMessage
+            ? withSubagentStatus(lastMessage, "partial", attempt, failure)
+            : createStatusMessage("partial", attempt, failure);
+          return;
+        }
       }
     },
     toModelOutput: ({ output }) => ({

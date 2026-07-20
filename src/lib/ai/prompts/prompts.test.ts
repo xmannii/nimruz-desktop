@@ -36,13 +36,15 @@ test("subagent prompt separates delegation from direct work", () => {
   assert.match(prompt, /Re-check a critical claim/);
 });
 
-test("plan mode prompt clarifies, researches, then writes a checklist plan", () => {
+test("plan mode prompt clarifies, researches, then writes structured steps", () => {
   const prompt = readPrompt("plan-mode.md");
 
   assert.match(prompt, /ask_user_question/);
   assert.match(prompt, /spawn_subagent/);
   assert.match(prompt, /write_plan/);
-  assert.match(prompt, /- \[ \]/);
+  assert.match(prompt, /structured steps/i);
+  assert.match(prompt, /Do not put checkboxes/i);
+  assert.match(prompt, /Stay in Plan mode/i);
   assert.match(prompt, /never implement/i);
   assert.match(prompt, /Mermaid/);
   assert.match(prompt, /Execution handoff/);
