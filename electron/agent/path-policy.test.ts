@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, symlink, writeFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  realpath,
+  symlink,
+  writeFile,
+  rm,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -27,7 +34,7 @@ test("resolves a path inside an approved root", async () => {
       path.join(dir, "note.txt"),
       [dir]
     );
-    assert.equal(root, path.resolve(dir));
+    assert.equal(root, await realpath(dir));
     assert.ok(absolutePath.endsWith("note.txt"));
   });
 });

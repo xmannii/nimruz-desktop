@@ -54,6 +54,7 @@ import { getExpertValidationErrors, normalizeExpertSlug, upsertExpert, type Expe
 import type { SubagentModel } from "@/lib/settings/subagents";
 
 const CHAT_UPDATE_THROTTLE_MS = 50;
+const STOPPED_TOOL_ERROR = "Tool execution stopped by user.";
 let sessionTokenPromise: Promise<string> | undefined;
 
 function getSessionToken() {
@@ -143,6 +144,60 @@ function findPendingAskUserQuestion(
   return null;
 }
 
+function findPendingToolApprovalIds(messages: ChatUIMessage[]): string[] {
+  const pendingIds = new Set<string>();
+
+  for (const message of messages) {
+    if (message.role !== "assistant") continue;
+
+    for (const part of message.parts) {
+      if (part.type === "step-start" || !("approval" in part)) continue;
+      const approval = part.approval as
+        | { id?: unknown }
+        | undefined;
+      if (
+        part.state === "approval-requested" &&
+        typeof approval?.id === "string"
+      ) {
+        pendingIds.add(approval.id);
+      }
+    }
+  }
+
+  return [...pendingIds];
+}
+
+function findActiveToolCalls(
+  messages: ChatUIMessage[]
+): { tool: string; toolCallId: string }[] {
+  const lastMessage = messages.at(-1);
+  if (lastMessage?.role !== "assistant") return [];
+
+  return lastMessage.parts.flatMap((part) => {
+    if (!part.type.startsWith("tool-") || !("toolCallId" in part)) {
+      return [];
+    }
+    const toolCallId = part.toolCallId;
+    if (typeof toolCallId !== "string") return [];
+
+    const output = "output" in part ? part.output : undefined;
+    const hasRunningOutput =
+      typeof output === "object" &&
+      output !== null &&
+      (output as { status?: unknown }).status === "running";
+    const isActive =
+      part.state === "input-streaming" ||
+      part.state === "input-available" ||
+      part.state === "approval-responded" ||
+      ("preliminary" in part && part.preliminary === true) ||
+      hasRunningOutput;
+
+    return isActive
+      ? [{ tool: part.type.replace(/^tool-/, ""), toolCallId }]
+      : [];
+  });
+}
+
 function trustKeyForToolType(toolType: string): AutoApproveKey | null {
   return TOOL_TRUST_KEY[toolType.replace(/^tool-/, "")] ?? null;
 }
@@ -200,6 +255,7 @@ export function ChatSession({
   );
   const hasMounted = useRef(false);
   const handledWritePlanIds = useRef(new Set<string>());
+  const isSuppressingAutoSendRef = useRef(false);
   const [activePlan, setActivePlan] = useState<PlanRecord | null>(null);
   useEffect(() => {
     setModelRef({
@@ -293,8 +349,9 @@ export function ChatSession({
   runtime.persistence.agentMode = agentMode;
   runtime.callbacks.onError = handleChatError;
   runtime.callbacks.sendAutomaticallyWhen = (options) =>
-    lastAssistantMessageIsCompleteWithToolCalls(options) ||
-    lastAssistantMessageIsCompleteWithApprovalResponses(options);
+    !isSuppressingAutoSendRef.current &&
+    (lastAssistantMessageIsCompleteWithToolCalls(options) ||
+      lastAssistantMessageIsCompleteWithApprovalResponses(options));
   runtime.callbacks.onToolCall = ({ toolCall }) => {
     if (toolCall.dynamic) return;
 
@@ -668,13 +725,54 @@ export function ChatSession({
     ]
   );
 
-  function handleSubmit() {
+  const handleStop = useCallback(() => {
+    const activeToolCalls = findActiveToolCalls(messages);
+    if (activeToolCalls.length === 0) {
+      void stop();
+      return;
+    }
+
+    isSuppressingAutoSendRef.current = true;
+    void stop();
+    void Promise.all(
+      activeToolCalls.map(({ tool, toolCallId }) =>
+        addToolOutput({
+          tool,
+          toolCallId,
+          state: "output-error",
+          errorText: STOPPED_TOOL_ERROR,
+          options: { body: getRequestBody() },
+        })
+      )
+    ).finally(() => {
+      isSuppressingAutoSendRef.current = false;
+    });
+  }, [addToolOutput, getRequestBody, messages, stop]);
+
+  async function handleSubmit() {
     const trimmed = text.trim();
     if (pendingQuestion) {
       toast.info("ابتدا سؤال بالای کادر پیام را پاسخ دهید.");
       return;
     }
     if ((!trimmed && attachments.length === 0) || isBusy) return;
+
+    const pendingApprovalIds = findPendingToolApprovalIds(messages);
+    if (pendingApprovalIds.length > 0) {
+      isSuppressingAutoSendRef.current = true;
+      try {
+        for (const approvalId of pendingApprovalIds) {
+          await addToolApprovalResponse({
+            id: approvalId,
+            approved: false,
+            reason: "Superseded by a new user message.",
+            options: { body: getRequestBody() },
+          });
+        }
+      } finally {
+        isSuppressingAutoSendRef.current = false;
+      }
+    }
 
     const isCodexProvider = modelRef.providerId === CODEX_PROVIDER_ID;
     const usableAttachments = isCodexProvider ? [] : attachments;
@@ -794,7 +892,7 @@ export function ChatSession({
       onSelectedExpertChange={setSelectedExpertSlug}
       status={status}
       onSubmit={handleSubmit}
-      onStop={stop}
+      onStop={handleStop}
       centered={showCenteredComposer}
       messages={contextMessages}
       workspaceId={chat.workspaceId}

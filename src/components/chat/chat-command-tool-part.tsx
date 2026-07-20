@@ -14,6 +14,10 @@ export type CommandToolPart = {
   input?: Record<string, unknown>;
   output?: unknown;
   errorText?: string;
+  approval?: {
+    approved?: boolean;
+    reason?: string;
+  };
 };
 
 type CommandOutput = {
@@ -31,6 +35,7 @@ type CommandOutput = {
 };
 
 const ANSI_ESCAPE_PATTERN = /\u001B(?:[@-_]|\[[0-?]*[ -/]*[@-~])/g;
+const STOPPED_TOOL_ERROR = "Tool execution stopped by user.";
 
 function asCommandOutput(output: unknown): CommandOutput {
   return output && typeof output === "object"
@@ -65,19 +70,27 @@ export function ChatCommandToolPart({ part }: { part: CommandToolPart }) {
     (typeof output.cwd === "string" && output.cwd) ||
     (typeof part.input?.cwd === "string" && part.input.cwd) ||
     "";
+  const isApprovalDenied =
+    part.state === "approval-responded" && part.approval?.approved === false;
+  const isStopped =
+    part.state === "output-error" && part.errorText === STOPPED_TOOL_ERROR;
   const isPendingInput =
     part.state === "input-streaming" ||
     part.state === "input-available" ||
     part.state === "approval-requested" ||
-    part.state === "approval-responded";
+    (part.state === "approval-responded" && !isApprovalDenied);
   const isRunning =
-    isPendingInput || part.preliminary === true || output.status === "running";
+    !isApprovalDenied &&
+    !isStopped &&
+    (isPendingInput || part.preliminary === true || output.status === "running");
   const isErrorState =
     part.state === "output-error" || part.state === "output-denied";
   const hasBadExitCode =
     typeof output.exitCode === "number" && output.exitCode !== 0;
   const isError =
     !isRunning &&
+    !isApprovalDenied &&
+    !isStopped &&
     (isErrorState ||
       hasBadExitCode ||
       output.timedOut === true ||
@@ -111,7 +124,11 @@ export function ChatCommandToolPart({ part }: { part: CommandToolPart }) {
     : (output.durationMs ?? clock - startedAtRef.current);
   const statusLabel = isRunning
     ? "در حال اجرا"
-    : output.timedOut
+    : isApprovalDenied
+      ? "اجرا لغو شد"
+      : isStopped
+        ? "اجرا متوقف شد"
+      : output.timedOut
       ? "مهلت اجرا تمام شد"
       : output.signal
         ? "اجرا متوقف شد"
@@ -178,7 +195,13 @@ export function ChatCommandToolPart({ part }: { part: CommandToolPart }) {
             className="max-h-44 min-h-14 overflow-auto whitespace-pre-wrap break-words px-2.5 py-2 text-[11px] leading-5"
           >
             {terminalOutput ||
-              (isRunning ? "در انتظار خروجی…" : "بدون خروجی")}
+              (isRunning
+                ? "در انتظار خروجی…"
+                : isApprovalDenied
+                  ? "دستور اجرا نشد؛ درخواست لغو شد."
+                  : isStopped
+                    ? "دستور با توقف تولید پاسخ متوقف شد."
+                  : "بدون خروجی")}
           </pre>
         </div>
 
