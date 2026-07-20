@@ -292,6 +292,8 @@ type ChatToolInvocationProps = {
   isLoading?: boolean;
   isError?: boolean;
   expandable?: boolean;
+  /** Keep details available for live tools such as streaming terminals. */
+  expandableWhileLoading?: boolean;
   /** Hover expands by default; click is better for compact batches. */
   expandMode?: "hover" | "click";
   defaultExpanded?: boolean;
@@ -305,6 +307,7 @@ export function ChatToolInvocation({
   isLoading = false,
   isError = false,
   expandable = false,
+  expandableWhileLoading = false,
   expandMode = "hover",
   defaultExpanded = false,
   panelTitle,
@@ -314,7 +317,10 @@ export function ChatToolInvocation({
   const position = step?.position ?? "single";
   const inStack = position !== "single";
   const effectiveExpandMode = step?.detailExpandMode ?? expandMode;
-  const canExpand = expandable && !isLoading && Boolean(children);
+  const canExpand =
+    expandable &&
+    (!isLoading || expandableWhileLoading) &&
+    Boolean(children);
   const [clickExpanded, setClickExpanded] = useState(defaultExpanded);
   const detailsOpen =
     canExpand &&

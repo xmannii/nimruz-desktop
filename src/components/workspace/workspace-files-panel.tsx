@@ -10,6 +10,7 @@ import {
 } from "@/components/ai-elements/file-tree";
 import { FilePreview } from "@/components/workspace/file-preview";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -37,7 +38,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { hasEventType, useWorkspaceEvents } from "@/hooks/use-workspace-events";
 import { useWorkspaceRoots } from "@/hooks/use-workspace-roots";
 import { cn } from "@/lib/utils";
-import type { WorkspaceFileEntry, WorkspaceRoot } from "@/lib/workspace";
+import type {
+  WorkspaceFileChange,
+  WorkspaceFileEntry,
+  WorkspaceRoot,
+} from "@/lib/workspace";
 import {
   ChevronLeftIcon,
   ExternalLinkIcon,
@@ -46,6 +51,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   HardDriveIcon,
+  GitCompareArrowsIcon,
   MoreVerticalIcon,
   PencilIcon,
   RefreshCwIcon,
@@ -182,6 +188,7 @@ function TreeNodes({
   childrenByPath,
   loadingPaths,
   filter,
+  changesByPath,
   onRename,
   onReveal,
   onDelete,
@@ -190,6 +197,7 @@ function TreeNodes({
   childrenByPath: Map<string, WorkspaceFileEntry[]>;
   loadingPaths: Set<string>;
   filter: string;
+  changesByPath: Map<string, WorkspaceFileChange>;
   onRename: (entry: WorkspaceFileEntry) => void;
   onReveal: (path: string) => void;
   onDelete: (entry: WorkspaceFileEntry) => void;
@@ -238,6 +246,7 @@ function TreeNodes({
               childrenByPath={childrenByPath}
               loadingPaths={loadingPaths}
               filter={filter}
+              changesByPath={changesByPath}
               onRename={onRename}
               onReveal={onReveal}
               onDelete={onDelete}
@@ -254,6 +263,12 @@ function TreeNodes({
           <FileIcon className="size-4 text-muted-foreground" />
         </FileTreeIcon>
         <FileTreeName>{entry.name}</FileTreeName>
+        {changesByPath.get(entry.path) ? (
+          <span dir="ltr" className="shrink-0 font-mono text-[10px] text-muted-foreground">
+            <span className="text-primary">+{changesByPath.get(entry.path)?.additions}</span>{" "}
+            <span className="text-destructive">-{changesByPath.get(entry.path)?.deletions}</span>
+          </span>
+        ) : null}
         <EntryActions
           entry={entry}
           onRename={onRename}
@@ -286,6 +301,9 @@ export function WorkspaceFilesPanel({
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [showFilter, setShowFilter] = useState(false);
+  const [showChanges, setShowChanges] = useState(false);
+  const [changes, setChanges] = useState<WorkspaceFileChange[]>([]);
+  const [selectedChange, setSelectedChange] = useState<WorkspaceFileChange | null>(null);
   const [dialog, setDialog] = useState<
     | { mode: "new-folder" | "new-file"; value: string }
     | { mode: "rename"; value: string; target: string }
@@ -301,6 +319,27 @@ export function WorkspaceFilesPanel({
     }
     return map;
   }, [childrenByPath]);
+
+  const changesByPath = useMemo(
+    () => new Map(changes.map((change) => [change.path, change])),
+    [changes]
+  );
+
+  const loadChanges = useCallback(async () => {
+    try {
+      const result = await window.desktop.storage.listWorkspaceChanges(workspaceId);
+      setChanges(result);
+      setSelectedChange((current) =>
+        current ? result.find((change) => change.path === current.path) ?? null : null
+      );
+    } catch (changeError) {
+      console.error("Failed to load workspace changes:", changeError);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => {
+    void loadChanges();
+  }, [loadChanges]);
 
   const load = useCallback(
     async (targetPath: string) => {
@@ -357,6 +396,8 @@ export function WorkspaceFilesPanel({
       setPreviewFile(null);
       setFilter("");
       setShowFilter(false);
+      setShowChanges(false);
+      setSelectedChange(null);
       setError(null);
       void load(selected.path);
     },
@@ -375,6 +416,8 @@ export function WorkspaceFilesPanel({
     setPreviewFile(null);
     setFilter("");
     setShowFilter(false);
+    setShowChanges(false);
+    setSelectedChange(null);
     setError(null);
   }, [workspaceId]);
 
@@ -438,6 +481,7 @@ export function WorkspaceFilesPanel({
     for (const path of childrenByPath.keys()) {
       void load(path);
     }
+    void loadChanges();
   });
 
   // Handle a reveal request pointing at an absolute file path.
@@ -649,6 +693,17 @@ export function WorkspaceFilesPanel({
           <Button
             size="icon-sm"
             variant="ghost"
+            title="تغییرات فضای کاری"
+            onClick={() => {
+              setPreviewFile(null);
+              setShowChanges(true);
+            }}
+          >
+            <GitCompareArrowsIcon />
+          </Button>
+          <Button
+            size="icon-sm"
+            variant="ghost"
             title="بازگشت"
             onClick={() => setPreviewFile(null)}
           >
@@ -698,6 +753,17 @@ export function WorkspaceFilesPanel({
         <div className="min-w-0 flex-1 truncate px-1 text-xs font-medium">
           {rootDisplayLabel(root)}
         </div>
+        <Button
+          size="icon-sm"
+          variant={showChanges ? "secondary" : "ghost"}
+          title="تغییرات فضای کاری"
+          onClick={() => setShowChanges((value) => !value)}
+        >
+          <GitCompareArrowsIcon />
+          {changes.length > 0 ? (
+            <span className="ms-0.5 text-[10px]">{changes.length.toLocaleString("fa-IR")}</span>
+          ) : null}
+        </Button>
         <Button
           size="icon-sm"
           variant={showFilter ? "secondary" : "ghost"}
@@ -752,7 +818,7 @@ export function WorkspaceFilesPanel({
         </Button>
       </div>
 
-      {showFilter ? (
+      {showFilter && !showChanges ? (
         <Input
           autoFocus
           value={filter}
@@ -762,7 +828,77 @@ export function WorkspaceFilesPanel({
         />
       ) : null}
 
-      {rootLoading ? (
+      {showChanges ? (
+        selectedChange ? (
+          <div className="flex min-h-0 flex-1 flex-col" dir="ltr">
+            <div className="flex items-center gap-2 border-b border-border/50 px-2 py-1.5">
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                onClick={() => setSelectedChange(null)}
+                aria-label="بازگشت به تغییرات"
+              >
+                <ChevronLeftIcon />
+              </Button>
+              <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                {selectedChange.relativePath}
+              </span>
+              <span className="font-mono text-[11px] text-primary">+{selectedChange.additions}</span>
+              <span className="font-mono text-[11px] text-destructive">-{selectedChange.deletions}</span>
+            </div>
+            <ScrollArea className="min-h-0 flex-1">
+              <pre className="min-w-max p-3 font-mono text-[11px] leading-5">
+                {(selectedChange.diff ?? "برای این تغییر، متن diff در دسترس نیست.")
+                  .split("\n")
+                  .map((line, index) => (
+                    <div
+                      key={`${index}-${line}`}
+                      className={cn(
+                        "px-1",
+                        line.startsWith("+") && !line.startsWith("+++") && "bg-primary/10 text-primary",
+                        line.startsWith("-") && !line.startsWith("---") && "bg-destructive/10 text-destructive",
+                        line.startsWith("@@") && "text-muted-foreground"
+                      )}
+                    >
+                      {line || " "}
+                    </div>
+                  ))}
+              </pre>
+            </ScrollArea>
+          </div>
+        ) : changes.length === 0 ? (
+          <Empty className="flex-1 border-0 p-6">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><GitCompareArrowsIcon /></EmptyMedia>
+              <EmptyTitle>تغییری ثبت نشده</EmptyTitle>
+              <EmptyDescription>تغییرات فایل‌های ایجنت و ویرایشگر اینجا ظاهر می‌شوند.</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <ScrollArea className="min-h-0 flex-1">
+            <ul className="flex flex-col" dir="ltr">
+              {changes.map((change) => (
+                <li key={change.path}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedChange(change)}
+                    className="flex w-full items-center gap-2 border-b border-border/40 px-3 py-2 text-left hover:bg-muted/40"
+                  >
+                    <span className="min-w-0 flex-1 truncate font-mono text-xs">{change.relativePath}</span>
+                    {change.agentTouched ? (
+                      <Badge variant="secondary" className="shrink-0 text-[10px]">
+                        ایجنت
+                      </Badge>
+                    ) : null}
+                    <span className="font-mono text-[10px] text-primary">+{change.additions}</span>
+                    <span className="font-mono text-[10px] text-destructive">-{change.deletions}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </ScrollArea>
+        )
+      ) : rootLoading ? (
         <div className="flex flex-1 items-center justify-center">
           <Spinner />
         </div>
@@ -795,6 +931,7 @@ export function WorkspaceFilesPanel({
               childrenByPath={childrenByPath}
               loadingPaths={loadingPaths}
               filter={filter}
+              changesByPath={changesByPath}
               onRename={(entry) =>
                 setDialog({
                   mode: "rename",

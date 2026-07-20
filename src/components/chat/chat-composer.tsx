@@ -28,6 +28,7 @@ import { ReasoningEffortSlider } from "@/components/chat/reasoning-effort-slider
 import { SelectedExpertBadge } from "@/components/chat/selected-expert-badge";
 import { useAppShell } from "@/components/app-shell-context";
 import { nextAgentMode, type AgentMode } from "@/lib/chat/agent-mode";
+import type { PlanRecord } from "@/lib/workspace";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import {
   filterExpertSuggestions,
@@ -53,7 +54,7 @@ import {
   type ReasoningEffort,
 } from "@/lib/models/reasoning";
 import type { ChatStatus } from "ai";
-import { ArrowUpIcon, PlusIcon, SquareIcon } from "lucide-react";
+import { ArrowUpIcon, ListTodoIcon, PlayIcon, PlusIcon, SquareIcon } from "lucide-react";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -88,6 +89,8 @@ type ChatComposerProps = {
   onReasoningEffortChange: (effort: ReasoningEffort) => void;
   agentMode: AgentMode;
   onAgentModeChange: (mode: AgentMode) => void;
+  activePlan?: PlanRecord | null;
+  onExecutePlan?: () => void;
   pendingQuestion?: PendingAskUserQuestion | null;
   onAnswerQuestion?: (answers: { id: string; label: string }[]) => void;
   selectedExpertSlug: string | null;
@@ -112,6 +115,8 @@ export function ChatComposer({
   onReasoningEffortChange,
   agentMode,
   onAgentModeChange,
+  activePlan = null,
+  onExecutePlan,
   pendingQuestion = null,
   onAnswerQuestion,
   selectedExpertSlug,
@@ -132,6 +137,7 @@ export function ChatComposer({
   const [mentionEntries, setMentionEntries] = useState<MentionSuggestion[]>([]);
   const [mentionHighlight, setMentionHighlight] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
+  const [hasStartedActivePlan, setHasStartedActivePlan] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -166,6 +172,10 @@ export function ChatComposer({
   useEffect(() => {
     if (!text && !selectedExpert) setIsExpanded(false);
   }, [text, selectedExpert]);
+
+  useEffect(() => {
+    setHasStartedActivePlan(false);
+  }, [activePlan?.id]);
 
   useEffect(() => {
     if (
@@ -509,6 +519,36 @@ export function ChatComposer({
             onWorkspaceChange={onWorkspaceChange}
             disabled={isBusy}
           />
+        </div>
+      ) : null}
+
+      {activePlan && onExecutePlan && !hasStartedActivePlan ? (
+        <div
+          dir="rtl"
+          className="mb-2 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2"
+        >
+          <ListTodoIcon className="shrink-0 text-primary" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-xs font-medium">{activePlan.title}</p>
+            <p className="text-[11px] text-muted-foreground">
+              {activePlan.steps.filter((step) => step.status === "completed").length.toLocaleString("fa-IR")}
+              {" از "}
+              {activePlan.steps.length.toLocaleString("fa-IR")}
+              {" مرحله انجام شده"}
+            </p>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => {
+              setHasStartedActivePlan(true);
+              onExecutePlan();
+            }}
+            disabled={isBusy}
+          >
+            <PlayIcon data-icon="inline-start" />
+            کار روی پلن
+          </Button>
         </div>
       ) : null}
 

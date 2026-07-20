@@ -5,11 +5,13 @@ import { SidebarChatMenu, sidebarRowMenuTriggerClassName } from "@/components/ch
 import { SidebarMenuItem } from "@/components/ui/sidebar";
 import type { LocalChat } from "@/lib/chat/storage";
 import { cn } from "@/lib/utils";
+import { LoaderCircleIcon } from "lucide-react";
 
 const PROJECT_CHAT_TEXT_INDENT = "ps-8";
 
 type SidebarChatRowProps = {
   chat: LocalChat;
+  isRunning?: boolean;
   activeChatId: string | null;
   typingTitles: Record<string, string>;
   workspaceLabel?: string;
@@ -22,6 +24,7 @@ type SidebarChatRowProps = {
 
 export function SidebarChatRow({
   chat,
+  isRunning = false,
   activeChatId,
   typingTitles,
   workspaceLabel,
@@ -47,6 +50,12 @@ export function SidebarChatRow({
           className="flex min-w-0 flex-1 items-center px-2.5 text-start text-[13px] font-normal"
           onClick={() => onSelect(chat.id)}
         >
+          {isRunning ? (
+            <LoaderCircleIcon
+              aria-label="پاسخ در حال دریافت است"
+              className="me-1.5 size-3.5 shrink-0 animate-spin text-primary"
+            />
+          ) : null}
           <span
             className={cn(
               "flex min-w-0 flex-1 flex-col items-start gap-0",

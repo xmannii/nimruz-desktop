@@ -4,6 +4,7 @@ import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   classifyFile,
@@ -12,12 +13,16 @@ import {
 } from "@/lib/workspace";
 import {
   ExternalLinkIcon,
+  EyeIcon,
   FileWarningIcon,
+  PencilIcon,
+  SaveIcon,
   WrapTextIcon,
   ZoomInIcon,
   ZoomOutIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 type FilePreviewProps = {
   workspaceId: string;
@@ -193,6 +198,9 @@ function TextualPreview({
 }) {
   const [state, setState] = useState<TextState>({ status: "loading" });
   const [wrap, setWrap] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,6 +214,7 @@ function TextualPreview({
           content: result.content,
           truncated: result.truncated,
         });
+        setDraft(result.content);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -233,17 +242,50 @@ function TextualPreview({
     );
   }
 
+  const readyState = state;
   const showLineNumbers = category === "text" || category === "csv";
+  const isDirty = draft !== readyState.content;
+
+  async function save() {
+    if (!isDirty || isSaving || readyState.truncated) return;
+    setIsSaving(true);
+    try {
+      await window.desktop.storage.createWorkspaceFile(workspaceId, path, draft);
+      setState({ ...readyState, content: draft });
+      toast.success("فایل ذخیره شد.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "ذخیره فایل ناموفق بود.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden rounded-lg border border-border/50 bg-muted/20",
+        "flex min-h-0 flex-col overflow-hidden bg-background",
         className
       )}
     >
-      {category === "text" ? (
-        <div className="flex items-center gap-1 border-b border-border/50 p-1.5">
+      <div className="flex items-center gap-1 border-b border-border/50 px-2 py-1.5">
+          <Button
+            size="sm"
+            variant={editing ? "secondary" : "ghost"}
+            onClick={() => setEditing(true)}
+            disabled={state.truncated}
+          >
+            <PencilIcon data-icon="inline-start" />
+            ویرایش
+          </Button>
+          <Button
+            size="sm"
+            variant={!editing ? "secondary" : "ghost"}
+            onClick={() => setEditing(false)}
+          >
+            <EyeIcon data-icon="inline-start" />
+            پیش‌نمایش
+          </Button>
+          {category === "text" ? (
           <Button
             size="icon-xs"
             variant={wrap ? "secondary" : "ghost"}
@@ -252,7 +294,19 @@ function TextualPreview({
           >
             <WrapTextIcon />
           </Button>
+          ) : null}
           <div className="flex-1" />
+          {isDirty ? (
+            <span className="text-[11px] text-muted-foreground">ذخیره‌نشده</span>
+          ) : null}
+          <Button
+            size="sm"
+            onClick={() => void save()}
+            disabled={!isDirty || isSaving || state.truncated}
+          >
+            {isSaving ? <Spinner data-icon="inline-start" /> : <SaveIcon data-icon="inline-start" />}
+            ذخیره
+          </Button>
           <Button
             size="icon-xs"
             variant="ghost"
@@ -261,10 +315,24 @@ function TextualPreview({
           >
             <ExternalLinkIcon />
           </Button>
-        </div>
-      ) : null}
+      </div>
 
-      <ScrollArea className="min-h-0 flex-1">
+      {editing ? (
+        <Textarea
+          dir="ltr"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+              event.preventDefault();
+              void save();
+            }
+          }}
+          spellCheck={false}
+          className="min-h-0 flex-1 resize-none rounded-none border-0 bg-background p-4 font-mono text-xs leading-6 shadow-none focus-visible:ring-0"
+        />
+      ) : (
+        <ScrollArea className="min-h-0 flex-1">
         <TextualBody
           category={category}
           content={state.content}
@@ -274,7 +342,8 @@ function TextualPreview({
           showLineNumbers={showLineNumbers}
         />
         <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+        </ScrollArea>
+      )}
 
       {state.truncated ? (
         <p className="border-t border-border/50 px-3 py-2 text-xs text-muted-foreground">

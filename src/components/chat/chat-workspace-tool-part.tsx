@@ -1,6 +1,7 @@
 "use client";
 
 import { ChatToolInvocation } from "@/components/chat/chat-tool-invocation";
+import { ChatCommandToolPart } from "@/components/chat/chat-command-tool-part";
 import { Button } from "@/components/ui/button";
 import { requestReveal } from "@/lib/workspace";
 import {
@@ -22,6 +23,7 @@ type WorkspaceToolPart = {
   type: string;
   toolCallId: string;
   state: string;
+  preliminary?: boolean;
   input?: Record<string, unknown>;
   output?: unknown;
   errorText?: string;
@@ -285,6 +287,20 @@ function formatOutput(output: unknown): string | null {
 }
 
 export function ChatWorkspaceToolPart({
+  part,
+  workspaceId,
+}: {
+  part: WorkspaceToolPart;
+  workspaceId?: string | null;
+}) {
+  if (getToolName(part.type) === "run_command") {
+    return <ChatCommandToolPart part={part} />;
+  }
+
+  return <GenericWorkspaceToolPart part={part} workspaceId={workspaceId} />;
+}
+
+function GenericWorkspaceToolPart({
   part,
   workspaceId,
 }: {

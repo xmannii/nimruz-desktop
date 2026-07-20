@@ -72,6 +72,7 @@ function SidebarProjectIcon({ open }: { open: boolean }) {
 type SidebarProjectGroupProps = {
   workspace: LocalWorkspace;
   chats: LocalChat[];
+  runningChatIds: ReadonlySet<string>;
   activeChatId: string | null;
   activeWorkspaceId?: string | null;
   typingTitles: Record<string, string>;
@@ -89,6 +90,7 @@ type SidebarProjectGroupProps = {
 export function SidebarProjectGroup({
   workspace,
   chats,
+  runningChatIds,
   activeChatId,
   activeWorkspaceId = null,
   typingTitles,
@@ -217,6 +219,7 @@ export function SidebarProjectGroup({
                 <SidebarChatRow
                   key={chat.id}
                   chat={chat}
+                  isRunning={runningChatIds.has(chat.id)}
                   activeChatId={activeChatId}
                   typingTitles={typingTitles}
                   indented

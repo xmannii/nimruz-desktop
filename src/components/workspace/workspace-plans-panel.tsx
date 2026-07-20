@@ -12,13 +12,17 @@ import {
 } from "@/components/ui/empty";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
+import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import type { PlanRecord, PlanStatus } from "@/lib/workspace";
 import { hasEventType, useWorkspaceEvents } from "@/hooks/use-workspace-events";
 import {
   CheckCircle2Icon,
+  CircleIcon,
   CircleDashedIcon,
+  LoaderCircleIcon,
   ListTodoIcon,
+  OctagonAlertIcon,
   Trash2Icon,
   XCircleIcon,
 } from "lucide-react";
@@ -73,43 +77,17 @@ function StatusIcon({ status }: { status: PlanStatus }) {
   return <CircleDashedIcon className="size-3.5 text-muted-foreground" />;
 }
 
-/** Toggle the Nth GFM checklist item in markdown (`- [ ]` / `- [x]`). */
-export function toggleChecklistItemAt(
-  markdown: string,
-  itemIndex: number
-): string | null {
-  let seen = -1;
-  const lines = markdown.split("\n");
-  let changed = false;
-  const next = lines.map((line) => {
-    const match = /^(?<indent>\s*)(?<bullet>[-*+])\s+\[(?<mark>[ xX])\]\s/.exec(
-      line
-    );
-    if (!match?.groups) return line;
-    seen += 1;
-    if (seen !== itemIndex) return line;
-    const { indent, bullet, mark } = match.groups;
-    const checked = mark.toLowerCase() === "x";
-    const replacement = `${indent}${bullet} [${checked ? " " : "x"}] `;
-    changed = true;
-    return line.replace(
-      /^(?<indent>\s*)(?<bullet>[-*+])\s+\[[ xX]\]\s/,
-      replacement
-    );
-  });
-  return changed ? next.join("\n") : null;
-}
-
-function countChecklistItems(markdown: string): {
-  total: number;
-  done: number;
-} {
-  const matches = markdown.match(/^\s*[-*+]\s+\[[ xX]\]\s/gm) ?? [];
-  let done = 0;
-  for (const match of matches) {
-    if (/\[[xX]\]/.test(match)) done += 1;
+function StepIcon({ status }: { status: PlanRecord["steps"][number]["status"] }) {
+  if (status === "completed") {
+    return <CheckCircle2Icon className="text-primary" />;
   }
-  return { total: matches.length, done };
+  if (status === "in_progress") {
+    return <LoaderCircleIcon className="animate-spin text-primary" />;
+  }
+  if (status === "blocked") {
+    return <OctagonAlertIcon className="text-destructive" />;
+  }
+  return <CircleIcon className="text-muted-foreground" />;
 }
 
 export function WorkspacePlansPanel({
@@ -165,10 +143,11 @@ export function WorkspacePlansPanel({
     [plans, selectedId]
   );
 
-  const checklistStats = useMemo(
-    () => (selected ? countChecklistItems(selected.markdown) : null),
-    [selected]
-  );
+  const stepStats = useMemo(() => {
+    const total = selected?.steps.length ?? 0;
+    const done = selected?.steps.filter((step) => step.status === "completed").length ?? 0;
+    return { total, done, percentage: total > 0 ? (done / total) * 100 : 0 };
+  }, [selected]);
 
   function handleDelete(plan: PlanRecord) {
     setPlans((current) => current.filter((item) => item.id !== plan.id));
@@ -177,23 +156,6 @@ export function WorkspacePlansPanel({
     }
     void window.desktop.storage.deletePlan(plan.id).catch((error) => {
       console.error("Failed to delete plan:", error);
-    });
-  }
-
-  function handleToggleChecklist(itemIndex: number) {
-    if (!selected) return;
-    const nextMarkdown = toggleChecklistItemAt(selected.markdown, itemIndex);
-    if (!nextMarkdown) return;
-    const updated: PlanRecord = {
-      ...selected,
-      markdown: nextMarkdown,
-      updatedAt: Date.now(),
-    };
-    setPlans((current) =>
-      current.map((item) => (item.id === updated.id ? updated : item))
-    );
-    void window.desktop.storage.savePlan(updated).catch((error) => {
-      console.error("Failed to update plan checklist:", error);
     });
   }
 
@@ -271,10 +233,10 @@ export function WorkspacePlansPanel({
           <div className="flex shrink-0 items-start gap-2 border-b border-border/50 px-3 py-2">
             <div className="min-w-0 flex-1">
               <h3 className="truncate text-sm font-semibold">{selected.title}</h3>
-              {checklistStats && checklistStats.total > 0 ? (
+              {stepStats.total > 0 ? (
                 <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {checklistStats.done.toLocaleString("fa-IR")} از{" "}
-                  {checklistStats.total.toLocaleString("fa-IR")} مورد انجام شده
+                  {stepStats.done.toLocaleString("fa-IR")} از{" "}
+                  {stepStats.total.toLocaleString("fa-IR")} مرحله انجام شده
                 </p>
               ) : null}
             </div>
@@ -286,6 +248,7 @@ export function WorkspacePlansPanel({
                   variant="ghost"
                   className="h-7 px-2 text-[11px]"
                   onClick={() => handleStatusChange("completed")}
+                  disabled={stepStats.total > 0 && stepStats.done < stepStats.total}
                 >
                   تکمیل
                 </Button>
@@ -315,27 +278,32 @@ export function WorkspacePlansPanel({
           </div>
 
           <ScrollArea className="min-h-0 flex-1">
-            <div
-              className="px-3 py-3"
-              onClick={(event) => {
-                const target = event.target as HTMLElement | null;
-                const checkbox = target?.closest?.(
-                  'input[type="checkbox"]'
-                ) as HTMLInputElement | null;
-                if (!checkbox) return;
-                const container = event.currentTarget;
-                const boxes = Array.from(
-                  container.querySelectorAll('input[type="checkbox"]')
-                );
-                const index = boxes.indexOf(checkbox);
-                if (index < 0) return;
-                event.preventDefault();
-                handleToggleChecklist(index);
-              }}
-            >
+            <div className="flex flex-col gap-4 px-3 py-3">
               <MessageResponse className="text-sm leading-7">
                 {selected.markdown}
               </MessageResponse>
+              {stepStats.total > 0 ? (
+                <section className="flex flex-col gap-2" aria-label="مراحل اجرا">
+                  <Progress value={stepStats.percentage} className="gap-0" />
+                  <ol className="flex flex-col gap-1.5">
+                    {selected.steps.map((step, index) => (
+                      <li
+                        key={step.id}
+                        className="flex items-start gap-2 rounded-lg bg-muted/35 px-2.5 py-2"
+                      >
+                        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
+                          <StepIcon status={step.status} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-xs font-medium leading-5">
+                            {`${(index + 1).toLocaleString("fa-IR")}. ${step.title}`}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                </section>
+              ) : null}
             </div>
           </ScrollArea>
         </div>

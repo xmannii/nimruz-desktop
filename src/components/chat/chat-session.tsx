@@ -30,12 +30,13 @@ import {
 } from "@/lib/settings/memories";
 import { useChat } from "@ai-sdk/react";
 import {
-  DefaultChatTransport,
   lastAssistantMessageIsCompleteWithApprovalResponses,
   lastAssistantMessageIsCompleteWithToolCalls,
   type FileUIPart,
 } from "ai";
 import type { ComposerAttachment } from "@/lib/chat/composer-context";
+import { hasEventType, useWorkspaceEvents } from "@/hooks/use-workspace-events";
+import type { PlanRecord } from "@/lib/workspace";
 import { useNavigate } from "@tanstack/react-router";
 import {
   useCallback,
@@ -43,7 +44,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type MutableRefObject,
 } from "react";
 import { ChatComposer } from "./chat-composer";
 import { ChatMessages } from "./chat-messages";
@@ -150,7 +150,6 @@ function trustKeyForToolType(toolType: string): AutoApproveKey | null {
 type ChatSessionProps = {
   chat: LocalChat;
   onChatChange: (id: string, update: ChatUpdate) => void;
-  stopRef: MutableRefObject<(() => void) | null>;
   personalization: PersonalizationSettings;
   memories: MemoryEntry[];
   experts: Expert[];
@@ -162,7 +161,6 @@ type ChatSessionProps = {
 export function ChatSession({
   chat,
   onChatChange,
-  stopRef,
   personalization,
   memories,
   experts,
@@ -183,6 +181,7 @@ export function ChatSession({
     setActiveWorkspaceId,
     workspaces,
     updateWorkspaceTrust,
+    getChatRuntime,
   } = useAppShell();
   const navigate = useNavigate();
   const [text, setText] = useState("");
@@ -201,6 +200,7 @@ export function ChatSession({
   );
   const hasMounted = useRef(false);
   const handledWritePlanIds = useRef(new Set<string>());
+  const [activePlan, setActivePlan] = useState<PlanRecord | null>(null);
   useEffect(() => {
     setModelRef({
       providerId: chat.providerId || DEFAULT_PROVIDER_ID,
@@ -212,6 +212,27 @@ export function ChatSession({
     setAgentMode(sanitizeAgentMode(chat.agentMode ?? DEFAULT_AGENT_MODE));
     handledWritePlanIds.current = new Set();
   }, [chat.id]);
+
+  const loadActivePlan = useCallback(async () => {
+    if (!chat.workspaceId) {
+      setActivePlan(null);
+      return;
+    }
+    try {
+      const plans = await window.desktop.storage.listPlans(chat.workspaceId);
+      setActivePlan(plans.find((plan) => plan.status === "active") ?? null);
+    } catch (loadError) {
+      console.error("Failed to load active plan:", loadError);
+    }
+  }, [chat.workspaceId]);
+
+  useEffect(() => {
+    void loadActivePlan();
+  }, [loadActivePlan]);
+
+  useWorkspaceEvents(chat.workspaceId ?? null, (events) => {
+    if (hasEventType(events, "plan-changed")) void loadActivePlan();
+  });
 
   useEffect(() => {
     setActiveWorkspaceId(chat.workspaceId ?? HOME_WORKSPACE_ID);
@@ -247,20 +268,11 @@ export function ChatSession({
     resolveModel,
   ]);
 
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport<ChatUIMessage>({
-        api: "/api/chat",
-        headers: async () => ({
-          Authorization: `Bearer ${await getSessionToken()}`,
-        }),
-      }),
-    []
-  );
-
   const handleChatError = useCallback((chatError: Error) => {
     toast.error(getChatErrorMessage(chatError));
   }, []);
+
+  const runtime = getChatRuntime(chat);
 
   const {
     messages,
@@ -272,130 +284,135 @@ export function ChatSession({
     addToolOutput,
     addToolApprovalResponse,
   } = useChat<ChatUIMessage>({
-      id: chat.id,
-      messages: chat.messages as ChatUIMessage[],
-      transport,
-      throttle: CHAT_UPDATE_THROTTLE_MS,
-      sendAutomaticallyWhen: (options) =>
-        lastAssistantMessageIsCompleteWithToolCalls(options) ||
-        lastAssistantMessageIsCompleteWithApprovalResponses(options),
-      onError: handleChatError,
-      onToolCall: ({ toolCall }) => {
-        if (toolCall.dynamic) return;
+    chat: runtime.chat,
+    throttle: CHAT_UPDATE_THROTTLE_MS,
+  });
 
-        const requestBody = {
-          providerId: modelRef.providerId,
-          model: modelRef.modelId,
-          reasoningEffort,
-          personalization,
-          memories,
-          experts,
-          subagents,
-          agentMode,
-          chatId: chat.id,
-          workspaceId: chat.workspaceId,
-        };
+  runtime.persistence.model = modelRef.modelId as ModelId;
+  runtime.persistence.providerId = modelRef.providerId;
+  runtime.persistence.agentMode = agentMode;
+  runtime.callbacks.onError = handleChatError;
+  runtime.callbacks.sendAutomaticallyWhen = (options) =>
+    lastAssistantMessageIsCompleteWithToolCalls(options) ||
+    lastAssistantMessageIsCompleteWithApprovalResponses(options);
+  runtime.callbacks.onToolCall = ({ toolCall }) => {
+    if (toolCall.dynamic) return;
 
-        // Clarifying questions wait for the composer UI; do not auto-resolve.
-        if (toolCall.toolName === "ask_user_question") {
-          return;
-        }
+    const requestBody = {
+      providerId: modelRef.providerId,
+      model: modelRef.modelId,
+      reasoningEffort,
+      personalization,
+      memories,
+      experts,
+      subagents,
+      agentMode,
+      chatId: chat.id,
+      workspaceId: chat.workspaceId,
+    };
 
-        if (toolCall.toolName === "save_memory") {
-          const input = toolCall.input as {
-            content?: string;
-            category?: MemoryEntry["category"];
-          };
-          const result = addMemory(memories, {
-            content: input.content ?? "",
-            category: input.category,
-          });
-          const nextMemories = result.entry ? result.memories : memories;
+    // Clarifying questions wait for the composer UI; do not auto-resolve.
+    if (toolCall.toolName === "ask_user_question") {
+      return;
+    }
 
-          if (result.entry) {
-            onMemoriesChange(nextMemories);
-          }
+    if (toolCall.toolName === "save_memory") {
+      const input = toolCall.input as {
+        content?: string;
+        category?: MemoryEntry["category"];
+      };
+      const result = addMemory(memories, {
+        content: input.content ?? "",
+        category: input.category,
+      });
+      const nextMemories = result.entry ? result.memories : memories;
 
-          addToolOutput({
-            tool: "save_memory",
-            toolCallId: toolCall.toolCallId,
-            output: {
-              success: Boolean(result.entry),
-              id: result.entry?.id,
-              error: result.error ?? undefined,
-            },
-            options: {
-              body: {
-                ...requestBody,
-                memories: nextMemories,
-              },
-            },
-          });
-          return;
-        }
+      if (result.entry) {
+        onMemoriesChange(nextMemories);
+      }
 
-        if (toolCall.toolName === "delete_memory") {
-          const input = toolCall.input as { id?: string };
-          const id = input.id ?? "";
-          const nextMemories = deleteMemory(memories, id);
+      addToolOutput({
+        tool: "save_memory",
+        toolCallId: toolCall.toolCallId,
+        output: {
+          success: Boolean(result.entry),
+          id: result.entry?.id,
+          error: result.error ?? undefined,
+        },
+        options: {
+          body: {
+            ...requestBody,
+            memories: nextMemories,
+          },
+        },
+      });
+      return;
+    }
 
-          if (nextMemories.length !== memories.length) {
-            onMemoriesChange(nextMemories);
-          }
+    if (toolCall.toolName === "delete_memory") {
+      const input = toolCall.input as { id?: string };
+      const id = input.id ?? "";
+      const nextMemories = deleteMemory(memories, id);
 
-          addToolOutput({
-            tool: "delete_memory",
-            toolCallId: toolCall.toolCallId,
-            output: {
-              success: true,
-              deleted: nextMemories.length !== memories.length,
-            },
-            options: {
-              body: {
-                ...requestBody,
-                memories: nextMemories,
-              },
-            },
-          });
-          return;
-        }
+      if (nextMemories.length !== memories.length) {
+        onMemoriesChange(nextMemories);
+      }
 
-        if (toolCall.toolName === "create_expert") {
-          const input = toolCall.input as Partial<Expert>;
-          const validationErrors = getExpertValidationErrors(input, experts);
-          if (validationErrors.length) {
-            addToolOutput({
-              tool: "create_expert",
-              toolCallId: toolCall.toolCallId,
-              output: { success: false, error: validationErrors[0] },
-              options: { body: requestBody },
-            });
-            return;
-          }
-          const nextExperts = upsertExpert(experts, {
-            name: input.name,
-            slug: normalizeExpertSlug(input.slug || input.name),
-            description: input.description,
-            instructions: input.instructions,
-            triggers: input.triggers,
-            enabled: true,
-          });
-          const created = nextExperts.find((item) => item.slug === normalizeExpertSlug(input.slug || input.name));
-          if (created) onExpertsChange(nextExperts);
-          addToolOutput({
-            tool: "create_expert",
-            toolCallId: toolCall.toolCallId,
-            output: {
-              success: Boolean(created),
-              slug: created?.slug,
-              error: created ? undefined : "ذخیره متخصص ناموفق بود.",
-            },
-            options: { body: { ...requestBody, experts: nextExperts } },
-          });
-          return;
-        }
-      },
-    });
+      addToolOutput({
+        tool: "delete_memory",
+        toolCallId: toolCall.toolCallId,
+        output: {
+          success: true,
+          deleted: nextMemories.length !== memories.length,
+        },
+        options: {
+          body: {
+            ...requestBody,
+            memories: nextMemories,
+          },
+        },
+      });
+      return;
+    }
+
+    if (toolCall.toolName === "create_expert") {
+      const input = toolCall.input as Partial<Expert>;
+      const validationErrors = getExpertValidationErrors(input, experts);
+      if (validationErrors.length) {
+        addToolOutput({
+          tool: "create_expert",
+          toolCallId: toolCall.toolCallId,
+          output: { success: false, error: validationErrors[0] },
+          options: { body: requestBody },
+        });
+        return;
+      }
+      const nextExperts = upsertExpert(experts, {
+        name: input.name,
+        slug: normalizeExpertSlug(input.slug || input.name),
+        description: input.description,
+        instructions: input.instructions,
+        triggers: input.triggers,
+        enabled: true,
+      });
+      const created = nextExperts.find(
+        (item) =>
+          item.slug === normalizeExpertSlug(input.slug || input.name)
+      );
+      if (created) onExpertsChange(nextExperts);
+      addToolOutput({
+        tool: "create_expert",
+        toolCallId: toolCall.toolCallId,
+        output: {
+          success: Boolean(created),
+          slug: created?.slug,
+          error: created ? undefined : "ذخیره متخصص ناموفق بود.",
+        },
+        options: { body: { ...requestBody, experts: nextExperts } },
+      });
+      return;
+    }
+  };
 
   const getRequestBody = useCallback(
     () => ({
@@ -427,30 +444,25 @@ export function ChatSession({
   );
 
   useEffect(() => {
-    stopRef.current = stop;
-
-    return () => {
-      if (stopRef.current === stop) {
-        stopRef.current = null;
-      }
-    };
-  }, [stop, stopRef]);
-
-  useEffect(() => {
     if (!hasMounted.current) {
       hasMounted.current = true;
       return;
     }
 
-    if (status === "submitted" || status === "streaming") return;
-
     onChatChange(chat.id, {
-      messages,
+      messages: runtime.chat.messages,
       model: modelRef.modelId as ModelId,
       providerId: modelRef.providerId,
       agentMode,
     });
-  }, [agentMode, chat.id, messages, modelRef, onChatChange, status]);
+  }, [
+    agentMode,
+    chat.id,
+    modelRef.modelId,
+    modelRef.providerId,
+    onChatChange,
+    runtime.chat,
+  ]);
 
   const handleAgentModeChange = useCallback(
     (nextMode: AgentMode) => {
@@ -522,7 +534,7 @@ export function ChatSession({
     [addToolOutput, getRequestBody, pendingQuestion]
   );
 
-  // After a live write_plan success in plan mode, reveal the plan and return to general.
+  // Reveal a newly persisted plan while deliberately staying in Plan mode.
   useEffect(() => {
     for (const message of messages) {
       if (message.role !== "assistant") continue;
@@ -548,12 +560,9 @@ export function ChatSession({
             planId,
           });
         }
-        if (agentMode === "plan") {
-          handleAgentModeChange("general");
-        }
       }
     }
-  }, [agentMode, chat.workspaceId, handleAgentModeChange, messages]);
+  }, [agentMode, chat.workspaceId, messages]);
 
   const handleModelChange = useCallback(
     (next: ProviderModelRef) => {
@@ -604,6 +613,25 @@ export function ChatSession({
     },
     [getRequestBody, isBusy, regenerate]
   );
+
+  const handleExecutePlan = useCallback(() => {
+    if (!activePlan || isBusy) return;
+    handleAgentModeChange("general");
+    void sendMessage(
+      {
+        text: `پلن فعال «${activePlan.title}» را اکنون اجرا کن. ابتدا آن را با ابزار read_active_plan بخوان، سپس مراحل ساختاریافته‌اش را انجام بده و هم‌زمان با پیاده‌سازی و تأیید هر مرحله، وضعیت آن را به‌روزرسانی کن.`,
+      },
+      {
+        body: { ...getRequestBody(), agentMode: "general" as AgentMode },
+      }
+    );
+  }, [
+    activePlan,
+    getRequestBody,
+    handleAgentModeChange,
+    isBusy,
+    sendMessage,
+  ]);
 
   const handleToolApprovalResponse = useCallback(
     (
@@ -709,10 +737,12 @@ export function ChatSession({
         });
     }
 
-    void sendMessage(
+    const request = sendMessage(
       {
-        text: finalText,
-        ...(files.length ? { files } : {}),
+        parts: [
+          ...files,
+          ...(finalText ? [{ type: "text" as const, text: finalText }] : []),
+        ],
         ...(attachmentMeta.length
           ? { metadata: { attachments: attachmentMeta } }
           : {}),
@@ -721,6 +751,13 @@ export function ChatSession({
         body: getRequestBody(),
       }
     );
+    onChatChange(chatId, {
+      messages: runtime.chat.messages,
+      model: modelRef.modelId as ModelId,
+      providerId: modelRef.providerId,
+      agentMode,
+    });
+    void request;
     setText("");
     setAttachments([]);
     setSelectedExpertSlug(null);
@@ -749,6 +786,8 @@ export function ChatSession({
       onReasoningEffortChange={handleReasoningEffortChange}
       agentMode={agentMode}
       onAgentModeChange={handleAgentModeChange}
+      activePlan={activePlan}
+      onExecutePlan={handleExecutePlan}
       pendingQuestion={pendingQuestion}
       onAnswerQuestion={handleAnswerQuestion}
       selectedExpertSlug={selectedExpertSlug}

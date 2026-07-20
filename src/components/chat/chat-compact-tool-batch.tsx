@@ -26,6 +26,7 @@ export type CompactableToolPart = {
   type: string;
   toolCallId?: string;
   state: string;
+  preliminary?: boolean;
   input?: Record<string, unknown>;
   output?: unknown;
   errorText?: string;
@@ -88,6 +89,7 @@ export function getToolNameFromPartType(type: string): string {
 
 export function isPartLoading(part: CompactableToolPart): boolean {
   return (
+    part.preliminary === true ||
     part.state === "input-streaming" ||
     part.state === "input-available" ||
     part.state === "approval-requested" ||
@@ -106,6 +108,22 @@ export function isPartError(part: CompactableToolPart): boolean {
     (part.output as { success?: boolean }).success === false
   ) {
     return true;
+  }
+  if (
+    part.type === "tool-run_command" &&
+    typeof part.output === "object" &&
+    part.output !== null
+  ) {
+    const output = part.output as {
+      exitCode?: unknown;
+      signal?: unknown;
+      timedOut?: unknown;
+    };
+    return (
+      output.timedOut === true ||
+      typeof output.signal === "string" ||
+      (typeof output.exitCode === "number" && output.exitCode !== 0)
+    );
   }
   return false;
 }

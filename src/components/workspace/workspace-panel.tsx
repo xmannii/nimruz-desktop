@@ -288,7 +288,7 @@ export function WorkspacePanel({
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",
-          active === "artifacts" ? "p-0" : "p-2.5"
+          active === "artifacts" || active === "files" ? "p-0" : "p-2.5"
         )}
       >
         {active === "files" ? (
