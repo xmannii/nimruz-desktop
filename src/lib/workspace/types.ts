@@ -191,12 +191,55 @@ export type TaskRecord = {
   updatedAt: number;
 };
 
+export type PlanStatus = "draft" | "active" | "completed" | "cancelled";
+
+export type PlanStepStatus =
+  | "pending"
+  | "in_progress"
+  | "completed"
+  | "blocked";
+
+export type PlanStep = {
+  /** Stable tool-facing identifier; never derived from display order. */
+  id: string;
+  title: string;
+  description: string;
+  status: PlanStepStatus;
+};
+
+export type PlanRecord = {
+  id: string;
+  workspaceId: string;
+  runId: string | null;
+  chatId: string | null;
+  title: string;
+  /** Supporting design/research narrative. Execution progress lives in steps. */
+  markdown: string;
+  steps: PlanStep[];
+  status: PlanStatus;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type WorkspaceFileEntry = {
   path: string;
   name: string;
   kind: "file" | "directory";
   sizeBytes: number | null;
   modifiedAt: number | null;
+};
+
+export type WorkspaceFileChange = {
+  path: string;
+  relativePath: string;
+  status: "added" | "modified" | "deleted" | "renamed" | "untracked";
+  additions: number;
+  deletions: number;
+  /** Unified diff when available. Kept bounded by the main process. */
+  diff: string | null;
+  /** Set when a recorded workspace-agent write touched this path. */
+  agentTouched: boolean;
+  agentRunId: string | null;
 };
 
 /**
@@ -210,6 +253,7 @@ export type WorkspaceEvent =
   | { type: "file-moved"; workspaceId: string; from: string; to: string }
   | { type: "artifact-changed"; workspaceId: string; artifactId?: string }
   | { type: "task-changed"; workspaceId: string; taskId?: string }
+  | { type: "plan-changed"; workspaceId: string; planId?: string }
   | {
       type: "run-changed";
       workspaceId: string | null;

@@ -4,6 +4,7 @@ import { MessageResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
   classifyFile,
@@ -13,11 +14,13 @@ import {
 import {
   ExternalLinkIcon,
   FileWarningIcon,
-  WrapTextIcon,
+  SaveIcon,
   ZoomInIcon,
   ZoomOutIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useTheme } from "next-themes";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 type FilePreviewProps = {
   workspaceId: string;
@@ -34,6 +37,15 @@ type BinaryState =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; dataUrl: string; sizeBytes: number };
+
+let shikiPromise: Promise<
+  typeof import("@/lib/workspace/syntax-highlighter")
+> | null = null;
+
+function loadShiki() {
+  shikiPromise ??= import("@/lib/workspace/syntax-highlighter");
+  return shikiPromise;
+}
 
 function baseName(path: string): string {
   return path.split(/[/\\]/).filter(Boolean).at(-1) ?? path;
@@ -132,7 +144,7 @@ function ImagePreview({
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden rounded-lg border border-border/50 bg-muted/20",
+        "flex min-h-0 flex-col overflow-hidden bg-muted/10",
         className
       )}
     >
@@ -181,6 +193,116 @@ function ImagePreview({
   );
 }
 
+function editorLanguage(category: FileCategory, path: string): string | null {
+  if (category === "code") return codeLanguageFor(path);
+  if (category === "json") return "json";
+  if (category === "markdown") return "markdown";
+  return null;
+}
+
+function SyntaxEditor({
+  value,
+  language,
+  readOnly,
+  onChange,
+  onSave,
+}: {
+  value: string;
+  language: string | null;
+  readOnly: boolean;
+  onChange: (value: string) => void;
+  onSave: () => void;
+}) {
+  const { resolvedTheme } = useTheme();
+  const [highlightedHtml, setHighlightedHtml] = useState("");
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (!language || value.length > 200_000) {
+      setHighlightedHtml("");
+      return;
+    }
+
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void loadShiki()
+        .then(({ highlightCode }) =>
+          highlightCode(value || " ", language, resolvedTheme === "dark")
+        )
+        .then((html) => {
+          if (!cancelled) setHighlightedHtml(html);
+        })
+        .catch(() => {
+          if (!cancelled) setHighlightedHtml("");
+        });
+    }, 80);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [language, resolvedTheme, value]);
+
+  function syncScroll(textarea: HTMLTextAreaElement) {
+    if (!backdropRef.current) return;
+    backdropRef.current.scrollTop = textarea.scrollTop;
+    backdropRef.current.scrollLeft = textarea.scrollLeft;
+  }
+
+  useEffect(() => {
+    if (textareaRef.current) syncScroll(textareaRef.current);
+  }, [highlightedHtml]);
+
+  return (
+    <div dir="ltr" className="relative min-h-0 flex-1 overflow-hidden bg-background">
+      {highlightedHtml ? (
+        <div
+          ref={backdropRef}
+          aria-hidden
+          className="pointer-events-none absolute inset-0 overflow-hidden text-left font-mono text-xs leading-6 [&_.shiki]:min-h-full [&_.shiki]:min-w-max [&_.shiki]:overflow-visible [&_.shiki]:!bg-transparent [&_.shiki]:p-4 [&_.shiki]:font-mono [&_.shiki]:text-xs [&_.shiki]:leading-6"
+          style={{ tabSize: 2 }}
+          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+        />
+      ) : null}
+      <Textarea
+        ref={textareaRef}
+        value={value}
+        readOnly={readOnly}
+        wrap="off"
+        spellCheck={false}
+        aria-label="ویرایشگر فایل"
+        onChange={(event) => onChange(event.currentTarget.value)}
+        onScroll={(event) => syncScroll(event.currentTarget)}
+        onKeyDown={(event) => {
+          if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+            event.preventDefault();
+            onSave();
+            return;
+          }
+          if (event.key !== "Tab" || readOnly) return;
+
+          event.preventDefault();
+          const start = event.currentTarget.selectionStart;
+          const end = event.currentTarget.selectionEnd;
+          const nextValue = `${value.slice(0, start)}  ${value.slice(end)}`;
+          onChange(nextValue);
+          window.requestAnimationFrame(() => {
+            textareaRef.current?.setSelectionRange(start + 2, start + 2);
+          });
+        }}
+        style={{ tabSize: 2 }}
+        className={cn(
+          "field-sizing-fixed absolute inset-0 size-full min-h-0 resize-none overflow-auto whitespace-pre rounded-none border-0 bg-transparent p-4 font-mono text-xs leading-6 shadow-none caret-foreground focus-visible:ring-0",
+          highlightedHtml
+            ? "text-transparent [-webkit-text-fill-color:transparent]"
+            : "text-foreground"
+        )}
+      />
+    </div>
+  );
+}
+
 function TextualPreview({
   workspaceId,
   path,
@@ -192,7 +314,8 @@ function TextualPreview({
   onOpenExternally: () => void;
 }) {
   const [state, setState] = useState<TextState>({ status: "loading" });
-  const [wrap, setWrap] = useState(true);
+  const [draft, setDraft] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -206,6 +329,7 @@ function TextualPreview({
           content: result.content,
           truncated: result.truncated,
         });
+        setDraft(result.content);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -233,48 +357,58 @@ function TextualPreview({
     );
   }
 
-  const showLineNumbers = category === "text" || category === "csv";
+  const readyState = state;
+  const isDirty = draft !== readyState.content;
+
+  async function save() {
+    if (!isDirty || isSaving || readyState.truncated) return;
+    setIsSaving(true);
+    try {
+      await window.desktop.storage.createWorkspaceFile(workspaceId, path, draft);
+      setState({ ...readyState, content: draft });
+      toast.success("فایل ذخیره شد.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "ذخیره فایل ناموفق بود.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
     <div
       className={cn(
-        "flex min-h-0 flex-col overflow-hidden rounded-lg border border-border/50 bg-muted/20",
+        "flex min-h-0 flex-col overflow-hidden bg-background",
         className
       )}
     >
-      {category === "text" ? (
-        <div className="flex items-center gap-1 border-b border-border/50 p-1.5">
+      {isDirty ? (
+        <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/50 px-2">
+          <span className="size-1.5 rounded-full bg-primary" />
+          <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+            تغییرات ذخیره‌نشده
+          </span>
           <Button
-            size="icon-xs"
-            variant={wrap ? "secondary" : "ghost"}
-            title="شکستن خط"
-            onClick={() => setWrap((w) => !w)}
+            size="xs"
+            onClick={() => void save()}
+            disabled={isSaving || state.truncated}
           >
-            <WrapTextIcon />
-          </Button>
-          <div className="flex-1" />
-          <Button
-            size="icon-xs"
-            variant="ghost"
-            title="باز کردن در سیستم"
-            onClick={onOpenExternally}
-          >
-            <ExternalLinkIcon />
+            {isSaving ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <SaveIcon data-icon="inline-start" />
+            )}
+            ذخیره
           </Button>
         </div>
       ) : null}
 
-      <ScrollArea className="min-h-0 flex-1">
-        <TextualBody
-          category={category}
-          content={state.content}
-          languageHint={codeLanguageFor(path)}
-          csvDelimiter={path.toLowerCase().endsWith(".tsv") ? "\t" : ","}
-          wrap={wrap}
-          showLineNumbers={showLineNumbers}
-        />
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+      <SyntaxEditor
+        value={draft}
+        language={editorLanguage(category, path)}
+        readOnly={state.truncated}
+        onChange={setDraft}
+        onSave={() => void save()}
+      />
 
       {state.truncated ? (
         <p className="border-t border-border/50 px-3 py-2 text-xs text-muted-foreground">
@@ -292,12 +426,10 @@ function TextualPreview({
 export function InlineContentPreview({
   content,
   category,
-  languageHint,
   className,
 }: {
   content: string;
   category: FileCategory;
-  languageHint?: string | null;
   className?: string;
 }) {
   return (
@@ -310,7 +442,6 @@ export function InlineContentPreview({
       <TextualBody
         category={category}
         content={content}
-        languageHint={languageHint ?? null}
         csvDelimiter=","
         wrap
         showLineNumbers={category === "text"}
@@ -323,14 +454,12 @@ export function InlineContentPreview({
 function TextualBody({
   category,
   content,
-  languageHint,
   csvDelimiter,
   wrap,
   showLineNumbers,
 }: {
   category: FileCategory;
   content: string;
-  languageHint: string | null;
   csvDelimiter: string;
   wrap: boolean;
   showLineNumbers: boolean;
@@ -345,20 +474,13 @@ function TextualBody({
   if (category === "csv") {
     return <CsvTable content={content} delimiter={csvDelimiter} />;
   }
-  if (category === "json") {
+  if (category === "json" || category === "code") {
     return (
-      <div dir="ltr" className="p-2 text-left">
-        <MessageResponse>{`\`\`\`json\n${content}\n\`\`\``}</MessageResponse>
-      </div>
-    );
-  }
-  if (category === "code") {
-    return (
-      <div dir="ltr" className="p-2 text-left">
-        <MessageResponse>
-          {`\`\`\`${languageHint ?? ""}\n${content}\n\`\`\``}
-        </MessageResponse>
-      </div>
+      <PlainText
+        content={content}
+        wrap={wrap}
+        showLineNumbers={showLineNumbers}
+      />
     );
   }
   return (
@@ -466,7 +588,7 @@ function UnsupportedPreview({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-lg border border-border/50 bg-muted/20 p-6 text-center",
+        "flex flex-col items-center justify-center gap-3 bg-muted/10 p-6 text-center",
         className
       )}
     >
@@ -502,7 +624,7 @@ function ErrorBox({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center gap-3 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-center text-xs text-destructive",
+        "flex flex-col items-center justify-center gap-3 bg-destructive/10 p-4 text-center text-xs text-destructive",
         className
       )}
     >

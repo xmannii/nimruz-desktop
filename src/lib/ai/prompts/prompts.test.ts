@@ -36,6 +36,37 @@ test("subagent prompt separates delegation from direct work", () => {
   assert.match(prompt, /Re-check a critical claim/);
 });
 
+test("plan mode prompt clarifies, researches, then writes structured steps", () => {
+  const prompt = readPrompt("plan-mode.md");
+
+  assert.match(prompt, /ask_user_question/);
+  assert.match(prompt, /spawn_subagent/);
+  assert.match(prompt, /write_plan/);
+  assert.match(prompt, /structured steps/i);
+  assert.match(prompt, /Do not put checkboxes/i);
+  assert.match(prompt, /Stay in Plan mode/i);
+  assert.match(prompt, /never implement/i);
+  assert.match(prompt, /Mermaid/);
+  assert.match(prompt, /Execution handoff/);
+});
+
+test("agent mode prompt executes active plans and tracks verified progress", () => {
+  const prompt = readPrompt("agent-mode.md");
+
+  assert.match(prompt, /read_active_plan/);
+  assert.match(prompt, /update_plan_progress/);
+  assert.match(prompt, /update_plan_status/);
+  assert.match(prompt, /verified/i);
+});
+
+test("plan subagent prompt remains research-only", () => {
+  const prompt = readPrompt("plan-spawn-subagent-tools.md");
+
+  assert.match(prompt, /write_plan/);
+  assert.match(prompt, /Never ask it to implement/);
+  assert.doesNotMatch(prompt, /then create the deliverable/);
+});
+
 test("user-configured appendices are framed as context, not authority", () => {
   const personalization = buildPersonalizationAppendix({
     responseStyle: "balanced",

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -100,7 +100,7 @@ test("resolves the target executable from the nested optional package", async ()
       arch: "x64",
       requireFrom: createRequire(path.join(directory, "entry.cjs")),
     });
-    assert.equal(resolved, executable);
+    assert.equal(resolved, await realpath(executable));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -146,7 +146,7 @@ test("prefers the unpacked executable when dependencies live inside app.asar", a
       arch: "x64",
       requireFrom: createRequire(path.join(asarRoot, "entry.cjs")),
     });
-    assert.equal(resolved, unpackedExecutable);
+    assert.equal(resolved, await realpath(unpackedExecutable));
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

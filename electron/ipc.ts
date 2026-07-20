@@ -1,5 +1,8 @@
 import { dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
-import { realpathSync, statSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import path from "node:path";
+import { promisify } from "node:util";
 import { nanoid } from "nanoid";
 import { listInstalledFonts } from "./system-fonts";
 import type { LegacyImportResult } from "@/lib/desktop-api";
@@ -34,6 +37,7 @@ import { isTrustedRendererUrl } from "./renderer-security";
 import {
   validateChatsPayload,
   validateLegacySnapshot,
+  validatePlanPayload,
   validateWorkspacePayload,
 } from "./storage/validation";
 import {
@@ -41,6 +45,27 @@ import {
   getAppVersion,
   openExternalUrl,
 } from "./updates";
+
+const execFileAsync = promisify(execFile);
+const MAX_DIFF_CHARS = 120_000;
+
+function changeStatus(code: string) {
+  if (code === "??") return "untracked" as const;
+  if (code.includes("R") || code.includes("C")) return "renamed" as const;
+  if (code.includes("A")) return "added" as const;
+  if (code.includes("D")) return "deleted" as const;
+  return "modified" as const;
+}
+
+function parseNumstat(value: string): { additions: number; deletions: number } {
+  const line = value.trim().split("\n").at(-1);
+  if (!line) return { additions: 0, deletions: 0 };
+  const [added, deleted] = line.split("\t");
+  return {
+    additions: Number.isFinite(Number(added)) ? Number(added) : 0,
+    deletions: Number.isFinite(Number(deleted)) ? Number(deleted) : 0,
+  };
+}
 
 function assertTrustedSender(
   event: IpcMainInvokeEvent,
@@ -451,6 +476,124 @@ export function registerIpcHandlers(options: {
     (workspaceId: string, filePath: string) =>
       workspaceFiles.readBinaryFile(workspaceId, filePath)
   );
+  handle("storage:list-workspace-changes", async (workspaceId: string) => {
+    const workingRoot = workspaceFiles.primaryRootPath(workspaceId);
+    const agentTouchedPaths = new Map<string, string>();
+    for (const run of database.listAgentRuns({ workspaceId, limit: 50 })) {
+      for (const call of database.listToolCalls(run.id)) {
+        if (
+          !["write_file", "apply_patch", "move_file", "delete_file"].includes(
+            call.toolName
+          )
+        ) {
+          continue;
+        }
+        try {
+          const input = JSON.parse(call.inputJson) as Record<string, unknown>;
+          for (const key of ["path", "from", "to"]) {
+            const value = input[key];
+            if (typeof value !== "string") continue;
+            const resolved = workspaceFiles.resolvePath(workspaceId, value);
+            if (!agentTouchedPaths.has(resolved)) {
+              agentTouchedPaths.set(resolved, run.id);
+            }
+          }
+        } catch {
+          // Ignore malformed or no-longer-resolvable historical tool input.
+        }
+      }
+    }
+    let repositoryRoot: string;
+    try {
+      const result = await execFileAsync("git", ["rev-parse", "--show-toplevel"], {
+        cwd: workingRoot,
+        maxBuffer: 256 * 1024,
+      });
+      repositoryRoot = result.stdout.trim();
+    } catch {
+      return [];
+    }
+    const scopePath = path.relative(repositoryRoot, workingRoot) || ".";
+    if (scopePath === ".." || scopePath.startsWith(`..${path.sep}`)) return [];
+
+    const statusResult = await execFileAsync(
+      "git",
+      [
+        "status",
+        "--porcelain=v1",
+        "-z",
+        "--untracked-files=all",
+        "--",
+        scopePath,
+      ],
+      { cwd: repositoryRoot, maxBuffer: 2 * 1024 * 1024 }
+    );
+    const tokens = statusResult.stdout.split("\0").filter(Boolean);
+    const entries: Array<{ code: string; relativePath: string }> = [];
+    for (let index = 0; index < tokens.length; index += 1) {
+      const token = tokens[index];
+      const code = token.slice(0, 2);
+      entries.push({ code, relativePath: token.slice(3) });
+      if (code.includes("R") || code.includes("C")) index += 1;
+    }
+
+    return Promise.all(
+      entries.slice(0, 100).map(async ({ code, relativePath }) => {
+        const absolutePath = path.join(repositoryRoot, relativePath);
+        const status = changeStatus(code);
+        if (status === "untracked") {
+          let additions = 0;
+          let diff: string | null = null;
+          if (existsSync(absolutePath) && statSync(absolutePath).isFile()) {
+            const content = readFileSync(absolutePath);
+            if (content.length <= MAX_DIFF_CHARS && !content.includes(0)) {
+              const text = content.toString("utf8");
+              additions = text.length === 0 ? 0 : text.split(/\r?\n/).length;
+              diff = [
+                `diff --git a/${relativePath} b/${relativePath}`,
+                "new file mode 100644",
+                "--- /dev/null",
+                `+++ b/${relativePath}`,
+                ...text.split(/\r?\n/).map((line) => `+${line}`),
+              ].join("\n");
+            }
+          }
+          return {
+            path: absolutePath,
+            relativePath,
+            status,
+            additions,
+            deletions: 0,
+            diff,
+            agentTouched: agentTouchedPaths.has(absolutePath),
+            agentRunId: agentTouchedPaths.get(absolutePath) ?? null,
+          };
+        }
+
+        const [numstatResult, diffResult] = await Promise.all([
+          execFileAsync("git", ["diff", "--numstat", "HEAD", "--", relativePath], {
+            cwd: repositoryRoot,
+            maxBuffer: 512 * 1024,
+          }).catch(() => ({ stdout: "" })),
+          execFileAsync(
+            "git",
+            ["diff", "--no-ext-diff", "--unified=3", "HEAD", "--", relativePath],
+            { cwd: repositoryRoot, maxBuffer: MAX_DIFF_CHARS }
+          ).catch((error: { stdout?: string }) => ({ stdout: error.stdout ?? "" })),
+        ]);
+        const counts = parseNumstat(numstatResult.stdout);
+        return {
+          path: absolutePath,
+          relativePath,
+          status,
+          ...counts,
+          diff: diffResult.stdout.slice(0, MAX_DIFF_CHARS) || null,
+          agentTouched: agentTouchedPaths.has(absolutePath),
+          agentRunId: agentTouchedPaths.get(absolutePath) ?? null,
+        };
+      })
+    );
+  });
   handle(
     "storage:search-workspace-files",
     (
@@ -540,6 +683,32 @@ export function registerIpcHandlers(options: {
     database.deleteTask(taskId);
     if (workspaceId) {
       workspaceEvents.emit({ type: "task-changed", workspaceId, taskId });
+    }
+  });
+
+  handle("storage:list-plans", (workspaceId: string) =>
+    database.listPlans(workspaceId)
+  );
+  handle("storage:save-plan", (value: unknown) => {
+    const plan = validatePlanPayload(value);
+    if (plan.status === "active" && plan.workspaceId) {
+      database.completeActivePlans(plan.workspaceId, plan.id);
+    }
+    database.savePlan(plan);
+    if (plan.workspaceId) {
+      workspaceEvents.emit({
+        type: "plan-changed",
+        workspaceId: plan.workspaceId,
+        planId: plan.id,
+      });
+    }
+    return plan;
+  });
+  handle("storage:delete-plan", (planId: string) => {
+    const workspaceId = database.getPlanWorkspaceId(planId);
+    database.deletePlan(planId);
+    if (workspaceId) {
+      workspaceEvents.emit({ type: "plan-changed", workspaceId, planId });
     }
   });
 

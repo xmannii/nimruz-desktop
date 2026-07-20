@@ -5,6 +5,7 @@ import type { ResolvedChatModel } from "../chat-handler";
 import {
   createSpawnSubagentTool,
   getFinalSubagentText,
+  hasIncompleteSubagentToolCalls,
   prepareSubagentStep,
 } from "./subagent";
 
@@ -96,6 +97,61 @@ test("uses a bounded fallback when a transcript has no final text", () => {
     getFinalSubagentText(transcript),
     "The research subagent completed without a summary."
   );
+});
+
+test("detects a transcript that ended during a nested tool call", () => {
+  const transcript = {
+    id: "subagent-message",
+    role: "assistant",
+    parts: [
+      {
+        type: "tool-read_file",
+        toolCallId: "read-1",
+        state: "input-available",
+        input: { path: "src/app.tsx" },
+      },
+    ],
+  } as unknown as UIMessage;
+
+  assert.equal(hasIncompleteSubagentToolCalls(transcript), true);
+
+  const completed = {
+    ...transcript,
+    parts: [
+      {
+        ...transcript.parts[0],
+        state: "output-available",
+        output: "file contents",
+      },
+    ],
+  } as unknown as UIMessage;
+  assert.equal(hasIncompleteSubagentToolCalls(completed), false);
+});
+
+test("preserves useful text and labels a partial subagent result", () => {
+  const transcript = {
+    id: "subagent-message",
+    role: "assistant",
+    metadata: {
+      subagent: {
+        status: "partial",
+        attempt: 2,
+        maxAttempts: 2,
+        error: "The stream ended during a tool call.",
+      },
+    },
+    parts: [
+      { type: "text", text: "First verified finding." },
+      { type: "step-start" },
+      { type: "text", text: "Second verified finding." },
+    ],
+  } as UIMessage;
+
+  const result = getFinalSubagentText(transcript);
+  assert.match(result, /First verified finding/);
+  assert.match(result, /Second verified finding/);
+  assert.match(result, /partial result/);
+  assert.match(result, /stream ended during a tool call/);
 });
 
 test("reserves a tool-free final step for the subagent summary", () => {

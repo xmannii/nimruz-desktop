@@ -443,13 +443,20 @@ function isStackableToolPart(part: UIMessage["parts"][number]): boolean {
   return true;
 }
 
+function shouldCompactToolRun(parts: UIMessage["parts"][number][]): boolean {
+  return (
+    parts.length >= COMPACT_TOOL_THRESHOLD &&
+    !parts.some((part) => part.type === "tool-run_command")
+  );
+}
+
 function renderCompactedToolRun(
   parts: UIMessage["parts"][number][],
   messageId: string,
   startIndex: number,
   workspaceId?: string | null
 ): ReactNode[] {
-  if (parts.length >= COMPACT_TOOL_THRESHOLD) {
+  if (shouldCompactToolRun(parts)) {
     return [
       <ChatCompactToolBatch
         key={`${messageId}-compact-${startIndex}`}
@@ -545,6 +552,7 @@ function renderStackableToolPart(
           type: string;
           toolCallId: string;
           state: string;
+          preliminary?: boolean;
           input?: Record<string, unknown>;
           output?: unknown;
           errorText?: string;
@@ -575,8 +583,7 @@ function countTimelineSteps(timeline: TimelineSegment[]): number {
       count += 1;
       continue;
     }
-    count +=
-      segment.parts.length >= COMPACT_TOOL_THRESHOLD ? 1 : segment.parts.length;
+    count += shouldCompactToolRun(segment.parts) ? 1 : segment.parts.length;
   }
   return count;
 }

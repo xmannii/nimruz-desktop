@@ -3,6 +3,7 @@ import type {
   WorkspaceTrustSettings,
 } from "@/lib/workspace";
 import { DEFAULT_WORKSPACE_TRUST } from "@/lib/workspace";
+import type { AgentMode } from "@/lib/chat/agent-mode";
 
 export type ToolCapability =
   | "filesystem_read"
@@ -15,7 +16,8 @@ export type ToolCapability =
   | "subagents"
   | "skills"
   | "artifacts"
-  | "tasks";
+  | "tasks"
+  | "plans";
 
 export type ToolMeta = {
   name: string;
@@ -131,6 +133,54 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     timeoutMs: 10_000,
     maxOutputBytes: 8_000,
   },
+  write_plan: {
+    name: "write_plan",
+    capability: "plans",
+    risk: "write",
+    description: "Create a workspace markdown plan",
+    timeoutMs: 10_000,
+    maxOutputBytes: 8_000,
+  },
+  update_plan: {
+    name: "update_plan",
+    capability: "plans",
+    risk: "write",
+    description: "Update a workspace markdown plan",
+    timeoutMs: 10_000,
+    maxOutputBytes: 8_000,
+  },
+  read_active_plan: {
+    name: "read_active_plan",
+    capability: "plans",
+    risk: "read",
+    description: "Read the active workspace plan",
+    timeoutMs: 10_000,
+    maxOutputBytes: 128_000,
+  },
+  update_plan_progress: {
+    name: "update_plan_progress",
+    capability: "plans",
+    risk: "write",
+    description: "Update a plan checklist item",
+    timeoutMs: 10_000,
+    maxOutputBytes: 8_000,
+  },
+  update_plan_status: {
+    name: "update_plan_status",
+    capability: "plans",
+    risk: "write",
+    description: "Update execution plan status",
+    timeoutMs: 10_000,
+    maxOutputBytes: 8_000,
+  },
+  ask_user_question: {
+    name: "ask_user_question",
+    capability: "plans",
+    risk: "read",
+    description: "Ask the user a clarifying multiple-choice question",
+    timeoutMs: 5_000,
+    maxOutputBytes: 4_000,
+  },
   save_memory: {
     name: "save_memory",
     capability: "memory",
@@ -181,6 +231,7 @@ export type PolicyDecision =
 
 export function evaluateToolPolicy(options: {
   toolName: string;
+  agentMode?: AgentMode;
   trust?: WorkspaceTrustSettings | null;
   slices?: {
     readTools?: boolean;
@@ -198,6 +249,26 @@ export function evaluateToolPolicy(options: {
     artifactsTasks: true,
     ...options.slices,
   };
+
+  if (options.agentMode === "plan") {
+    const planAllowedTools = new Set([
+      "ask_user_question",
+      "list_directory",
+      "read_file",
+      "search_files",
+      "fetch_url",
+      "write_plan",
+      "update_plan",
+      "read_active_plan",
+      "spawn_subagent",
+    ]);
+    if (!planAllowedTools.has(options.toolName)) {
+      return {
+        type: "denied",
+        reason: "This tool is disabled while Plan mode is active.",
+      };
+    }
+  }
 
   // Expert delegation tools are dynamic; treat as read/network nested work.
   if (options.toolName.startsWith("expert_")) {
@@ -223,7 +294,8 @@ export function evaluateToolPolicy(options: {
   if (
     (meta.capability === "filesystem_write" ||
       meta.capability === "artifacts" ||
-      meta.capability === "tasks") &&
+      meta.capability === "tasks" ||
+      meta.capability === "plans") &&
     !slices.writeTools
   ) {
     return { type: "denied", reason: "Write tools are disabled." };
@@ -232,10 +304,26 @@ export function evaluateToolPolicy(options: {
     return { type: "denied", reason: "Shell tools are disabled." };
   }
   if (
-    (meta.capability === "artifacts" || meta.capability === "tasks") &&
+    (meta.capability === "artifacts" ||
+      meta.capability === "tasks" ||
+      meta.capability === "plans") &&
     !slices.artifactsTasks
   ) {
     return { type: "denied", reason: "Artifacts and tasks are disabled." };
+  }
+
+  if (
+    options.toolName === "ask_user_question" ||
+    options.toolName === "write_plan" ||
+    options.toolName === "update_plan" ||
+    options.toolName === "read_active_plan" ||
+    options.toolName === "update_plan_progress" ||
+    options.toolName === "update_plan_status"
+  ) {
+    return {
+      type: "approved",
+      reason: "Internal plan operations are auto-approved.",
+    };
   }
 
   if (meta.risk === "destructive") {

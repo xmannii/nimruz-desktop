@@ -4,7 +4,7 @@ import { WorkspaceActivityPanel } from "@/components/workspace/workspace-activit
 import { WorkspaceArtifactsPanel } from "@/components/workspace/workspace-artifacts-panel";
 import { WorkspaceFilesPanel } from "@/components/workspace/workspace-files-panel";
 import { WorkspaceSettingsSection } from "@/components/workspace/workspace-settings-section";
-import { WorkspaceTasksPanel } from "@/components/workspace/workspace-tasks-panel";
+import { WorkspacePlansPanel } from "@/components/workspace/workspace-plans-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,9 +41,26 @@ import { useCallback, useEffect, useState, type ComponentType } from "react";
 type WorkspacePanelSection =
   | "files"
   | "artifacts"
-  | "tasks"
+  | "plan"
   | "activity"
   | "settings";
+
+function normalizePanelSection(
+  value: string | null,
+  fallback: WorkspacePanelSection
+): WorkspacePanelSection {
+  if (value === "tasks") return "plan";
+  if (
+    value === "files" ||
+    value === "artifacts" ||
+    value === "plan" ||
+    value === "activity" ||
+    value === "settings"
+  ) {
+    return value;
+  }
+  return fallback;
+}
 
 type WorkspacePanelSettingsProps = {
   workspace: LocalWorkspace;
@@ -72,7 +89,7 @@ type SectionDef = {
 const BASE_SECTIONS: SectionDef[] = [
   { id: "files", label: "فایل‌ها", icon: FolderIcon },
   { id: "artifacts", label: "آرتیفکت‌ها", icon: FileTextIcon },
-  { id: "tasks", label: "تسک‌ها", icon: ListTodoIcon },
+  { id: "plan", label: "پلن", icon: ListTodoIcon },
   { id: "activity", label: "فعالیت", icon: ActivityIcon },
 ];
 
@@ -101,19 +118,20 @@ export function WorkspacePanel({
   const [active, setActive] = useState<WorkspacePanelSection>(() => {
     if (typeof window === "undefined") return defaultTab;
     const stored = window.localStorage.getItem(activeSectionKey(workspaceId));
-    return (stored as WorkspacePanelSection | null) ?? defaultTab;
+    return normalizePanelSection(stored, defaultTab);
   });
 
   const { roots } = useWorkspaceRoots(settings ? workspaceId : null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [revealPath, setRevealPath] = useState<string | null>(null);
   const [revealArtifactId, setRevealArtifactId] = useState<string | null>(null);
+  const [revealPlanId, setRevealPlanId] = useState<string | null>(null);
   const [pulseSection, setPulseSection] =
     useState<WorkspacePanelSection | null>(null);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(activeSectionKey(workspaceId));
-    setActive((stored as WorkspacePanelSection | null) ?? defaultTab);
+    setActive(normalizePanelSection(stored, defaultTab));
   }, [workspaceId, defaultTab]);
 
   const selectSection = useCallback(
@@ -146,9 +164,12 @@ export function WorkspacePanel({
         setRevealArtifactId(target.artifactId || null);
         setPulseSection("artifacts");
         window.setTimeout(() => setPulseSection(null), 900);
-      } else if (target.kind === "task") {
-        selectSection("tasks");
-        setPulseSection("tasks");
+      } else if (target.kind === "task" || target.kind === "plan") {
+        selectSection("plan");
+        if (target.kind === "plan") {
+          setRevealPlanId(target.planId || null);
+        }
+        setPulseSection("plan");
         window.setTimeout(() => setPulseSection(null), 900);
       } else if (target.kind === "run") {
         selectSection("activity");
@@ -267,7 +288,7 @@ export function WorkspacePanel({
       <div
         className={cn(
           "flex min-h-0 flex-1 flex-col",
-          active === "artifacts" ? "p-0" : "p-2.5"
+          active === "artifacts" || active === "files" ? "p-0" : "p-2.5"
         )}
       >
         {active === "files" ? (
@@ -287,8 +308,12 @@ export function WorkspacePanel({
           />
         ) : null}
 
-        {active === "tasks" ? (
-          <WorkspaceTasksPanel workspaceId={workspaceId} />
+        {active === "plan" ? (
+          <WorkspacePlansPanel
+            workspaceId={workspaceId}
+            revealPlanId={revealPlanId}
+            onRevealHandled={() => setRevealPlanId(null)}
+          />
         ) : null}
 
         {active === "activity" ? (

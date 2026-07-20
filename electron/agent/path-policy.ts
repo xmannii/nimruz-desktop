@@ -9,6 +9,29 @@ export class PathPolicyError extends Error {
 }
 
 /**
+ * Canonicalize the closest existing ancestor while preserving any path
+ * segments that have not been created yet. This keeps macOS aliases such as
+ * /var and /private/var comparable for both existing and new workspace files.
+ */
+function canonicalizePath(value: string): string {
+  const absolute = path.resolve(value);
+  const missingSegments: string[] = [];
+  let candidate = absolute;
+
+  while (true) {
+    try {
+      const existing = realpathSync.native(candidate);
+      return path.join(existing, ...missingSegments.reverse());
+    } catch {
+      const parent = path.dirname(candidate);
+      if (parent === candidate) return absolute;
+      missingSegments.push(path.basename(candidate));
+      candidate = parent;
+    }
+  }
+}
+
+/**
  * Resolve and assert that `target` stays within one of the approved roots.
  * Rejects traversal, null bytes, and symlink escapes.
  */
@@ -26,28 +49,10 @@ export function resolveInsideRoots(
     throw new PathPolicyError("No approved workspace roots are configured.");
   }
 
-  const absoluteTarget = path.resolve(target);
-  let canonicalTarget = absoluteTarget;
-  try {
-    canonicalTarget = realpathSync.native(absoluteTarget);
-  } catch {
-    // File may not exist yet — validate parent containment instead.
-    const parent = path.dirname(absoluteTarget);
-    try {
-      const canonicalParent = realpathSync.native(parent);
-      canonicalTarget = path.join(canonicalParent, path.basename(absoluteTarget));
-    } catch {
-      canonicalTarget = absoluteTarget;
-    }
-  }
+  const canonicalTarget = canonicalizePath(target);
 
   for (const root of roots) {
-    let canonicalRoot = path.resolve(root);
-    try {
-      canonicalRoot = realpathSync.native(canonicalRoot);
-    } catch {
-      // Root itself may be missing for managed dirs about to be created.
-    }
+    const canonicalRoot = canonicalizePath(root);
 
     const relative = path.relative(canonicalRoot, canonicalTarget);
     if (

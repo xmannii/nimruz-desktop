@@ -1,6 +1,7 @@
 "use client";
 
 import type { ChatUpdate } from "@/hooks/use-chat-history";
+import type { ChatRuntime } from "@/hooks/use-chat-runtimes";
 import type { WorkspaceInput } from "@/hooks/use-workspaces";
 import type { LocalChat, LocalWorkspace } from "@/lib/chat/storage";
 import type {
@@ -17,7 +18,6 @@ import type { WorkspaceRoot, WorkspaceTrustSettings } from "@/lib/workspace";
 import {
   createContext,
   useContext,
-  type MutableRefObject,
   type ReactNode,
 } from "react";
 
@@ -48,7 +48,8 @@ export type AppShellContextValue = {
     models: ModelConfig[];
   }>;
   hasUsableModel: boolean;
-  stopCurrentChatRef: MutableRefObject<(() => void) | null>;
+  runningChatIds: ReadonlySet<string>;
+  getChatRuntime: (chat: LocalChat) => ChatRuntime;
   getChatById: (id: string) => LocalChat | null;
   createChat: (workspaceId?: string | null) => string;
   selectChat: (id: string) => void;

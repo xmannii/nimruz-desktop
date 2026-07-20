@@ -1,6 +1,11 @@
 "use client";
 
 import {
+  DEFAULT_AGENT_MODE,
+  sanitizeAgentMode,
+  type AgentMode,
+} from "@/lib/chat/agent-mode";
+import {
   deleteAllLocalChats,
   deleteLocalChat,
   loadLocalChats,
@@ -40,6 +45,7 @@ function createEmptyChat(
     model,
     messages: [],
     workspaceId,
+    agentMode: DEFAULT_AGENT_MODE,
     createdAt: now,
     updatedAt: now,
   };
@@ -77,6 +83,7 @@ function normalizeChat(chat: LocalChat): LocalChat {
         : typeof legacy.projectId === "string"
           ? legacy.projectId
           : HOME_WORKSPACE_ID,
+    agentMode: sanitizeAgentMode(chat.agentMode),
     titleIsCustom: Boolean(chat.titleIsCustom),
     pinned: Boolean(chat.pinned),
     pinnedAt:
@@ -106,6 +113,7 @@ export type ChatUpdate = {
   messages: UIMessage[];
   model: ModelId;
   providerId?: string;
+  agentMode?: AgentMode;
 };
 
 export function useChatHistory(
@@ -333,10 +341,14 @@ export function useChatHistory(
       if (!chat) return current;
 
       const nextProviderId = update.providerId ?? chat.providerId;
+      const nextAgentMode = sanitizeAgentMode(
+        update.agentMode ?? chat.agentMode
+      );
 
       if (
         chat.model === update.model &&
         chat.providerId === nextProviderId &&
+        sanitizeAgentMode(chat.agentMode) === nextAgentMode &&
         areMessagesEqual(chat.messages, update.messages)
       ) {
         return current;
@@ -346,6 +358,7 @@ export function useChatHistory(
         ...chat,
         ...update,
         providerId: nextProviderId,
+        agentMode: nextAgentMode,
         title: chat.titleIsCustom ? chat.title : getChatTitle(update.messages),
         updatedAt: Date.now(),
       };

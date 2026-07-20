@@ -56,6 +56,7 @@ import {
   FolderIcon,
   HistoryIcon,
   HomeIcon,
+  LoaderCircleIcon,
   MoreHorizontalIcon,
   PinIcon,
   PlusIcon,
@@ -66,6 +67,7 @@ import {
 
 type AppSidebarProps = {
   chats: LocalChat[];
+  runningChatIds: ReadonlySet<string>;
   workspaces: LocalWorkspace[];
   activeChatId: string | null;
   activeWorkspaceId?: string | null;
@@ -89,6 +91,7 @@ type AppSidebarProps = {
 
 export function AppSidebar({
   chats,
+  runningChatIds,
   workspaces,
   activeChatId,
   activeWorkspaceId = null,
@@ -356,6 +359,7 @@ export function AppSidebar({
                         <SidebarChatRow
                           key={`pinned-${chat.id}`}
                           chat={chat}
+                          isRunning={runningChatIds.has(chat.id)}
                           activeChatId={activeChatId}
                           typingTitles={typingTitles}
                           workspaceLabel={getWorkspaceLabel(chat)}
@@ -400,6 +404,7 @@ export function AppSidebar({
                           key={workspace.id}
                           workspace={workspace}
                           chats={chatsByWorkspace.get(workspace.id) ?? []}
+                          runningChatIds={runningChatIds}
                           activeChatId={activeChatId}
                           activeWorkspaceId={activeWorkspaceId}
                           typingTitles={typingTitles}
@@ -420,6 +425,7 @@ export function AppSidebar({
                         <SidebarProjectGroup
                           workspace={homeWorkspace}
                           chats={chatsByWorkspace.get(homeWorkspace.id) ?? []}
+                          runningChatIds={runningChatIds}
                           activeChatId={activeChatId}
                           activeWorkspaceId={activeWorkspaceId}
                           typingTitles={typingTitles}
@@ -486,6 +492,12 @@ export function AppSidebar({
                 >
                   <ArrowRightIcon />
                   <span>بازگشت به گفتگو</span>
+                  {runningChatIds.size > 0 ? (
+                    <LoaderCircleIcon
+                      aria-label="پاسخ در حال دریافت است"
+                      className="ms-auto size-3.5 animate-spin text-primary group-data-[collapsible=icon]:hidden"
+                    />
+                  ) : null}
                 </SidebarMenuButton>
               ) : (
                 <SidebarMenuButton
@@ -558,6 +570,12 @@ export function AppSidebar({
                     onSelect={() => handleSelectChat(chat.id)}
                   >
                     <PinIcon />
+                    {runningChatIds.has(chat.id) ? (
+                      <LoaderCircleIcon
+                        aria-label="پاسخ در حال دریافت است"
+                        className="animate-spin text-primary"
+                      />
+                    ) : null}
                     <ChatSidebarTitle
                       title={chat.title}
                       typingTitle={typingTitles[chat.id]}
@@ -584,6 +602,11 @@ export function AppSidebar({
                     >
                       {chat.pinned ? (
                         <PinIcon />
+                      ) : runningChatIds.has(chat.id) ? (
+                        <LoaderCircleIcon
+                          aria-label="پاسخ در حال دریافت است"
+                          className="animate-spin text-primary"
+                        />
                       ) : isHomeWorkspace(workspace) ? (
                         <HomeIcon />
                       ) : (

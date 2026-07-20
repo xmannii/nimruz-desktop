@@ -13,6 +13,7 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { useAppSettings } from "@/hooks/use-app-settings";
 import { useAppUpdate } from "@/hooks/use-app-update";
 import { useChatHistory } from "@/hooks/use-chat-history";
+import { useChatRuntimes } from "@/hooks/use-chat-runtimes";
 import { useTypingChatTitles } from "@/hooks/use-typing-chat-title";
 import { useModelCatalog } from "@/hooks/use-model-catalog";
 import { useWorkspaces, type WorkspaceInput } from "@/hooks/use-workspaces";
@@ -28,7 +29,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -76,6 +76,13 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     setChatWorkspaceId,
   } = useChatHistory(initialChatId, defaultRef);
 
+  const {
+    runningChatIds,
+    getChatRuntime,
+    discardChatRuntime,
+    discardAllChatRuntimes,
+  } = useChatRuntimes(updateChat);
+
   const { typingTitles, animateChatTitle } = useTypingChatTitles();
 
   const animateRenameChat = useCallback(
@@ -118,7 +125,6 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     handleSubagentsChange,
   } = useAppSettings();
 
-  const stopCurrentChatRef = useRef<(() => void) | null>(null);
   const [credentialRefreshSignal, setCredentialRefreshSignal] = useState(0);
   const [onboardingCompleted, setOnboardingCompleted] = useState<
     boolean | null
@@ -228,7 +234,8 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       defaultModelRef: defaultRef,
       enabledModelGroups: enabledGroups,
       hasUsableModel,
-      stopCurrentChatRef,
+      runningChatIds,
+      getChatRuntime,
       getChatById,
       createChat,
       selectChat,
@@ -294,6 +301,8 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       defaultRef,
       enabledGroups,
       hasUsableModel,
+      runningChatIds,
+      getChatRuntime,
       getChatById,
       createChat,
       selectChat,
@@ -341,7 +350,6 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   }
 
   function handleNewChat() {
-    stopCurrentChatRef.current?.();
     const workspaceId = activeWorkspaceId;
     setActiveWorkspaceId(workspaceId);
     const id = createChat(workspaceId);
@@ -349,7 +357,6 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   }
 
   function handleNewWorkspaceChat(workspaceId: string) {
-    stopCurrentChatRef.current?.();
     setActiveWorkspaceId(workspaceId);
     const id = createChat(workspaceId);
     navigateToChat(id, workspaceId);
@@ -365,7 +372,6 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   function handleSelectChat(id: string) {
     if (id === activeChatId && !isSettingsRoute) return;
-    stopCurrentChatRef.current?.();
     selectChat(id);
     const chat = getChatById(id);
     const workspaceId = chat?.workspaceId ?? null;
@@ -375,7 +381,6 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   function handleDeleteChat(id: string) {
     if (id === activeChatId) {
-      stopCurrentChatRef.current?.();
       const nextChat = chats.find((chat) => chat.id !== id);
       if (nextChat) {
         navigateToChat(nextChat.id, nextChat.workspaceId ?? null);
@@ -383,11 +388,12 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
         void navigate({ to: "/" });
       }
     }
+    discardChatRuntime(id);
     removeChat(id);
   }
 
   function handleDeleteAllChats() {
-    stopCurrentChatRef.current?.();
+    discardAllChatRuntimes();
     setActiveWorkspaceId(HOME_WORKSPACE_ID);
     const id = removeAllChats();
     navigateToChat(id, HOME_WORKSPACE_ID);
@@ -395,8 +401,8 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
 
   function handleDeleteWorkspace(id: string) {
     if (isHomeWorkspace(id)) return;
-    if (activeChat?.workspaceId === id) {
-      stopCurrentChatRef.current?.();
+    for (const chat of chats) {
+      if (chat.workspaceId === id) discardChatRuntime(chat.id);
     }
     removeWorkspaceFromChats(id);
     removeWorkspace(id);
@@ -419,7 +425,6 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   }
 
   function handleOpenSettings() {
-    stopCurrentChatRef.current?.();
     void navigate({
       to: "/settings/models",
       search: { provider: undefined },
@@ -478,6 +483,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
           </SidebarInset>
           <AppSidebar
             chats={chats}
+            runningChatIds={runningChatIds}
             workspaces={workspaces}
             activeChatId={isSettingsRoute ? null : activeChatId}
             activeWorkspaceId={activeWorkspaceId}

@@ -4,8 +4,8 @@ import { nanoid } from "nanoid";
 import type { AppDatabase } from "../storage/database";
 import type { WorkspaceFilesStore } from "./workspace-files";
 import type { WorkspaceEventBus } from "./events";
-import { defaultShellCwd, runScopedCommand } from "./shell";
-import type { TaskStatus } from "@/lib/workspace";
+import { defaultShellCwd, streamScopedCommand } from "./shell";
+import type { PlanStatus, TaskStatus } from "@/lib/workspace";
 import { fetchPage } from "@/lib/web/fetch-page";
 
 export type AgentToolContext = {
@@ -192,12 +192,12 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
           .optional()
           .describe("Working directory; defaults to the primary workspace root"),
       }),
-      execute: async ({ command, cwd }) => {
+      execute: async function* ({ command, cwd }) {
         const workspaceId = requireWorkspaceId(ctx);
         const roots = ctx.files.getApprovedRoots(workspaceId);
         const workdir =
           cwd ?? ctx.files.primaryRootPath(workspaceId) ?? defaultShellCwd(roots);
-        return runScopedCommand({
+        yield* streamScopedCommand({
           command,
           cwd: workdir,
           roots,
@@ -327,6 +327,249 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
   };
 }
 
+function buildPlanPersistenceTools(ctx: AgentToolContext): ToolSet {
+  const planStepSchema = z.object({
+    id: z
+      .string()
+      .regex(/^[\w-]{1,128}$/)
+      .describe("Stable short identifier such as inspect-auth-flow"),
+    title: z.string().min(1).max(200).describe("Concrete executable step title"),
+    description: z
+      .string()
+      .min(1)
+      .max(2_000)
+      .describe("Files, intended change, and verification outcome"),
+    status: z
+      .enum(["pending", "in_progress", "completed", "blocked"])
+      .default("pending"),
+  });
+  return {
+    write_plan: tool({
+      description:
+        "Persist the first execution-ready plan, or replace the workspace's current active plan in place. Markdown contains context and decisions; structured steps contain all executable progress. Never put task-list checkboxes in markdown.",
+      inputSchema: z.object({
+        title: z
+          .string()
+          .min(1)
+          .max(200)
+          .describe("Short plan title for the sidebar list"),
+        markdown: z
+          .string()
+          .min(100)
+          .max(100_000)
+          .describe(
+            "Supporting Markdown narrative: goal, decisions, researched architecture/evidence, files, verification, risks, and handoff. No GFM task checkboxes"
+          ),
+        steps: z
+          .array(planStepSchema)
+          .min(1)
+          .max(100)
+          .describe("Ordered, tool-addressable execution steps"),
+      }),
+      execute: async ({ title, markdown, steps }) => {
+        const workspaceId = requireWorkspaceId(ctx);
+        const now = Date.now();
+        const active = ctx.database
+          .listPlans(workspaceId)
+          .find((candidate) => candidate.status === "active");
+        const planId = active?.id ?? nanoid();
+        const plan = {
+          ...active,
+          id: planId,
+          workspaceId,
+          runId: ctx.runId,
+          chatId: ctx.chatId,
+          title,
+          markdown,
+          steps,
+          status: "active" as PlanStatus,
+          createdAt: active?.createdAt ?? now,
+          updatedAt: now,
+        };
+        if (!active) ctx.database.completeActivePlans(workspaceId);
+        ctx.database.savePlan(plan);
+        ctx.events?.emit({
+          type: "plan-changed",
+          workspaceId,
+          planId: plan.id,
+        });
+        return {
+          id: plan.id,
+          title: plan.title,
+          status: plan.status,
+          success: true,
+        };
+      },
+    }),
+    update_plan: tool({
+      description:
+        "Update an existing workspace plan's title, markdown, or status. Use to revise a plan after new answers or to mark it completed/cancelled.",
+      inputSchema: z.object({
+        id: z.string().min(1).describe("Existing plan id to update"),
+        title: z
+          .string()
+          .min(1)
+          .max(200)
+          .optional()
+          .describe("Updated short title"),
+        markdown: z
+          .string()
+          .min(1)
+          .max(100_000)
+          .optional()
+          .describe("Updated full plan markdown"),
+        steps: z
+          .array(planStepSchema)
+          .min(1)
+          .max(100)
+          .optional()
+          .describe("Replacement ordered steps; preserve stable ids when revising"),
+        status: z
+          .enum(["draft", "active", "completed", "cancelled"])
+          .optional()
+          .describe("Updated plan status"),
+      }),
+      execute: async ({ id, title, markdown, steps, status }) => {
+        const workspaceId = requireWorkspaceId(ctx);
+        const existing = ctx.database.getPlan(id);
+        if (!existing || existing.workspaceId !== workspaceId) {
+          return {
+            success: false,
+            error: "Plan not found in the active workspace.",
+          };
+        }
+        const nextStatus = (status ?? existing.status) as PlanStatus;
+        if (nextStatus === "active" && existing.status !== "active") {
+          ctx.database.completeActivePlans(workspaceId, existing.id);
+        }
+        const plan = {
+          ...existing,
+          title: title ?? existing.title,
+          markdown: markdown ?? existing.markdown,
+          steps: steps ?? existing.steps,
+          status: nextStatus,
+          runId: ctx.runId,
+          chatId: ctx.chatId,
+          updatedAt: Date.now(),
+        };
+        ctx.database.savePlan(plan);
+        ctx.events?.emit({
+          type: "plan-changed",
+          workspaceId,
+          planId: plan.id,
+        });
+        return {
+          id: plan.id,
+          title: plan.title,
+          status: plan.status,
+          success: true,
+        };
+      },
+    }),
+  } satisfies ToolSet;
+}
+
+/** Plan-reading and progress tools for the execution agent. */
+export function buildPlanExecutionTools(ctx: AgentToolContext): ToolSet {
+  return {
+    read_active_plan: tool({
+      description:
+        "Read the workspace's active execution plan, including stable structured steps and supporting Markdown. Use before implementing, continuing, or revising an agreed plan.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        const workspaceId = requireWorkspaceId(ctx);
+        const plan =
+          ctx.database
+            .listPlans(workspaceId)
+            .find((candidate) => candidate.status === "active") ?? null;
+        return plan
+          ? { success: true, plan }
+          : { success: false, error: "No active plan exists." };
+      },
+    }),
+    update_plan_progress: tool({
+      description:
+        "Update one stable structured plan step. Mark completed only after implementation and verification.",
+      inputSchema: z.object({
+        id: z.string().min(1).describe("Active plan id"),
+        stepId: z.string().min(1).describe("Stable step id from read_active_plan"),
+        status: z.enum(["pending", "in_progress", "completed", "blocked"]),
+      }),
+      execute: async ({ id, stepId, status }) => {
+        const workspaceId = requireWorkspaceId(ctx);
+        const existing = ctx.database.getPlan(id);
+        if (
+          !existing ||
+          existing.workspaceId !== workspaceId ||
+          existing.status !== "active"
+        ) {
+          return { success: false, error: "Active plan not found." };
+        }
+        if (!existing.steps.some((step) => step.id === stepId)) {
+          return {
+            success: false,
+            error: `Plan step ${stepId} was not found.`,
+          };
+        }
+        const plan = {
+          ...existing,
+          steps: existing.steps.map((step) =>
+            step.id === stepId ? { ...step, status } : step
+          ),
+          runId: ctx.runId,
+          chatId: ctx.chatId,
+          updatedAt: Date.now(),
+        };
+        ctx.database.savePlan(plan);
+        ctx.events?.emit({
+          type: "plan-changed",
+          workspaceId,
+          planId: plan.id,
+        });
+        return { success: true, id: plan.id, stepId, status };
+      },
+    }),
+    update_plan_status: tool({
+      description:
+        "Mark the active plan completed or cancelled. Complete it only after all required checklist items are implemented and verified.",
+      inputSchema: z.object({
+        id: z.string().min(1).describe("Active plan id"),
+        status: z.enum(["completed", "cancelled"]),
+      }),
+      execute: async ({ id, status }) => {
+        const workspaceId = requireWorkspaceId(ctx);
+        const existing = ctx.database.getPlan(id);
+        if (!existing || existing.workspaceId !== workspaceId) {
+          return { success: false, error: "Plan not found." };
+        }
+        if (
+          status === "completed" &&
+          existing.steps.some((step) => step.status !== "completed")
+        ) {
+          return {
+            success: false,
+            error: "Every structured plan step must be completed first.",
+          };
+        }
+        const plan = {
+          ...existing,
+          status: status as PlanStatus,
+          runId: ctx.runId,
+          chatId: ctx.chatId,
+          updatedAt: Date.now(),
+        };
+        ctx.database.savePlan(plan);
+        ctx.events?.emit({
+          type: "plan-changed",
+          workspaceId,
+          planId: plan.id,
+        });
+        return { success: true, id: plan.id, status: plan.status };
+      },
+    }),
+  } satisfies ToolSet;
+}
+
 /** Restricted, approval-free tool set for nested research subagents. */
 export function buildResearchSubagentTools(
   ctx: AgentToolContext,
@@ -345,5 +588,23 @@ export function buildResearchSubagentTools(
         }
       : {}),
     ...(options.allowNetwork !== false ? { fetch_url: tools.fetch_url } : {}),
+  } as ToolSet;
+}
+
+/** Read-only workspace tools plus plan persistence for plan mode. */
+export function buildPlanAgentTools(ctx: AgentToolContext): ToolSet {
+  const tools = buildAgentTools(ctx);
+  const planExecutionTools = buildPlanExecutionTools(ctx);
+  return {
+    ...(ctx.workspaceId
+      ? {
+          list_directory: tools.list_directory,
+          read_file: tools.read_file,
+          search_files: tools.search_files,
+          read_active_plan: planExecutionTools.read_active_plan,
+          ...buildPlanPersistenceTools(ctx),
+        }
+      : {}),
+    fetch_url: tools.fetch_url,
   } as ToolSet;
 }

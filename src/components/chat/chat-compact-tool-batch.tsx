@@ -26,6 +26,7 @@ export type CompactableToolPart = {
   type: string;
   toolCallId?: string;
   state: string;
+  preliminary?: boolean;
   input?: Record<string, unknown>;
   output?: unknown;
   errorText?: string;
@@ -46,6 +47,12 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   run_command: TerminalIcon,
   create_artifact: FileSearchIcon,
   update_task: ListTodoIcon,
+  write_plan: ListTodoIcon,
+  update_plan: ListTodoIcon,
+  read_active_plan: ListTodoIcon,
+  update_plan_progress: ListTodoIcon,
+  update_plan_status: ListTodoIcon,
+  ask_user_question: ListTodoIcon,
   fetch_url: GlobeIcon,
   load_skill: SparklesIcon,
   save_memory: SparklesIcon,
@@ -64,6 +71,12 @@ const TOOL_DONE_LABELS: Record<string, string> = {
   run_command: "اجرا شد",
   create_artifact: "آرتیفکت",
   update_task: "تسک",
+  write_plan: "پلن",
+  update_plan: "پلن",
+  read_active_plan: "خواندن پلن",
+  update_plan_progress: "پیشرفت پلن",
+  update_plan_status: "وضعیت پلن",
+  ask_user_question: "سوال",
   fetch_url: "صفحه",
   load_skill: "مهارت",
   save_memory: "حافظه",
@@ -76,6 +89,7 @@ export function getToolNameFromPartType(type: string): string {
 
 export function isPartLoading(part: CompactableToolPart): boolean {
   return (
+    part.preliminary === true ||
     part.state === "input-streaming" ||
     part.state === "input-available" ||
     part.state === "approval-requested" ||
@@ -94,6 +108,22 @@ export function isPartError(part: CompactableToolPart): boolean {
     (part.output as { success?: boolean }).success === false
   ) {
     return true;
+  }
+  if (
+    part.type === "tool-run_command" &&
+    typeof part.output === "object" &&
+    part.output !== null
+  ) {
+    const output = part.output as {
+      exitCode?: unknown;
+      signal?: unknown;
+      timedOut?: unknown;
+    };
+    return (
+      output.timedOut === true ||
+      typeof output.signal === "string" ||
+      (typeof output.exitCode === "number" && output.exitCode !== 0)
+    );
   }
   return false;
 }

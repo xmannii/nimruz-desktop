@@ -114,6 +114,8 @@ const desktopApi: DesktopAPI = {
         workspaceId,
         path
       ),
+    listWorkspaceChanges: (workspaceId) =>
+      ipcRenderer.invoke("storage:list-workspace-changes", workspaceId),
     searchWorkspaceFiles: (workspaceId, query, options) =>
       ipcRenderer.invoke(
         "storage:search-workspace-files",
@@ -161,6 +163,10 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("storage:list-tasks", workspaceId),
     saveTask: (task) => ipcRenderer.invoke("storage:save-task", task),
     deleteTask: (taskId) => ipcRenderer.invoke("storage:delete-task", taskId),
+    listPlans: (workspaceId) =>
+      ipcRenderer.invoke("storage:list-plans", workspaceId),
+    savePlan: (plan) => ipcRenderer.invoke("storage:save-plan", plan),
+    deletePlan: (planId) => ipcRenderer.invoke("storage:delete-plan", planId),
     listAgentRuns: (options) =>
       ipcRenderer.invoke("storage:list-agent-runs", options),
     getAgentRun: (runId) => ipcRenderer.invoke("storage:get-agent-run", runId),
