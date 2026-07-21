@@ -3,6 +3,7 @@
 import { NimruzLogo } from "@/components/logo";
 import { OnboardingAppearanceStep } from "@/components/onboarding-appearance-step";
 import { OnboardingPersonalizationStep } from "@/components/onboarding-personalization-step";
+import { OnboardingSpeechStep } from "@/components/onboarding-speech-step";
 import {
   Anthropic,
   DeepSeek,
@@ -25,6 +26,7 @@ import {
   FolderKanbanIcon,
   KeyRoundIcon,
   MessageSquareTextIcon,
+  Mic2Icon,
   PaletteIcon,
   SparklesIcon,
   UserRoundIcon,
@@ -42,6 +44,7 @@ type OnboardingStep = {
   showProviders?: boolean;
   showAppearance?: boolean;
   showPersonalization?: boolean;
+  showSpeech?: boolean;
 };
 
 const PROVIDER_SHOWCASE: Array<{
@@ -112,6 +115,14 @@ const STEPS: OnboardingStep[] = [
       "لوکال: Ollama یا LM Studio بدون ارسال داده به بیرون",
       "مدل پیش‌فرض را برای چت‌های جدید انتخاب کنید",
     ],
+  },
+  {
+    id: "local-speech",
+    icon: Mic2Icon,
+    title: "گفتار فارسی، روی دستگاه شما",
+    description:
+      "مدل شنوا را فقط اگر به گفتار به متن نیاز دارید دانلود کنید. بعد از آن، پیام‌های صوتی و فایل‌های صوتی شما به‌صورت محلی پردازش می‌شوند.",
+    showSpeech: true,
   },
   {
     id: "workspaces",
@@ -198,7 +209,9 @@ export function OnboardingDialog({
         dir="rtl"
         className={cn(
           "sm:max-w-lg",
-          (step.showAppearance || step.showPersonalization) && "sm:max-w-xl"
+          (step.showAppearance ||
+            step.showPersonalization ||
+            step.showSpeech) && "sm:max-w-xl"
         )}
         showCloseButton={false}
       >
@@ -248,6 +261,10 @@ export function OnboardingDialog({
         ) : step.showPersonalization ? (
           <div className="max-h-[min(28rem,55vh)] overflow-y-auto rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5">
             <OnboardingPersonalizationStep />
+          </div>
+        ) : step.showSpeech ? (
+          <div className="max-h-[min(25rem,52vh)] overflow-y-auto rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5">
+            <OnboardingSpeechStep />
           </div>
         ) : step.showProviders || step.bullets?.length ? (
           <div className="space-y-3 rounded-2xl border border-border/70 bg-muted/25 px-4 py-3.5">
@@ -307,7 +324,7 @@ export function OnboardingDialog({
             <Button type="button" onClick={handleNext}>
               {isLast
                 ? needsModelSetup
-                  ? "رفتن به تنظیم مدل"
+                  ? "تنظیم مدل هوش مصنوعی"
                   : "شروع کنید"
                 : "بعدی"}
             </Button>

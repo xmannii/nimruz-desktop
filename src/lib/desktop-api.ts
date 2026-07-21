@@ -19,6 +19,11 @@ import type { UpdateCheckResult } from "@/lib/updates";
 import type { Expert } from "@/lib/settings/experts";
 import type { SubagentModel } from "@/lib/settings/subagents";
 import type {
+  ShenavaModelKey,
+  ShenavaStatus,
+  ShenavaTranscription,
+} from "@/lib/speech/shenava";
+import type {
   AgentRun,
   AgentRunStep,
   ApprovalRecord,
@@ -107,6 +112,20 @@ export type DesktopAPI = {
     logout: () => Promise<void>;
     syncModels: () => Promise<CodexModelSyncResult>;
     onStatusChange: (callback: (status: CodexAccountStatus) => void) => () => void;
+  };
+  speech: {
+    shenava: {
+      getStatus: () => Promise<ShenavaStatus>;
+      download: (modelKey: ShenavaModelKey) => Promise<ShenavaStatus>;
+      cancelDownload: () => Promise<void>;
+      select: (modelKey: ShenavaModelKey) => Promise<ShenavaStatus>;
+      remove: (modelKey: ShenavaModelKey) => Promise<ShenavaStatus>;
+      reveal: (modelKey: ShenavaModelKey) => Promise<void>;
+      transcribe: (audioBuffer: ArrayBuffer) => Promise<ShenavaTranscription>;
+      onStatusChange: (
+        callback: (status: ShenavaStatus) => void
+      ) => () => void;
+    };
   };
   providers: {
     listCatalog: () => Promise<ModelCatalogSnapshot>;

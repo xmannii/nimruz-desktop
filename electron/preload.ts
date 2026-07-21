@@ -57,6 +57,36 @@ const desktopApi: DesktopAPI = {
       };
     },
   },
+  speech: {
+    shenava: {
+      getStatus: () => ipcRenderer.invoke("speech:shenava:status"),
+      download: (modelKey) =>
+        ipcRenderer.invoke("speech:shenava:download", modelKey),
+      cancelDownload: () =>
+        ipcRenderer.invoke("speech:shenava:cancel-download"),
+      select: (modelKey) =>
+        ipcRenderer.invoke("speech:shenava:select", modelKey),
+      remove: (modelKey) =>
+        ipcRenderer.invoke("speech:shenava:remove", modelKey),
+      reveal: (modelKey) =>
+        ipcRenderer.invoke("speech:shenava:reveal", modelKey),
+      transcribe: (audioBuffer) =>
+        ipcRenderer.invoke("speech:shenava:transcribe", audioBuffer),
+      onStatusChange: (callback) => {
+        const handler = (
+          _event: Electron.IpcRendererEvent,
+          status: import("@/lib/speech/shenava").ShenavaStatus
+        ) => callback(status);
+        ipcRenderer.on("speech:shenava:status-changed", handler);
+        return () => {
+          ipcRenderer.removeListener(
+            "speech:shenava:status-changed",
+            handler
+          );
+        };
+      },
+    },
+  },
   providers: {
     listCatalog: () => ipcRenderer.invoke("providers:list-catalog"),
     saveProvider: (provider) =>

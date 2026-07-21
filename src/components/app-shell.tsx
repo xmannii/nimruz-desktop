@@ -43,6 +43,8 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const isSettingsRoute = pathname.startsWith("/settings");
+  const isTranscriptionRoute = pathname.startsWith("/transcribe");
+  const isUtilityRoute = isSettingsRoute || isTranscriptionRoute;
 
   const {
     providers,
@@ -371,7 +373,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   }
 
   function handleSelectChat(id: string) {
-    if (id === activeChatId && !isSettingsRoute) return;
+    if (id === activeChatId && !isUtilityRoute) return;
     selectChat(id);
     const chat = getChatById(id);
     const workspaceId = chat?.workspaceId ?? null;
@@ -431,6 +433,10 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     });
   }
 
+  function handleOpenTranscription() {
+    void navigate({ to: "/transcribe" });
+  }
+
   function handleBackToChat() {
     if (activeChatId) {
       navigateToChat(activeChatId, activeChat?.workspaceId ?? null);
@@ -485,9 +491,10 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
             chats={chats}
             runningChatIds={runningChatIds}
             workspaces={workspaces}
-            activeChatId={isSettingsRoute ? null : activeChatId}
+            activeChatId={isUtilityRoute ? null : activeChatId}
             activeWorkspaceId={activeWorkspaceId}
             settingsActive={isSettingsRoute}
+            transcriptionActive={isTranscriptionRoute}
             memoryCount={memories.length}
             onNewChat={handleNewChat}
             onNewWorkspaceChat={handleNewWorkspaceChat}
@@ -502,6 +509,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
             onPinChat={setChatPinned}
             typingTitles={typingTitles}
             onOpenSettings={handleOpenSettings}
+            onOpenTranscription={handleOpenTranscription}
             onBackToChat={handleBackToChat}
           />
         </div>

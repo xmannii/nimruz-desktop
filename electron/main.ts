@@ -16,6 +16,7 @@ import {
 import { startServer } from "./server";
 import { SkillStore } from "./skills/store";
 import { AppDatabase } from "./storage/database";
+import { ShenavaService } from "./shenava/service";
 import { attachWindowStateEvents } from "./window-controls";
 import {
   APP_NAME,
@@ -53,7 +54,17 @@ let mainWindow: BrowserWindow | null = null;
 let localServer: http.Server | null = null;
 let database: AppDatabase | null = null;
 let codex: CodexService | null = null;
+let shenava: ShenavaService | null = null;
 let rendererUrl = "";
+
+function resolveShenavaWorkerPath() {
+  const bundled = path.join(__dirname, "shenava-worker.cjs");
+  const unpacked = bundled.replace(
+    `${path.sep}app.asar${path.sep}`,
+    `${path.sep}app.asar.unpacked${path.sep}`
+  );
+  return unpacked !== bundled && existsSync(unpacked) ? unpacked : bundled;
+}
 
 async function createWindow() {
   const appIcon = resolveAppIcon();
@@ -75,6 +86,35 @@ async function createWindow() {
       sandbox: true,
     },
   });
+
+  mainWindow.webContents.session.setPermissionRequestHandler(
+    (webContents, permission, callback, details) => {
+      const trusted =
+        webContents === mainWindow?.webContents &&
+        isTrustedRendererUrl(details.requestingUrl, rendererUrl);
+      const mediaTypes =
+        permission === "media" && "mediaTypes" in details
+          ? (details.mediaTypes ?? [])
+          : [];
+      const audioOnly =
+        permission === "media" &&
+        mediaTypes.includes("audio") &&
+        !mediaTypes.includes("video");
+      callback(Boolean(trusted && audioOnly));
+    }
+  );
+  mainWindow.webContents.session.setPermissionCheckHandler(
+    (webContents, permission, requestingOrigin, details) => {
+      const trusted =
+        webContents === mainWindow?.webContents &&
+        isTrustedRendererUrl(requestingOrigin, rendererUrl);
+      const audioOnly =
+        permission === "media" &&
+        "mediaType" in details &&
+        details.mediaType === "audio";
+      return Boolean(trusted && audioOnly);
+    }
+  );
 
   if (appIcon) {
     mainWindow.setIcon(appIcon);
@@ -132,6 +172,10 @@ app.whenReady().then(async () => {
     userDataPath,
     workspaceEvents
   );
+  shenava = new ShenavaService({
+    userDataPath,
+    workerScript: resolveShenavaWorkerPath(),
+  });
   database.ensureHomeWorkspace();
   workspaceFiles.ensureManagedRoot(HOME_WORKSPACE_ID);
   const sessionToken = randomBytes(32).toString("base64url");
@@ -143,6 +187,7 @@ app.whenReady().then(async () => {
     skills,
     workspaceFiles,
     workspaceEvents,
+    shenava,
     sessionToken,
     getMainWindow: () => mainWindow,
     getRendererUrl: () => rendererUrl,
@@ -204,12 +249,14 @@ app.whenReady().then(async () => {
 });
 
 app.on("before-quit", () => {
+  shenava?.cancelDownload();
   codex?.dispose();
   localServer?.close();
   database?.close();
   localServer = null;
   database = null;
   codex = null;
+  shenava = null;
 });
 
 app.on("window-all-closed", () => {

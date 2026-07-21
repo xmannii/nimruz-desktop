@@ -17,6 +17,7 @@ import {
   CircleHelpIcon,
   CpuIcon,
   InfoIcon,
+  Mic2Icon,
   PaletteIcon,
   SearchIcon,
   ScrollTextIcon,
@@ -25,86 +26,128 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export const SETTINGS_NAV: Array<{
+type SettingsPath =
+  | "/settings"
+  | "/settings/memories"
+  | "/settings/experts"
+  | "/settings/models"
+  | "/settings/speech"
+  | "/settings/research-agents"
+  | "/settings/skills"
+  | "/settings/appearance"
+  | "/settings/changelog"
+  | "/settings/help"
+  | "/settings/about";
+
+type SettingsNavItem = {
   to:
-    | "/settings"
-    | "/settings/memories"
-    | "/settings/experts"
-    | "/settings/models"
-    | "/settings/research-agents"
-    | "/settings/skills"
-    | "/settings/appearance"
-    | "/settings/changelog"
-    | "/settings/help"
-    | "/settings/about";
+    SettingsPath;
   label: string;
   icon: LucideIcon;
   match: (pathname: string) => boolean;
   badgeKey?: "memories";
+};
+
+export const SETTINGS_NAV_GROUPS: Array<{
+  id: string;
+  label: string;
+  items: SettingsNavItem[];
 }> = [
   {
-    to: "/settings",
+    id: "personal",
     label: "شخصی‌سازی",
-    icon: UserRoundIcon,
-    match: (pathname) =>
-      pathname === "/settings" || pathname === "/settings/",
+    items: [
+      {
+        to: "/settings",
+        label: "شخصی‌سازی",
+        icon: UserRoundIcon,
+        match: (pathname) =>
+          pathname === "/settings" || pathname === "/settings/",
+      },
+      {
+        to: "/settings/appearance",
+        label: "ظاهر",
+        icon: PaletteIcon,
+        match: (pathname) => pathname.startsWith("/settings/appearance"),
+      },
+    ],
   },
   {
-    to: "/settings/models",
-    label: "مدل‌ها",
-    icon: CpuIcon,
-    match: (pathname) => pathname.startsWith("/settings/models"),
+    id: "assistant",
+    label: "دستیار و مدل‌ها",
+    items: [
+      {
+        to: "/settings/models",
+        label: "مدل‌ها",
+        icon: CpuIcon,
+        match: (pathname) => pathname.startsWith("/settings/models"),
+      },
+      {
+        to: "/settings/speech",
+        label: "گفتار",
+        icon: Mic2Icon,
+        match: (pathname) => pathname.startsWith("/settings/speech"),
+      },
+      {
+        to: "/settings/research-agents",
+        label: "دستیارهای پژوهشی",
+        icon: SearchIcon,
+        match: (pathname) => pathname.startsWith("/settings/research-agents"),
+      },
+    ],
   },
   {
-    to: "/settings/research-agents",
-    label: "دستیارهای پژوهشی",
-    icon: SearchIcon,
-    match: (pathname) => pathname.startsWith("/settings/research-agents"),
+    id: "knowledge",
+    label: "دانش و ابزارها",
+    items: [
+      {
+        to: "/settings/memories",
+        label: "خاطره‌ها",
+        icon: BrainIcon,
+        match: (pathname) => pathname.startsWith("/settings/memories"),
+        badgeKey: "memories",
+      },
+      {
+        to: "/settings/skills",
+        label: "مهارت‌ها",
+        icon: SparklesIcon,
+        match: (pathname) => pathname.startsWith("/settings/skills"),
+      },
+      {
+        to: "/settings/experts",
+        label: "متخصص‌ها",
+        icon: BotIcon,
+        match: (pathname) => pathname.startsWith("/settings/experts"),
+      },
+    ],
   },
   {
-    to: "/settings/memories",
-    label: "خاطره‌ها",
-    icon: BrainIcon,
-    match: (pathname) => pathname.startsWith("/settings/memories"),
-    badgeKey: "memories",
-  },
-  {
-    to: "/settings/skills",
-    label: "مهارت‌ها",
-    icon: SparklesIcon,
-    match: (pathname) => pathname.startsWith("/settings/skills"),
-  },
-  {
-    to: "/settings/experts",
-    label: "متخصص‌ها",
-    icon: BotIcon,
-    match: (pathname) => pathname.startsWith("/settings/experts"),
-  },
-  {
-    to: "/settings/appearance",
-    label: "ظاهر",
-    icon: PaletteIcon,
-    match: (pathname) => pathname.startsWith("/settings/appearance"),
-  },
-  {
-    to: "/settings/changelog",
-    label: "تغییرات نسخه‌ها",
-    icon: ScrollTextIcon,
-    match: (pathname) => pathname.startsWith("/settings/changelog"),
-  },
-  {
-    to: "/settings/help",
-    label: "راهنما",
-    icon: CircleHelpIcon,
-    match: (pathname) => pathname.startsWith("/settings/help"),
-  },
-  {
-    to: "/settings/about",
-    label: "درباره",
-    icon: InfoIcon,
-    match: (pathname) => pathname.startsWith("/settings/about"),
+    id: "app",
+    label: "برنامه و راهنما",
+    items: [
+      {
+        to: "/settings/changelog",
+        label: "تغییرات نسخه‌ها",
+        icon: ScrollTextIcon,
+        match: (pathname) => pathname.startsWith("/settings/changelog"),
+      },
+      {
+        to: "/settings/help",
+        label: "راهنما",
+        icon: CircleHelpIcon,
+        match: (pathname) => pathname.startsWith("/settings/help"),
+      },
+      {
+        to: "/settings/about",
+        label: "درباره",
+        icon: InfoIcon,
+        match: (pathname) => pathname.startsWith("/settings/about"),
+      },
+    ],
   },
 ];
+
+export const SETTINGS_NAV = SETTINGS_NAV_GROUPS.flatMap((group) => group.items);
 
 export function SettingsSidebarNav({ memoryCount = 0 }: { memoryCount?: number }) {
   const pathname = useRouterState({
@@ -124,41 +167,52 @@ export function SettingsSidebarNav({ memoryCount = 0 }: { memoryCount?: number }
           تنظیمات
         </SidebarGroupLabel>
       ) : null}
-      <SidebarGroupContent className="min-h-0 flex-1 overflow-y-auto">
-        <SidebarMenu className="gap-0.5">
-          {SETTINGS_NAV.map((item) => {
-            const active = item.match(pathname);
-            const Icon = item.icon;
+      <SidebarGroupContent className="min-h-0 flex-1 overflow-y-auto pb-2">
+        {SETTINGS_NAV_GROUPS.map((group) => (
+          <SidebarGroup key={group.id} className="px-0 py-0.5">
+            {!isIconMode ? (
+              <SidebarGroupLabel className="h-7 px-2 text-[11px] font-medium tracking-wide text-muted-foreground">
+                {group.label}
+              </SidebarGroupLabel>
+            ) : null}
+            <SidebarMenu className="gap-0.5">
+              {group.items.map((item) => {
+                const active = item.match(pathname);
+                const Icon = item.icon;
 
-            return (
-              <SidebarMenuItem key={item.to}>
-                <SidebarMenuButton
-                  isActive={active}
-                  tooltip={{ children: item.label, side: "left" }}
-                  className={
-                    isIconMode
-                      ? undefined
-                      : "h-9 text-sidebar-foreground/80 hover:text-sidebar-foreground"
-                  }
-                  render={
-                    <Link to={item.to} onClick={closeMobileSidebar} />
-                  }
-                >
-                  <Icon />
-                  <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                  {item.badgeKey === "memories" && memoryCount > 0 ? (
-                    <Badge
-                      variant="secondary"
-                      className="ms-auto h-5 min-w-5 justify-center rounded-md px-1.5 text-[10px] font-normal leading-none group-data-[collapsible=icon]:hidden"
+                return (
+                  <SidebarMenuItem key={item.to}>
+                    <SidebarMenuButton
+                      isActive={active}
+                      tooltip={{ children: item.label, side: "left" }}
+                      className={
+                        isIconMode
+                          ? undefined
+                          : "h-9 text-sidebar-foreground/80 hover:text-sidebar-foreground"
+                      }
+                      render={
+                        <Link to={item.to} onClick={closeMobileSidebar} />
+                      }
                     >
-                      {memoryCount.toLocaleString("fa-IR")}
-                    </Badge>
-                  ) : null}
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            );
-          })}
-        </SidebarMenu>
+                      <Icon />
+                      <span className="min-w-0 flex-1 truncate">
+                        {item.label}
+                      </span>
+                      {item.badgeKey === "memories" && memoryCount > 0 ? (
+                        <Badge
+                          variant="secondary"
+                          className="ms-auto h-5 min-w-5 justify-center rounded-md px-1.5 text-[10px] font-normal leading-none group-data-[collapsible=icon]:hidden"
+                        >
+                          {memoryCount.toLocaleString("fa-IR")}
+                        </Badge>
+                      ) : null}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroup>
+        ))}
       </SidebarGroupContent>
     </SidebarGroup>
   );

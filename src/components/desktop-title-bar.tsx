@@ -1,6 +1,7 @@
 "use client";
 
 import { NimruzLogo } from "@/components/logo";
+import { ShenavaDownloadIndicator } from "@/components/speech/shenava-download-indicator";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { WindowState } from "@/lib/desktop-api";
@@ -239,6 +240,7 @@ export function DesktopTitleBar() {
         </div>
 
         <div className="titlebar-no-drag flex h-full items-center gap-1 pe-1.5">
+          <ShenavaDownloadIndicator />
           <ThemeTitleBarButton />
           <SidebarTrigger
             aria-label="باز و بسته کردن نوار کناری"

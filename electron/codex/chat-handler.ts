@@ -1,6 +1,10 @@
 import type { ChatRequestBody, ResolvedChatModel } from "../chat-handler";
 import type { CodexTokenUsage, CodexService } from "./service";
-import { buildSystemInstructions } from "@/lib/ai/system-prompt";
+import {
+  buildChatSystemInstructions,
+  buildSystemInstructions,
+} from "@/lib/ai/system-prompt";
+import { sanitizeAgentMode } from "@/lib/chat/agent-mode";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { sanitizeMemories } from "@/lib/settings/memories";
 import {
@@ -91,44 +95,47 @@ export async function handleCodexChatRequest(options: {
     resolved.model.supportsReasoningEffort
       ? normalizeCodexReasoningEffort(body.reasoningEffort)
       : undefined;
+  const isChatMode = sanitizeAgentMode(body.agentMode) === "chat";
   const selectedExpert = resolveSelectedExpert(
     sanitizeExperts(body.experts),
     body.selectedExpertSlug
   );
-  const instructions = [
-    buildSystemInstructions(
-      body.personalization,
-      sanitizeMemories(body.memories),
-      undefined,
-      undefined,
-      {
-        includeMemoryTools: false,
-        includeAgentTools: false,
-      }
-    ),
-    selectedExpert
-      ? [
-          "## Selected expert mode",
-          `Act as the selected expert "${selectedExpert.name}" for this conversation.`,
-          selectedExpert.description
-            ? `Description: ${selectedExpert.description}`
-            : "",
-          "Expert instructions:",
-          selectedExpert.instructions,
-        ]
-          .filter(Boolean)
-          .join("\n")
-      : "",
-    additionalInstructions?.trim() ?? "",
-    [
-      "## Codex mode in Nimruz",
-      "Respond as a conversational assistant inside Nimruz.",
-      "This managed runtime is intentionally isolated, read-only, non-interactive, and has no workspace, shell, browser, web, plugin, connector, or agent tools.",
-      "Do not claim to inspect files, run commands, modify the filesystem, create artifacts, update tasks, or invoke tools.",
-    ].join("\n"),
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  const instructions = isChatMode
+    ? buildChatSystemInstructions(body.personalization)
+    : [
+        buildSystemInstructions(
+          body.personalization,
+          sanitizeMemories(body.memories),
+          undefined,
+          undefined,
+          {
+            includeMemoryTools: false,
+            includeAgentTools: false,
+          }
+        ),
+        selectedExpert
+          ? [
+              "## Selected expert mode",
+              `Act as the selected expert "${selectedExpert.name}" for this conversation.`,
+              selectedExpert.description
+                ? `Description: ${selectedExpert.description}`
+                : "",
+              "Expert instructions:",
+              selectedExpert.instructions,
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : "",
+        additionalInstructions?.trim() ?? "",
+        [
+          "## Codex mode in Nimruz",
+          "Respond as a conversational assistant inside Nimruz.",
+          "This managed runtime is intentionally isolated, read-only, non-interactive, and has no workspace, shell, browser, web, plugin, connector, or agent tools.",
+          "Do not claim to inspect files, run commands, modify the filesystem, create artifacts, update tasks, or invoke tools.",
+        ].join("\n"),
+      ]
+        .filter(Boolean)
+        .join("\n\n");
 
   const stream = createUIMessageStream({
     originalMessages: body.messages,

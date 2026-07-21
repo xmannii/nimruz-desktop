@@ -136,3 +136,10 @@ export function buildPlanSystemInstructions(
     .filter(Boolean)
     .join("\n\n");
 }
+
+/** Minimal context for tool-free conversations. */
+export function buildChatSystemInstructions(personalization?: unknown) {
+  return [buildCurrentDateAppendix(), buildPersonalizationAppendix(personalization)]
+    .filter(Boolean)
+    .join("\n\n");
+}

@@ -22,7 +22,7 @@ Pre-built **Windows** and **macOS** installers are published on every [release](
 | **Windows** | `.exe` (NSIS) | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Linux** | AppImage | Build locally with `pnpm dist` |
 
-See [CHANGELOG.md](CHANGELOG.md) for **v1.1.0** release notes (Plan mode, safer tool execution, and direct workspace file editing).
+See [CHANGELOG.md](CHANGELOG.md) for **v1.2.0** release notes (local Persian speech-to-text, voice input, and a focused chat mode).
 
 ### macOS install
 

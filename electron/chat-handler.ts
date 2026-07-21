@@ -5,7 +5,14 @@ import {
   expertToolName,
 } from "@/lib/ai/tools";
 import { sanitizeMemories } from "@/lib/settings/memories";
-import { buildSystemInstructions } from "@/lib/ai/system-prompt";
+import {
+  buildChatSystemInstructions,
+  buildSystemInstructions,
+} from "@/lib/ai/system-prompt";
+import {
+  sanitizeAgentMode,
+  type AgentMode,
+} from "@/lib/chat/agent-mode";
 import type { SkillCatalogEntry } from "@/lib/skills/catalog";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
@@ -43,6 +50,7 @@ export type ChatRequestBody = {
   memories?: unknown;
   experts?: unknown;
   selectedExpertSlug?: string;
+  agentMode?: AgentMode;
 };
 
 export type ResolvedChatModel = {
@@ -213,6 +221,7 @@ export async function handleChatRequest(
     experts,
     selectedExpertSlug,
   } = body;
+  const isChatMode = sanitizeAgentMode(body.agentMode) === "chat";
 
   const resolvedResult = resolveModelOrError(resolveModel, providerId, model);
   if ("error" in resolvedResult) return resolvedResult.error;
@@ -236,7 +245,7 @@ export async function handleChatRequest(
       ? reasoningEffort
       : undefined;
 
-  const sanitizedExperts = sanitizeExperts(experts);
+  const sanitizedExperts = isChatMode ? [] : sanitizeExperts(experts);
   const enabledExperts = sanitizedExperts.filter((expert) => expert.enabled);
   const lastUserText =
     [...messages]
@@ -255,20 +264,23 @@ export async function handleChatRequest(
   const explicitExpert =
     resolveSelectedExpert(sanitizedExperts, selectedExpertSlug) ??
     findExplicitExpert(sanitizedExperts, lastUserText);
-  const skillsRuntime = options?.skillsRuntime;
+  const skillsRuntime = isChatMode ? undefined : options?.skillsRuntime;
   const skillsCatalog = skillsRuntime
     ? await skillsRuntime.getSkillsCatalog()
     : [];
   const hasSkills = skillsCatalog.length > 0;
-  const chatTools = buildChatTools({ skillsRuntime, includeSkills: hasSkills });
-  const availableTools: ToolSet | undefined = resolved.model.supportsTools
-    ? {
-        ...chatTools,
-        ...(enabledExperts.length > 0
-          ? createExpertTools(sanitizedExperts, languageModel)
-          : {}),
-      }
-    : undefined;
+  const chatTools = isChatMode
+    ? {}
+    : buildChatTools({ skillsRuntime, includeSkills: hasSkills });
+  const availableTools: ToolSet | undefined =
+    !isChatMode && resolved.model.supportsTools
+      ? {
+          ...chatTools,
+          ...(enabledExperts.length > 0
+            ? createExpertTools(sanitizedExperts, languageModel)
+            : {}),
+        }
+      : undefined;
   const routingAppendix = explicitExpert
     ? [
         "## Explicit specialist selection",
@@ -281,17 +293,19 @@ export async function handleChatRequest(
     abortSignal: options?.signal,
     ...(selectedReasoningEffort ? { reasoning: selectedReasoningEffort } : {}),
     instructions: [
-      buildSystemInstructions(
-        personalization,
-        sanitizeMemories(memories),
-        sanitizedExperts,
-        skillsCatalog,
-        {
-          includeMemoryTools: Boolean(availableTools),
-          includeAgentTools: Boolean(availableTools),
-        }
-      ),
-      routingAppendix,
+      isChatMode
+        ? buildChatSystemInstructions(personalization)
+        : buildSystemInstructions(
+            personalization,
+            sanitizeMemories(memories),
+            sanitizedExperts,
+            skillsCatalog,
+            {
+              includeMemoryTools: Boolean(availableTools),
+              includeAgentTools: Boolean(availableTools),
+            }
+          ),
+      isChatMode ? "" : routingAppendix,
     ]
       .filter(Boolean)
       .join("\n\n"),

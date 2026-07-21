@@ -101,6 +101,9 @@ importers:
       shadcn:
         specifier: ^4.13.0
         version: 4.13.0(typescript@5.9.3)
+      sherpa-onnx:
+        specifier: 1.13.4
+        version: 1.13.4
       shiki:
         specifier: ^4.3.1
         version: 4.3.1
@@ -4459,6 +4462,9 @@ packages:
   shell-quote@1.9.0:
     resolution: {integrity: sha512-Iov+JwFv/2HcTpcwNMKd8+IWNb8tboQJNQTkAY/LLVK7gGH9jy+LGkVqPxfekHl+yMmiqXszdGWXgkfml7hjqA==}
     engines: {node: '>= 0.4'}
+
+  sherpa-onnx@1.13.4:
+    resolution: {integrity: sha512-KnfQkA+LxbptrWX1gd7upGDyFkLslJVlOudUWPkwveHwYIXo5Qq97Tx02NF5aE0G3cgKpHBh2z+CR+s6ywZPPQ==}
 
   shiki@3.23.0:
     resolution: {integrity: sha512-55Dj73uq9ZXL5zyeRPzHQsK7Nbyt6Y10k5s7OjuFZGMhpp4r/rsLBH0o/0fstIzX1Lep9VxefWljK/SKCzygIA==}
@@ -9626,6 +9632,8 @@ snapshots:
   shebang-regex@3.0.0: {}
 
   shell-quote@1.9.0: {}
+
+  sherpa-onnx@1.13.4: {}
 
   shiki@3.23.0:
     dependencies:

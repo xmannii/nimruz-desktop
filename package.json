@@ -1,6 +1,6 @@
 {
   "name": "nimruz-desktop",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Nimruz — Persian desktop AI workspace agent with Codex",
   "license": "MIT",
   "engines": {
@@ -74,6 +74,7 @@
     "react-resizable-panels": "^4.12.2",
     "recharts": "3.8.0",
     "shadcn": "^4.13.0",
+    "sherpa-onnx": "1.13.4",
     "shiki": "^4.3.1",
     "sonner": "^2.0.7",
     "streamdown": "^2.5.0",
@@ -107,7 +108,9 @@
     "productName": "Nimruz",
     "asar": true,
     "asarUnpack": [
-      "node_modules/@openai/codex-*/vendor/**/*"
+      "node_modules/@openai/codex-*/vendor/**/*",
+      "node_modules/sherpa-onnx/**/*",
+      "dist-electron/shenava-worker.cjs"
     ],
     "extraResources": [
       {
@@ -132,6 +135,9 @@
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "assets/icon.png",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "نیمروز برای تبدیل گفتار فارسی به متن به میکروفن نیاز دارد."
+      },
       "target": [
         "dmg"
       ]

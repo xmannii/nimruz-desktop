@@ -26,7 +26,11 @@ import {
 import { ModelPicker } from "@/components/chat/model-picker";
 import { ReasoningEffortSlider } from "@/components/chat/reasoning-effort-slider";
 import { SelectedExpertBadge } from "@/components/chat/selected-expert-badge";
+import { ShenavaDownloadDialog } from "@/components/speech/shenava-download-dialog";
+import { ShenavaMicButton } from "@/components/speech/shenava-mic-button";
+import { ShenavaRecordingBar } from "@/components/speech/shenava-recording-bar";
 import { useAppShell } from "@/components/app-shell-context";
+import { useShenavaSpeechInput } from "@/hooks/use-shenava-speech-input";
 import { nextAgentMode, type AgentMode } from "@/lib/chat/agent-mode";
 import type { PlanRecord } from "@/lib/workspace";
 import type { ChatUIMessage } from "@/lib/chat/message";
@@ -142,12 +146,20 @@ export function ChatComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const collapsedWidthRef = useRef<number | null>(null);
+  const speechInput = useShenavaSpeechInput((transcript) => {
+    const current = text.trimEnd();
+    onTextChange(current ? `${current} ${transcript}` : transcript);
+    focusComposer();
+  });
 
   const isBusy = status === "submitted" || status === "streaming";
+  const isChatMode = agentMode === "chat";
   const modelConfig = resolveModel(model);
   const isCodexProvider = model.providerId === CODEX_PROVIDER_ID;
-  const canUseWorkspaceContext = Boolean(workspaceId) && !isCodexProvider;
+  const canUseWorkspaceContext =
+    !isChatMode && Boolean(workspaceId) && !isCodexProvider;
   const canAttach =
+    !isChatMode &&
     !isCodexProvider && (modelConfig?.supportsImages ?? false);
   const showReasoningEffort = modelConfig?.supportsReasoningEffort ?? false;
   const reasoningEffortLevels =
@@ -155,10 +167,11 @@ export function ChatComposer({
       ? CODEX_REASONING_EFFORT_LEVELS
       : undefined;
   const selectedExpert = useMemo(
-    () => resolveSelectedExpert(experts, selectedExpertSlug),
-    [experts, selectedExpertSlug]
+    () =>
+      isChatMode ? null : resolveSelectedExpert(experts, selectedExpertSlug),
+    [experts, isChatMode, selectedExpertSlug]
   );
-  const slashQuery = getExpertSlashQuery(text);
+  const slashQuery = isChatMode ? null : getExpertSlashQuery(text);
   const expertSuggestions = useMemo(
     () => filterExpertSuggestions(experts, slashQuery),
     [experts, slashQuery]
@@ -324,6 +337,8 @@ export function ChatComposer({
   const canImport = canUseWorkspaceContext;
   const attachmentTitle = isCodexProvider
     ? "پیوست و اشاره به فایل‌های فضای کاری در حالت Codex در دسترس نیست"
+    : isChatMode
+      ? "پیوست‌ها در حالت چت در دسترس نیستند"
     : canImport || canAttach
       ? "افزودن فایل"
       : "برای افزودن فایل یک فضای کاری لازم است";
@@ -352,6 +367,8 @@ export function ChatComposer({
 
   const canSend =
     !pendingQuestion &&
+    !speechInput.isRecording &&
+    !speechInput.isTranscribing &&
     (Boolean(text.trim()) ||
       (canUseWorkspaceContext && attachments.length > 0));
 
@@ -510,7 +527,7 @@ export function ChatComposer({
         />
       ) : null}
 
-      {centered && onWorkspaceChange ? (
+      {centered && onWorkspaceChange && !isChatMode ? (
         <div dir="rtl" className="mb-2 flex items-center justify-start gap-2">
           <span className="text-xs text-muted-foreground">پروژه:</span>
           <ComposerWorkspacePicker
@@ -522,7 +539,7 @@ export function ChatComposer({
         </div>
       ) : null}
 
-      {activePlan && onExecutePlan && !hasStartedActivePlan ? (
+      {!isChatMode && activePlan && onExecutePlan && !hasStartedActivePlan ? (
         <div
           dir="rtl"
           className="mb-2 flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-2.5 py-2"
@@ -598,6 +615,7 @@ export function ChatComposer({
             />
           ) : null
         }
+        speechInput={speechInput}
       />
 
       <DesktopComposer
@@ -645,6 +663,15 @@ export function ChatComposer({
             />
           ) : null
         }
+        speechInput={speechInput}
+      />
+
+      <ShenavaDownloadDialog
+        open={speechInput.downloadDialogOpen}
+        onOpenChange={speechInput.setDownloadDialogOpen}
+        status={speechInput.status}
+        onDownload={(modelKey) => void speechInput.downloadModel(modelKey)}
+        onCancelDownload={() => void speechInput.cancelDownload()}
       />
 
       {centered ? (
@@ -726,6 +753,7 @@ type ComposerSharedProps = {
   onStop: () => void;
   centered?: boolean;
   attachments?: ReactNode;
+  speechInput: ReturnType<typeof useShenavaSpeechInput>;
 };
 
 function MobileComposer({
@@ -752,103 +780,131 @@ function MobileComposer({
   onStop,
   centered = false,
   attachments = null,
+  speechInput,
 }: ComposerSharedProps) {
   return (
     <div
       dir="ltr"
       className="flex flex-col overflow-hidden rounded-2xl border border-input bg-input/30 shadow-sm ring-1 ring-foreground/5 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 md:hidden"
     >
-      {badgeProps ? (
-        <SelectedExpertBadge {...badgeProps} className="pb-0" />
-      ) : null}
-
-      {pendingQuestion && onAnswerQuestion ? (
-        <AskUserQuestionBar
-          key={pendingQuestion.toolCallId}
-          pending={pendingQuestion}
-          onAnswer={onAnswerQuestion}
-          disabled={isBusy}
-        />
-      ) : null}
-
-      {attachments}
-
-      <Textarea
-        {...textareaProps}
-        className={cn(
-          "max-h-40 resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-base leading-6 shadow-none ring-0 focus-visible:ring-0",
-          centered ? "min-h-28" : "min-h-12",
-          badgeProps && "pt-2"
-        )}
-      />
-
-      <div className="flex items-center gap-2 border-t border-border/50 px-2 py-2">
-        <div className="flex min-w-0 flex-1 items-center gap-1.5">
-          <InputGroupButton
-            size="icon-sm"
-            type="button"
-            variant="secondary"
-            className="size-10 shrink-0 rounded-full"
-            aria-label="افزودن پیوست"
-            title={
-              attachmentTitle ??
-              (canImport || canAttach
-                ? "افزودن فایل"
-                : "برای افزودن فایل یک فضای کاری لازم است")
-            }
-            disabled={(!canImport && !canAttach) || isBusy || isImporting}
-            onClick={onAttach}
-          >
-            <PlusIcon />
-          </InputGroupButton>
-
-          <AgentModePicker
-            value={agentMode}
-            onValueChange={onAgentModeChange}
-            disabled={isBusy || Boolean(pendingQuestion)}
-            compact
+      {speechInput.isRecording ? (
+        <div className="flex min-h-16 items-center gap-2 px-2 py-2">
+          <ShenavaRecordingBar
+            seconds={speechInput.recordingSeconds}
+            onCancel={speechInput.cancelRecording}
           />
-
-          <ModelPicker
-            value={model}
-            onValueChange={onModelChange}
-            disabled={isBusy}
-            compact
+          <ShenavaMicButton
+            mobile
+            isRecording
+            isTranscribing={false}
+            onClick={() => void speechInput.handleMicrophone()}
           />
+        </div>
+      ) : (
+        <>
+          {badgeProps ? (
+            <SelectedExpertBadge {...badgeProps} className="pb-0" />
+          ) : null}
 
-          {showReasoningEffort ? (
-            <ReasoningEffortSlider
-              value={reasoningEffort}
-              onValueChange={onReasoningEffortChange}
-              levels={reasoningEffortLevels}
+          {pendingQuestion && onAnswerQuestion ? (
+            <AskUserQuestionBar
+              key={pendingQuestion.toolCallId}
+              pending={pendingQuestion}
+              onAnswer={onAnswerQuestion}
               disabled={isBusy}
-              compact
             />
           ) : null}
-        </div>
 
-        {isBusy ? (
-          <Button
-            type="button"
-            size="icon"
-            className="size-10 shrink-0 rounded-full"
-            onClick={onStop}
-            aria-label="توقف"
-          >
-            <SquareIcon />
-          </Button>
-        ) : (
-          <Button
-            type="submit"
-            size="icon"
-            className="size-10 shrink-0 rounded-full"
-            disabled={!canSend}
-            aria-label="ارسال"
-          >
-            <ArrowUpIcon />
-          </Button>
-        )}
-      </div>
+          {attachments}
+
+          <Textarea
+            {...textareaProps}
+            className={cn(
+              "max-h-40 resize-none rounded-none border-0 bg-transparent px-3.5 py-3 text-base leading-6 shadow-none ring-0 focus-visible:ring-0",
+              centered ? "min-h-28" : "min-h-12",
+              badgeProps && "pt-2"
+            )}
+          />
+
+          <div className="flex items-center gap-2 border-t border-border/50 px-2 py-2">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5">
+              <InputGroupButton
+                size="icon-sm"
+                type="button"
+                variant="secondary"
+                className="size-10 shrink-0 rounded-full"
+                aria-label="افزودن پیوست"
+                title={
+                  attachmentTitle ??
+                  (canImport || canAttach
+                    ? "افزودن فایل"
+                    : "برای افزودن فایل یک فضای کاری لازم است")
+                }
+                disabled={(!canImport && !canAttach) || isBusy || isImporting}
+                onClick={onAttach}
+              >
+                <PlusIcon />
+              </InputGroupButton>
+
+              <AgentModePicker
+                value={agentMode}
+                onValueChange={onAgentModeChange}
+                disabled={isBusy || Boolean(pendingQuestion)}
+                compact
+              />
+
+              <ModelPicker
+                value={model}
+                onValueChange={onModelChange}
+                disabled={isBusy}
+                compact
+              />
+
+              {showReasoningEffort ? (
+                <ReasoningEffortSlider
+                  value={reasoningEffort}
+                  onValueChange={onReasoningEffortChange}
+                  levels={reasoningEffortLevels}
+                  disabled={isBusy}
+                  compact
+                />
+              ) : null}
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1.5">
+              <ShenavaMicButton
+                mobile
+                isRecording={false}
+                isTranscribing={speechInput.isTranscribing}
+                disabled={isBusy || Boolean(pendingQuestion)}
+                onClick={() => void speechInput.handleMicrophone()}
+              />
+
+              {isBusy ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  className="size-10 shrink-0 rounded-full"
+                  onClick={onStop}
+                  aria-label="توقف"
+                >
+                  <SquareIcon />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="icon"
+                  className="size-10 shrink-0 rounded-full"
+                  disabled={!canSend}
+                  aria-label="ارسال"
+                >
+                  <ArrowUpIcon />
+                </Button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -879,16 +935,18 @@ function DesktopComposer({
   onStop,
   centered = false,
   attachments = null,
+  speechInput,
 }: ComposerSharedProps & {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   isExpanded: boolean;
   centered?: boolean;
 }) {
   const showExpandedLayout =
-    isExpanded ||
-    Boolean(badgeProps) ||
-    Boolean(attachments) ||
-    Boolean(pendingQuestion);
+    !speechInput.isRecording &&
+    (isExpanded ||
+      Boolean(badgeProps) ||
+      Boolean(attachments) ||
+      Boolean(pendingQuestion));
 
   return (
     <div
@@ -900,138 +958,173 @@ function DesktopComposer({
           : "rounded-full border border-input bg-input/30 shadow-sm ring-1 ring-foreground/5 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50"
       )}
     >
-      {badgeProps ? <SelectedExpertBadge {...badgeProps} /> : null}
+      {speechInput.isRecording ? (
+        <div className="flex min-h-12 items-center gap-2 px-2 py-1">
+          <ShenavaRecordingBar
+            seconds={speechInput.recordingSeconds}
+            onCancel={speechInput.cancelRecording}
+          />
+          <ShenavaMicButton
+            isRecording
+            isTranscribing={false}
+            onClick={() => void speechInput.handleMicrophone()}
+          />
+        </div>
+      ) : (
+        <>
+          {badgeProps ? <SelectedExpertBadge {...badgeProps} /> : null}
 
-      {pendingQuestion && onAnswerQuestion ? (
-        <AskUserQuestionBar
-          key={pendingQuestion.toolCallId}
-          pending={pendingQuestion}
-          onAnswer={onAnswerQuestion}
-          disabled={isBusy}
-        />
-      ) : null}
-
-      {attachments}
-
-      <InputGroup
-        dir="ltr"
-        className={cn(
-          "rounded-none border-0 bg-transparent shadow-none ring-0",
-          showExpandedLayout ? "items-end" : "items-center"
-        )}
-      >
-        <InputGroupAddon
-          align={showExpandedLayout ? "block-end" : "inline-start"}
-          className={cn(
-            "gap-1.5",
-            showExpandedLayout
-              ? "order-last justify-between px-2 pb-2"
-              : "py-1 ps-2 pe-1"
-          )}
-        >
-          <div className="flex items-center gap-1.5">
-            <InputGroupButton
-              size="icon-sm"
-              type="button"
-              variant="secondary"
-              aria-label="افزودن پیوست"
-              title={
-                attachmentTitle ??
-                (canImport || canAttach
-                  ? "افزودن فایل"
-                  : "برای افزودن فایل یک فضای کاری لازم است")
-              }
-              disabled={(!canImport && !canAttach) || isBusy || isImporting}
-              onClick={onAttach}
-            >
-              <PlusIcon />
-            </InputGroupButton>
-
-            <AgentModePicker
-              value={agentMode}
-              onValueChange={onAgentModeChange}
-              disabled={isBusy || Boolean(pendingQuestion)}
-            />
-
-            <ModelPicker
-              value={model}
-              onValueChange={onModelChange}
+          {pendingQuestion && onAnswerQuestion ? (
+            <AskUserQuestionBar
+              key={pendingQuestion.toolCallId}
+              pending={pendingQuestion}
+              onAnswer={onAnswerQuestion}
               disabled={isBusy}
             />
-
-            {showReasoningEffort ? (
-              <ReasoningEffortSlider
-                value={reasoningEffort}
-                onValueChange={onReasoningEffortChange}
-                levels={reasoningEffortLevels}
-                disabled={isBusy}
-              />
-            ) : null}
-          </div>
-
-          {showExpandedLayout ? (
-            isBusy ? (
-              <InputGroupButton
-                size="icon-sm"
-                type="button"
-                variant="default"
-                onClick={onStop}
-                aria-label="توقف"
-              >
-                <SquareIcon />
-              </InputGroupButton>
-            ) : (
-              <InputGroupButton
-                size="icon-sm"
-                type="submit"
-                variant="default"
-                disabled={!canSend}
-                aria-label="ارسال"
-              >
-                <ArrowUpIcon />
-              </InputGroupButton>
-            )
           ) : null}
-        </InputGroupAddon>
 
-        <InputGroupTextarea
-          ref={textareaRef}
-          {...textareaProps}
-          className={cn(
-            "max-h-48 overflow-y-auto text-base leading-7",
-            showExpandedLayout ? "px-3 py-3" : "py-2.5",
-            centered ? "min-h-28" : "min-h-11",
-            badgeProps && "pt-1"
-          )}
-        />
+          {attachments}
 
-        <InputGroupAddon
-          align="inline-end"
-          className={cn("py-1 ps-1 pe-2", showExpandedLayout && "hidden")}
-        >
-          {isBusy ? (
-            <InputGroupButton
-              size="icon-sm"
-              type="button"
-              variant="default"
-              onClick={onStop}
-              aria-label="توقف"
+          <InputGroup
+            dir="ltr"
+            className={cn(
+              "rounded-none border-0 bg-transparent shadow-none ring-0",
+              showExpandedLayout ? "items-end" : "items-center"
+            )}
+          >
+            <InputGroupAddon
+              align={showExpandedLayout ? "block-end" : "inline-start"}
+              className={cn(
+                "gap-1.5",
+                showExpandedLayout
+                  ? "order-last justify-between px-2 pb-2"
+                  : "py-1 ps-2 pe-1"
+              )}
             >
-              <SquareIcon />
-            </InputGroupButton>
-          ) : (
-            <InputGroupButton
-              size="icon-sm"
-              type="submit"
-              variant="default"
-              disabled={!canSend}
-              aria-label="ارسال"
+              <div className="flex items-center gap-1.5">
+                <InputGroupButton
+                  size="icon-sm"
+                  type="button"
+                  variant="secondary"
+                  aria-label="افزودن پیوست"
+                  title={
+                    attachmentTitle ??
+                    (canImport || canAttach
+                      ? "افزودن فایل"
+                      : "برای افزودن فایل یک فضای کاری لازم است")
+                  }
+                  disabled={
+                    (!canImport && !canAttach) || isBusy || isImporting
+                  }
+                  onClick={onAttach}
+                >
+                  <PlusIcon />
+                </InputGroupButton>
+
+                <AgentModePicker
+                  value={agentMode}
+                  onValueChange={onAgentModeChange}
+                  disabled={isBusy || Boolean(pendingQuestion)}
+                />
+
+                <ModelPicker
+                  value={model}
+                  onValueChange={onModelChange}
+                  disabled={isBusy}
+                />
+
+                {showReasoningEffort ? (
+                  <ReasoningEffortSlider
+                    value={reasoningEffort}
+                    onValueChange={onReasoningEffortChange}
+                    levels={reasoningEffortLevels}
+                    disabled={isBusy}
+                  />
+                ) : null}
+              </div>
+
+              {showExpandedLayout ? (
+                <div className="flex items-center gap-1.5">
+                  <ShenavaMicButton
+                    isRecording={false}
+                    isTranscribing={speechInput.isTranscribing}
+                    disabled={isBusy || Boolean(pendingQuestion)}
+                    onClick={() => void speechInput.handleMicrophone()}
+                  />
+                  {isBusy ? (
+                    <InputGroupButton
+                      size="icon-sm"
+                      type="button"
+                      variant="default"
+                      onClick={onStop}
+                      aria-label="توقف"
+                    >
+                      <SquareIcon />
+                    </InputGroupButton>
+                  ) : (
+                    <InputGroupButton
+                      size="icon-sm"
+                      type="submit"
+                      variant="default"
+                      disabled={!canSend}
+                      aria-label="ارسال"
+                    >
+                      <ArrowUpIcon />
+                    </InputGroupButton>
+                  )}
+                </div>
+              ) : null}
+            </InputGroupAddon>
+
+            <InputGroupTextarea
+              ref={textareaRef}
+              {...textareaProps}
+              className={cn(
+                "max-h-48 overflow-y-auto text-base leading-7",
+                showExpandedLayout ? "px-3 py-3" : "py-2.5",
+                centered ? "min-h-28" : "min-h-11",
+                badgeProps && "pt-1"
+              )}
+            />
+
+            <InputGroupAddon
+              align="inline-end"
+              className={cn(
+                "py-1 ps-1 pe-2",
+                showExpandedLayout && "hidden"
+              )}
             >
-              <ArrowUpIcon />
-            </InputGroupButton>
-          )}
-        </InputGroupAddon>
-      </InputGroup>
+              <ShenavaMicButton
+                isRecording={false}
+                isTranscribing={speechInput.isTranscribing}
+                disabled={isBusy || Boolean(pendingQuestion)}
+                onClick={() => void speechInput.handleMicrophone()}
+              />
+              {isBusy ? (
+                <InputGroupButton
+                  size="icon-sm"
+                  type="button"
+                  variant="default"
+                  onClick={onStop}
+                  aria-label="توقف"
+                >
+                  <SquareIcon />
+                </InputGroupButton>
+              ) : (
+                <InputGroupButton
+                  size="icon-sm"
+                  type="submit"
+                  variant="default"
+                  disabled={!canSend}
+                  aria-label="ارسال"
+                >
+                  <ArrowUpIcon />
+                </InputGroupButton>
+              )}
+            </InputGroupAddon>
+          </InputGroup>
+        </>
+      )}
     </div>
   );
 }
