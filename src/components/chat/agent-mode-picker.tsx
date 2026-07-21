@@ -10,7 +10,13 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { BotIcon, CheckIcon, ChevronDownIcon, ListTodoIcon } from "lucide-react";
+import {
+  BotIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ListTodoIcon,
+  MessageCircleIcon,
+} from "lucide-react";
 import { useState, type ComponentType } from "react";
 
 type AgentModePickerProps = {
@@ -34,6 +40,11 @@ const MODE_OPTIONS: {
     id: "plan",
     description: "سوال بپرس، تحقیق کن، پلن بساز",
     icon: ListTodoIcon,
+  },
+  {
+    id: "chat",
+    description: "فقط گفتگو، بدون ابزار یا زمینهٔ فضای کاری",
+    icon: MessageCircleIcon,
   },
 ];
 

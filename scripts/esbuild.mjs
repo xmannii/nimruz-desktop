@@ -17,7 +17,7 @@ const shared = {
   sourcemap: true,
   alias,
   // Electron and Node built-ins are provided at runtime.
-  external: ["electron", "node:sqlite"],
+  external: ["electron", "node:sqlite", "sherpa-onnx"],
   loader: {
     ".md": "text",
     ".ttf": "file",
@@ -44,17 +44,33 @@ const preloadConfig = {
   format: "cjs",
 };
 
+const shenavaWorkerConfig = {
+  ...shared,
+  entryPoints: [path.join(root, "electron/shenava/worker.ts")],
+  outfile: path.join(root, "dist-electron/shenava-worker.cjs"),
+  format: "cjs",
+};
+
 async function run() {
   if (watch) {
-    const [mainCtx, preloadCtx] = await Promise.all([
+    const [mainCtx, preloadCtx, shenavaWorkerCtx] = await Promise.all([
       context(mainConfig),
       context(preloadConfig),
+      context(shenavaWorkerConfig),
     ]);
-    await Promise.all([mainCtx.watch(), preloadCtx.watch()]);
-    console.log("[esbuild] watching electron main + preload...");
+    await Promise.all([
+      mainCtx.watch(),
+      preloadCtx.watch(),
+      shenavaWorkerCtx.watch(),
+    ]);
+    console.log("[esbuild] watching electron main + preload + Shenava worker...");
   } else {
-    await Promise.all([build(mainConfig), build(preloadConfig)]);
-    console.log("[esbuild] built electron main + preload.");
+    await Promise.all([
+      build(mainConfig),
+      build(preloadConfig),
+      build(shenavaWorkerConfig),
+    ]);
+    console.log("[esbuild] built electron main + preload + Shenava worker.");
   }
 }
 

@@ -15,6 +15,7 @@ import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { shouldPreferResearchSubagent } from "@/lib/ai/research-intent";
 import {
+  buildChatSystemInstructions,
   buildPlanSystemInstructions,
   buildSystemInstructions,
   getAgentModePrompt,
@@ -151,6 +152,7 @@ export async function handleAgentChatRequest(
   } = body;
   const agentMode = sanitizeAgentMode(body.agentMode ?? DEFAULT_AGENT_MODE);
   const isPlanMode = agentMode === "plan";
+  const isChatMode = agentMode === "chat";
 
   const resolvedResult = resolveModelOrError(
     deps.resolveModel,
@@ -201,7 +203,7 @@ export async function handleAgentChatRequest(
     );
   }
 
-  if (workspace) {
+  if (workspace && !isChatMode) {
     deps.files.ensureManagedRoot(workspace.id);
   }
 
@@ -286,7 +288,7 @@ export async function handleAgentChatRequest(
     const codexAbortSignal = abortSignal
       ? AbortSignal.any([abortSignal, wallAbortController.signal])
       : wallAbortController.signal;
-    const workspaceContext = workspace
+    const workspaceContext = !isChatMode && workspace
       ? [
           "## Active Nimruz workspace context",
           `Workspace: ${workspace.title}`,
@@ -354,7 +356,7 @@ export async function handleAgentChatRequest(
     });
   }
 
-  const sanitizedExperts = sanitizeExperts(experts);
+  const sanitizedExperts = isChatMode ? [] : sanitizeExperts(experts);
   const enabledExperts = sanitizedExperts.filter((expert) => expert.enabled);
   const lastUserText =
     [...messages]
@@ -375,14 +377,16 @@ export async function handleAgentChatRequest(
     resolveSelectedExpert(sanitizedExperts, selectedExpertSlug) ??
     findExplicitExpert(sanitizedExperts, lastUserText);
 
-  const skillsCatalog = await deps.getSkillsCatalog();
+  const skillsCatalog = isChatMode ? [] : await deps.getSkillsCatalog();
   const hasSkills = skillsCatalog.length > 0;
-  const baseTools = buildChatTools({
-    skillsRuntime: {
-      loadSkillContent: deps.loadSkillContent,
-    },
-    includeSkills: hasSkills,
-  });
+  const baseTools = isChatMode
+    ? {}
+    : buildChatTools({
+        skillsRuntime: {
+          loadSkillContent: deps.loadSkillContent,
+        },
+        includeSkills: hasSkills,
+      });
 
   const toolContext = {
     workspaceId: workspace?.id ?? null,
@@ -394,83 +398,88 @@ export async function handleAgentChatRequest(
     abortSignal,
   };
 
-  const workspaceTools = isPlanMode
-    ? buildPlanAgentTools(toolContext)
-    : workspace
-      ? {
-          ...buildAgentTools({
-            ...toolContext,
-            workspaceId: workspace.id,
-          }),
-          ...buildPlanExecutionTools({
-            ...toolContext,
-            workspaceId: workspace.id,
-          }),
-        }
-      : {};
+  const workspaceTools = isChatMode
+    ? {}
+    : isPlanMode
+      ? buildPlanAgentTools(toolContext)
+      : workspace
+        ? {
+            ...buildAgentTools({
+              ...toolContext,
+              workspaceId: workspace.id,
+            }),
+            ...buildPlanExecutionTools({
+              ...toolContext,
+              workspaceId: workspace.id,
+            }),
+          }
+        : {};
 
-  const researchTools = buildResearchSubagentTools(
-    {
-      workspaceId: workspace?.id ?? null,
-      chatId,
-      runId,
-      database: deps.database,
-      files: deps.files,
-      events: deps.events,
-      abortSignal,
-    },
-    {
-      // Nested ToolLoopAgents cannot pause for approvals. Expose only
-      // capabilities the parent workspace policy already auto-approves.
-      allowWorkspaceRead:
-        evaluateToolPolicy({
-          toolName: "read_file",
-          agentMode,
-          trust: workspace?.trust,
-          slices: AGENTIC_WORKSPACE_FEATURE.slices,
-        }).type === "approved",
-      allowNetwork:
-        evaluateToolPolicy({
-          toolName: "fetch_url",
-          agentMode,
-          trust: workspace?.trust,
-          slices: AGENTIC_WORKSPACE_FEATURE.slices,
-        }).type === "approved",
-    }
-  );
-  const spawnSubagentTool = createSpawnSubagentTool({
-    models: sanitizeSubagentModels(subagents),
-    resolveModel: deps.resolveModel,
-    tools: researchTools,
-  });
+  const researchTools = isChatMode
+    ? {}
+    : buildResearchSubagentTools(
+        {
+          workspaceId: workspace?.id ?? null,
+          chatId,
+          runId,
+          database: deps.database,
+          files: deps.files,
+          events: deps.events,
+          abortSignal,
+        },
+        {
+          // Nested ToolLoopAgents cannot pause for approvals. Expose only
+          // capabilities the parent workspace policy already auto-approves.
+          allowWorkspaceRead:
+            evaluateToolPolicy({
+              toolName: "read_file",
+              agentMode,
+              trust: workspace?.trust,
+              slices: AGENTIC_WORKSPACE_FEATURE.slices,
+            }).type === "approved",
+          allowNetwork:
+            evaluateToolPolicy({
+              toolName: "fetch_url",
+              agentMode,
+              trust: workspace?.trust,
+              slices: AGENTIC_WORKSPACE_FEATURE.slices,
+            }).type === "approved",
+        }
+      );
+  const spawnSubagentTool = isChatMode
+    ? undefined
+    : createSpawnSubagentTool({
+        models: sanitizeSubagentModels(subagents),
+        resolveModel: deps.resolveModel,
+        tools: researchTools,
+      });
   const preferResearchSubagent =
     Boolean(spawnSubagentTool) &&
     shouldPreferResearchSubagent(lastUserText);
 
-  const tools: ToolSet | undefined = resolved.model.supportsTools
-    ? ({
-        ...(isPlanMode ? planClientTools : baseTools),
-        ...workspaceTools,
-        ...(!isPlanMode && enabledExperts.length > 0
-          ? createExpertTools(sanitizedExperts, languageModel)
-          : {}),
-        ...(spawnSubagentTool
-          ? { spawn_subagent: spawnSubagentTool }
-          : {}),
-      } as ToolSet)
-    : undefined;
+  const tools: ToolSet | undefined =
+    !isChatMode && resolved.model.supportsTools
+      ? ({
+          ...(isPlanMode ? planClientTools : baseTools),
+          ...workspaceTools,
+          ...(!isPlanMode && enabledExperts.length > 0
+            ? createExpertTools(sanitizedExperts, languageModel)
+            : {}),
+          ...(spawnSubagentTool
+            ? { spawn_subagent: spawnSubagentTool }
+            : {}),
+        } as ToolSet)
+      : undefined;
 
   const selectedReasoningEffort =
     resolved.model.supportsReasoningEffort && isReasoningEffort(reasoningEffort)
       ? reasoningEffort
       : undefined;
 
-  const workspaceRoots = workspace
-    ? deps.files.listRoots(workspace.id)
-    : [];
-  const primaryRootPath = workspace
-    ? deps.files.primaryRootPath(workspace.id)
-    : null;
+  const workspaceRoots =
+    !isChatMode && workspace ? deps.files.listRoots(workspace.id) : [];
+  const primaryRootPath =
+    !isChatMode && workspace ? deps.files.primaryRootPath(workspace.id) : null;
   const rootsListing =
     workspaceRoots.length > 0
       ? workspaceRoots
@@ -486,8 +495,9 @@ export async function handleAgentChatRequest(
           .join("\n")
       : "";
 
-  const workspaceAppendix = workspace
-    ? [
+  const workspaceAppendix =
+    !isChatMode && workspace
+      ? [
         isPlanMode ? "" : getWorkspaceToolsPrompt(),
         workspace.description?.trim()
           ? `Workspace description: ${workspace.description.trim()}`
@@ -509,43 +519,46 @@ export async function handleAgentChatRequest(
         isPlanMode
           ? "Plan persistence requires this active workspace. Call `write_plan` when the plan is ready."
           : "",
-      ]
-        .filter(Boolean)
-        .join("\n\n")
-    : isPlanMode
-      ? "No workspace is attached. You may still clarify and draft a plan in chat, but `write_plan` will fail until the user attaches a workspace."
-      : "";
-  const routingAppendix = !isPlanMode && explicitExpert
-    ? [
+        ]
+          .filter(Boolean)
+          .join("\n\n")
+      : isPlanMode
+        ? "No workspace is attached. You may still clarify and draft a plan in chat, but `write_plan` will fail until the user attaches a workspace."
+        : "";
+  const routingAppendix =
+    !isChatMode && !isPlanMode && explicitExpert
+      ? [
         "## Explicit specialist selection",
         `The user explicitly selected \`${expertToolName(explicitExpert)}\`. Call that tool before answering, using a self-contained brief.`,
-      ].join("\n")
-    : preferResearchSubagent
-      ? [
+        ].join("\n")
+      : preferResearchSubagent
+        ? [
           "## Research-first routing",
           isPlanMode
             ? "This request requires broad project/site investigation. Call `spawn_subagent` before direct workspace exploration, then use its summary to write the plan with `write_plan`."
             : "This request requires broad project/site investigation. Call `spawn_subagent` before direct workspace exploration, then use its summary to guide any focused verification and deliverable.",
-        ].join("\n")
-      : "";
+          ].join("\n")
+        : "";
 
   const instructions = [
-    isPlanMode
-      ? buildPlanSystemInstructions(
-          personalization,
-          sanitizeMemories(memories),
-          { includeSubagentTools: Boolean(tools && spawnSubagentTool) }
-        )
-      : [
-          buildSystemInstructions(
+    isChatMode
+      ? buildChatSystemInstructions(personalization)
+      : isPlanMode
+        ? buildPlanSystemInstructions(
             personalization,
             sanitizeMemories(memories),
-            sanitizedExperts,
-            skillsCatalog,
             { includeSubagentTools: Boolean(tools && spawnSubagentTool) }
-          ),
-          getAgentModePrompt(),
-        ].join("\n\n"),
+          )
+        : [
+            buildSystemInstructions(
+              personalization,
+              sanitizeMemories(memories),
+              sanitizedExperts,
+              skillsCatalog,
+              { includeSubagentTools: Boolean(tools && spawnSubagentTool) }
+            ),
+            getAgentModePrompt(),
+          ].join("\n\n"),
     workspaceAppendix,
     routingAppendix,
   ]

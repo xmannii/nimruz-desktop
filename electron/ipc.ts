@@ -1,4 +1,4 @@
-import { dialog, ipcMain, type IpcMainInvokeEvent } from "electron";
+import { dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
@@ -32,6 +32,8 @@ import { CredentialService } from "./credentials";
 import type { CodexService } from "./codex/service";
 import { AppDatabase } from "./storage/database";
 import { SkillStore } from "./skills/store";
+import type { ShenavaService } from "./shenava/service";
+import type { ShenavaModelKey } from "@/lib/speech/shenava";
 import { registerWindowControlHandlers } from "./window-controls";
 import { isTrustedRendererUrl } from "./renderer-security";
 import {
@@ -95,6 +97,7 @@ export function registerIpcHandlers(options: {
   skills: SkillStore;
   workspaceFiles: WorkspaceFilesStore;
   workspaceEvents: WorkspaceEventBus;
+  shenava: ShenavaService;
   sessionToken: string;
   getMainWindow: () => import("electron").BrowserWindow | null;
   getRendererUrl: () => string;
@@ -106,6 +109,7 @@ export function registerIpcHandlers(options: {
     skills,
     workspaceFiles,
     workspaceEvents,
+    shenava,
     sessionToken,
     getMainWindow,
     getRendererUrl,
@@ -122,6 +126,54 @@ export function registerIpcHandlers(options: {
   }
 
   handle("auth:get-session-token", () => sessionToken);
+
+  handle("speech:shenava:status", () => shenava.getStatus());
+  handle("speech:shenava:download", (modelKey: ShenavaModelKey) =>
+    shenava.download(modelKey)
+  );
+  handle("speech:shenava:cancel-download", () => {
+    shenava.cancelDownload();
+  });
+  handle("speech:shenava:select", (modelKey: ShenavaModelKey) =>
+    shenava.select(modelKey)
+  );
+  handle("speech:shenava:remove", (modelKey: ShenavaModelKey) =>
+    shenava.remove(modelKey)
+  );
+  handle("speech:shenava:reveal", async (modelKey: ShenavaModelKey) => {
+    const status = await shenava.getStatus();
+    if (!status.models[modelKey]?.installed) {
+      throw new Error("Shenava model is not installed.");
+    }
+    shell.showItemInFolder(
+      path.join(shenava.getModelDirectory(modelKey), "model.onnx")
+    );
+  });
+  handle("speech:shenava:transcribe", (audioBuffer: unknown) => {
+    if (
+      !(audioBuffer instanceof ArrayBuffer) ||
+      audioBuffer.byteLength === 0 ||
+      audioBuffer.byteLength % Float32Array.BYTES_PER_ELEMENT !== 0 ||
+      audioBuffer.byteLength >
+        180 * 16_000 * Float32Array.BYTES_PER_ELEMENT
+    ) {
+      throw new Error("Invalid Shenava audio payload.");
+    }
+    const samples = new Float32Array(audioBuffer);
+    for (const sample of samples) {
+      if (!Number.isFinite(sample) || sample < -1 || sample > 1) {
+        throw new Error("Invalid Shenava audio sample.");
+      }
+    }
+    return shenava.transcribe(samples);
+  });
+
+  shenava.onStatus((status) => {
+    const window = getMainWindow();
+    if (window && !window.isDestroyed()) {
+      window.webContents.send("speech:shenava:status-changed", status);
+    }
+  });
 
   handle("credentials:status", (providerId?: string) =>
     credentials.getStatus(providerId ?? OPENROUTER_PROVIDER_ID)

@@ -11,9 +11,11 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
+import { Route as AppTranscribeRouteImport } from './routes/_app.transcribe'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
 import { Route as AppWorkspaceWorkspaceIdRouteImport } from './routes/_app.workspace.$workspaceId'
+import { Route as AppSettingsSpeechRouteImport } from './routes/_app.settings.speech'
 import { Route as AppSettingsSkillsRouteImport } from './routes/_app.settings.skills'
 import { Route as AppSettingsResearchAgentsRouteImport } from './routes/_app.settings.research-agents'
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
@@ -36,6 +38,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppTranscribeRoute = AppTranscribeRouteImport.update({
+  id: '/transcribe',
+  path: '/transcribe',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -50,6 +57,11 @@ const AppWorkspaceWorkspaceIdRoute = AppWorkspaceWorkspaceIdRouteImport.update({
   id: '/workspace/$workspaceId',
   path: '/workspace/$workspaceId',
   getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsSpeechRoute = AppSettingsSpeechRouteImport.update({
+  id: '/speech',
+  path: '/speech',
+  getParentRoute: () => AppSettingsRoute,
 } as any)
 const AppSettingsSkillsRoute = AppSettingsSkillsRouteImport.update({
   id: '/skills',
@@ -118,6 +130,7 @@ const AppWorkspaceWorkspaceIdChatChatIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/settings': typeof AppSettingsRouteWithChildren
+  '/transcribe': typeof AppTranscribeRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/about': typeof AppSettingsAboutRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
@@ -128,12 +141,14 @@ export interface FileRoutesByFullPath {
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
+  '/settings/speech': typeof AppSettingsSpeechRoute
   '/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
   '/settings/': typeof AppSettingsIndexRoute
   '/workspace/$workspaceId/': typeof AppWorkspaceWorkspaceIdIndexRoute
   '/workspace/$workspaceId/chat/$chatId': typeof AppWorkspaceWorkspaceIdChatChatIdRoute
 }
 export interface FileRoutesByTo {
+  '/transcribe': typeof AppTranscribeRoute
   '/': typeof AppIndexRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/about': typeof AppSettingsAboutRoute
@@ -145,6 +160,7 @@ export interface FileRoutesByTo {
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
+  '/settings/speech': typeof AppSettingsSpeechRoute
   '/settings': typeof AppSettingsIndexRoute
   '/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdIndexRoute
   '/workspace/$workspaceId/chat/$chatId': typeof AppWorkspaceWorkspaceIdChatChatIdRoute
@@ -153,6 +169,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/_app/settings': typeof AppSettingsRouteWithChildren
+  '/_app/transcribe': typeof AppTranscribeRoute
   '/_app/': typeof AppIndexRoute
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
   '/_app/settings/about': typeof AppSettingsAboutRoute
@@ -164,6 +181,7 @@ export interface FileRoutesById {
   '/_app/settings/models': typeof AppSettingsModelsRoute
   '/_app/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/_app/settings/skills': typeof AppSettingsSkillsRoute
+  '/_app/settings/speech': typeof AppSettingsSpeechRoute
   '/_app/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/workspace/$workspaceId/': typeof AppWorkspaceWorkspaceIdIndexRoute
@@ -174,6 +192,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/settings'
+    | '/transcribe'
     | '/chat/$chatId'
     | '/settings/about'
     | '/settings/appearance'
@@ -184,12 +203,14 @@ export interface FileRouteTypes {
     | '/settings/models'
     | '/settings/research-agents'
     | '/settings/skills'
+    | '/settings/speech'
     | '/workspace/$workspaceId'
     | '/settings/'
     | '/workspace/$workspaceId/'
     | '/workspace/$workspaceId/chat/$chatId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/transcribe'
     | '/'
     | '/chat/$chatId'
     | '/settings/about'
@@ -201,6 +222,7 @@ export interface FileRouteTypes {
     | '/settings/models'
     | '/settings/research-agents'
     | '/settings/skills'
+    | '/settings/speech'
     | '/settings'
     | '/workspace/$workspaceId'
     | '/workspace/$workspaceId/chat/$chatId'
@@ -208,6 +230,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/_app'
     | '/_app/settings'
+    | '/_app/transcribe'
     | '/_app/'
     | '/_app/chat/$chatId'
     | '/_app/settings/about'
@@ -219,6 +242,7 @@ export interface FileRouteTypes {
     | '/_app/settings/models'
     | '/_app/settings/research-agents'
     | '/_app/settings/skills'
+    | '/_app/settings/speech'
     | '/_app/workspace/$workspaceId'
     | '/_app/settings/'
     | '/_app/workspace/$workspaceId/'
@@ -245,6 +269,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/transcribe': {
+      id: '/_app/transcribe'
+      path: '/transcribe'
+      fullPath: '/transcribe'
+      preLoaderRoute: typeof AppTranscribeRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
@@ -265,6 +296,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/workspace/$workspaceId'
       preLoaderRoute: typeof AppWorkspaceWorkspaceIdRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/_app/settings/speech': {
+      id: '/_app/settings/speech'
+      path: '/speech'
+      fullPath: '/settings/speech'
+      preLoaderRoute: typeof AppSettingsSpeechRouteImport
+      parentRoute: typeof AppSettingsRoute
     }
     '/_app/settings/skills': {
       id: '/_app/settings/skills'
@@ -363,6 +401,7 @@ interface AppSettingsRouteChildren {
   AppSettingsModelsRoute: typeof AppSettingsModelsRoute
   AppSettingsResearchAgentsRoute: typeof AppSettingsResearchAgentsRoute
   AppSettingsSkillsRoute: typeof AppSettingsSkillsRoute
+  AppSettingsSpeechRoute: typeof AppSettingsSpeechRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
@@ -376,6 +415,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsModelsRoute: AppSettingsModelsRoute,
   AppSettingsResearchAgentsRoute: AppSettingsResearchAgentsRoute,
   AppSettingsSkillsRoute: AppSettingsSkillsRoute,
+  AppSettingsSpeechRoute: AppSettingsSpeechRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 
@@ -402,6 +442,7 @@ const AppWorkspaceWorkspaceIdRouteWithChildren =
 
 interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRouteWithChildren
+  AppTranscribeRoute: typeof AppTranscribeRoute
   AppIndexRoute: typeof AppIndexRoute
   AppChatChatIdRoute: typeof AppChatChatIdRoute
   AppWorkspaceWorkspaceIdRoute: typeof AppWorkspaceWorkspaceIdRouteWithChildren
@@ -409,6 +450,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRouteWithChildren,
+  AppTranscribeRoute: AppTranscribeRoute,
   AppIndexRoute: AppIndexRoute,
   AppChatChatIdRoute: AppChatChatIdRoute,
   AppWorkspaceWorkspaceIdRoute: AppWorkspaceWorkspaceIdRouteWithChildren,

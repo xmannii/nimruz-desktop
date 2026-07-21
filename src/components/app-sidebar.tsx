@@ -52,6 +52,7 @@ import { ChatSidebarTitle } from "@/components/chat/chat-sidebar-title";
 import { HOME_WORKSPACE_ID, isHomeWorkspace } from "@/lib/workspace";
 import {
   ArrowRightIcon,
+  AudioLinesIcon,
   CogIcon,
   FolderIcon,
   HistoryIcon,
@@ -84,8 +85,10 @@ type AppSidebarProps = {
   onPinChat: (id: string, pinned: boolean) => void;
   typingTitles?: Record<string, string>;
   onOpenSettings: () => void;
+  onOpenTranscription: () => void;
   onBackToChat: () => void;
   settingsActive?: boolean;
+  transcriptionActive?: boolean;
   memoryCount?: number;
 };
 
@@ -108,8 +111,10 @@ export function AppSidebar({
   onPinChat,
   typingTitles = {},
   onOpenSettings,
+  onOpenTranscription,
   onBackToChat,
   settingsActive = false,
+  transcriptionActive = false,
   memoryCount = 0,
 }: AppSidebarProps) {
   const { isMobile, setOpenMobile, state } = useSidebar();
@@ -270,6 +275,21 @@ export function AppSidebar({
                 >
                   <SquarePenIcon />
                   <span>گفتگوی جدید</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip={{ children: "رونویسی صوت", side: "left" }}
+                  isActive={transcriptionActive}
+                  className="h-8 text-[13px]"
+                  onClick={() => {
+                    onOpenTranscription();
+                    closeMobileSidebar();
+                  }}
+                >
+                  <AudioLinesIcon />
+                  <span>رونویسی صوت</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
 

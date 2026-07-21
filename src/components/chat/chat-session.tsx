@@ -550,6 +550,10 @@ export function ChatSession({
           toast.info(`مدل پلن به ${fallback.name} تغییر کرد.`);
         }
       }
+      if (nextMode === "chat") {
+        setSelectedExpertSlug(null);
+        setAttachments([]);
+      }
       setAgentMode(nextMode);
       onChatChange(chat.id, {
         messages,
@@ -885,7 +889,7 @@ export function ChatSession({
       agentMode={agentMode}
       onAgentModeChange={handleAgentModeChange}
       activePlan={activePlan}
-      onExecutePlan={handleExecutePlan}
+      onExecutePlan={agentMode === "chat" ? undefined : handleExecutePlan}
       pendingQuestion={pendingQuestion}
       onAnswerQuestion={handleAnswerQuestion}
       selectedExpertSlug={selectedExpertSlug}
@@ -897,7 +901,9 @@ export function ChatSession({
       messages={contextMessages}
       workspaceId={chat.workspaceId}
       onWorkspaceChange={
-        showCenteredComposer ? handleWorkspaceChange : undefined
+        showCenteredComposer && agentMode !== "chat"
+          ? handleWorkspaceChange
+          : undefined
       }
       attachments={attachments}
       onAttachmentsChange={setAttachments}

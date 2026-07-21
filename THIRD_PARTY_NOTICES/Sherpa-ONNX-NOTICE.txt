@@ -1,0 +1,13 @@
+sherpa-onnx 1.13.4
+Copyright (c) Xiaomi Corporation and the Next-gen Kaldi contributors.
+
+This product includes the sherpa-onnx WebAssembly runtime, licensed under the
+Apache License, Version 2.0.
+
+Source: https://github.com/k2-fsa/sherpa-onnx
+License: https://www.apache.org/licenses/LICENSE-2.0
+
+The Shenava model weights are not distributed with Nimruz. When a user elects
+to download them, they are obtained directly from Reza2kn's Hugging Face
+repository under CC BY-NC 4.0. The model source, author, and license are shown
+before download and on the Speech settings page.
