@@ -103,7 +103,7 @@ jobs:
           if-no-files-found: error
 
   publish:
-    name: Publish GitHub Release
+    name: Publish release and mirror installers to R2
     needs: [prepare, build]
     if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-latest
@@ -119,6 +119,33 @@ jobs:
         with:
           name: macos
           path: artifacts/macos
+
+      - name: Configure R2 credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          aws-region: auto
+
+      - name: Mirror latest installers to R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$R2_ACCOUNT_ID"
+          test -n "$R2_BUCKET"
+
+          R2_ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          aws s3 sync artifacts/windows "s3://${R2_BUCKET}/nimruz-desktop/windows/" \
+            --delete \
+            --endpoint-url "$R2_ENDPOINT" \
+            --no-progress
+          aws s3 sync artifacts/macos "s3://${R2_BUCKET}/nimruz-desktop/mac/" \
+            --delete \
+            --endpoint-url "$R2_ENDPOINT" \
+            --no-progress
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
