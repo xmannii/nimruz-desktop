@@ -120,19 +120,13 @@ jobs:
           name: macos
           path: artifacts/macos
 
-      - name: Configure R2 credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.R2_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          # This action validates credentials against AWS STS, where `auto` is
-          # not a valid region. R2 accepts us-east-1 as an alias for `auto`.
-          aws-region: us-east-1
-
       - name: Mirror latest installers to R2
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_BUCKET: ${{ vars.R2_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
         shell: bash
         run: |
           set -euo pipefail
