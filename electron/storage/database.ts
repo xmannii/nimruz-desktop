@@ -32,6 +32,11 @@ import {
   type AppearanceSettings,
 } from "@/lib/settings/appearance";
 import {
+  DEFAULT_COMPANION_SHORTCUT_SETTINGS,
+  sanitizeCompanionShortcutSettings,
+  type CompanionShortcutSettings,
+} from "@/lib/settings/companion";
+import {
   DEFAULT_PERSONALIZATION_SETTINGS,
   sanitizePersonalizationSettings,
   type PersonalizationSettings,
@@ -1666,6 +1671,34 @@ export class AppDatabase {
       .prepare(
         `INSERT INTO settings (key, value_json, updated_at)
          VALUES ('notifications', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(settings), Date.now());
+    return settings;
+  }
+
+  loadCompanionShortcut(): CompanionShortcutSettings {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("companion-shortcut");
+    if (typeof row?.value_json !== "string") {
+      return DEFAULT_COMPANION_SHORTCUT_SETTINGS;
+    }
+    try {
+      return sanitizeCompanionShortcutSettings(JSON.parse(row.value_json));
+    } catch {
+      return DEFAULT_COMPANION_SHORTCUT_SETTINGS;
+    }
+  }
+
+  saveCompanionShortcut(value: unknown): CompanionShortcutSettings {
+    const settings = sanitizeCompanionShortcutSettings(value);
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('companion-shortcut', ?, ?)
          ON CONFLICT(key) DO UPDATE SET
            value_json = excluded.value_json,
            updated_at = excluded.updated_at`

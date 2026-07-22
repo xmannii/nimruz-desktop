@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as CompanionRouteImport } from './routes/companion'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppTranscribeRouteImport } from './routes/_app.transcribe'
@@ -23,6 +24,7 @@ import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.mo
 import { Route as AppSettingsMemoriesRouteImport } from './routes/_app.settings.memories'
 import { Route as AppSettingsHelpRouteImport } from './routes/_app.settings.help'
 import { Route as AppSettingsExpertsRouteImport } from './routes/_app.settings.experts'
+import { Route as AppSettingsCompanionRouteImport } from './routes/_app.settings.companion'
 import { Route as AppSettingsChangelogRouteImport } from './routes/_app.settings.changelog'
 import { Route as AppSettingsAppearanceRouteImport } from './routes/_app.settings.appearance'
 import { Route as AppSettingsAboutRouteImport } from './routes/_app.settings.about'
@@ -30,6 +32,11 @@ import { Route as AppChatChatIdRouteImport } from './routes/_app.chat.$chatId'
 import { Route as AppWorkspaceWorkspaceIdIndexRouteImport } from './routes/_app.workspace.$workspaceId.index'
 import { Route as AppWorkspaceWorkspaceIdChatChatIdRouteImport } from './routes/_app.workspace.$workspaceId.chat.$chatId'
 
+const CompanionRoute = CompanionRouteImport.update({
+  id: '/companion',
+  path: '/companion',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -101,6 +108,11 @@ const AppSettingsExpertsRoute = AppSettingsExpertsRouteImport.update({
   path: '/experts',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsCompanionRoute = AppSettingsCompanionRouteImport.update({
+  id: '/companion',
+  path: '/companion',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsChangelogRoute = AppSettingsChangelogRouteImport.update({
   id: '/changelog',
   path: '/changelog',
@@ -136,12 +148,14 @@ const AppWorkspaceWorkspaceIdChatChatIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/companion': typeof CompanionRoute
   '/settings': typeof AppSettingsRouteWithChildren
   '/transcribe': typeof AppTranscribeRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/about': typeof AppSettingsAboutRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/changelog': typeof AppSettingsChangelogRoute
+  '/settings/companion': typeof AppSettingsCompanionRoute
   '/settings/experts': typeof AppSettingsExpertsRoute
   '/settings/help': typeof AppSettingsHelpRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
@@ -156,12 +170,14 @@ export interface FileRoutesByFullPath {
   '/workspace/$workspaceId/chat/$chatId': typeof AppWorkspaceWorkspaceIdChatChatIdRoute
 }
 export interface FileRoutesByTo {
+  '/companion': typeof CompanionRoute
   '/transcribe': typeof AppTranscribeRoute
   '/': typeof AppIndexRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/about': typeof AppSettingsAboutRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/changelog': typeof AppSettingsChangelogRoute
+  '/settings/companion': typeof AppSettingsCompanionRoute
   '/settings/experts': typeof AppSettingsExpertsRoute
   '/settings/help': typeof AppSettingsHelpRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
@@ -177,6 +193,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/companion': typeof CompanionRoute
   '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/transcribe': typeof AppTranscribeRoute
   '/_app/': typeof AppIndexRoute
@@ -184,6 +201,7 @@ export interface FileRoutesById {
   '/_app/settings/about': typeof AppSettingsAboutRoute
   '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
   '/_app/settings/changelog': typeof AppSettingsChangelogRoute
+  '/_app/settings/companion': typeof AppSettingsCompanionRoute
   '/_app/settings/experts': typeof AppSettingsExpertsRoute
   '/_app/settings/help': typeof AppSettingsHelpRoute
   '/_app/settings/memories': typeof AppSettingsMemoriesRoute
@@ -201,12 +219,14 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/companion'
     | '/settings'
     | '/transcribe'
     | '/chat/$chatId'
     | '/settings/about'
     | '/settings/appearance'
     | '/settings/changelog'
+    | '/settings/companion'
     | '/settings/experts'
     | '/settings/help'
     | '/settings/memories'
@@ -221,12 +241,14 @@ export interface FileRouteTypes {
     | '/workspace/$workspaceId/chat/$chatId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/companion'
     | '/transcribe'
     | '/'
     | '/chat/$chatId'
     | '/settings/about'
     | '/settings/appearance'
     | '/settings/changelog'
+    | '/settings/companion'
     | '/settings/experts'
     | '/settings/help'
     | '/settings/memories'
@@ -241,6 +263,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/companion'
     | '/_app/settings'
     | '/_app/transcribe'
     | '/_app/'
@@ -248,6 +271,7 @@ export interface FileRouteTypes {
     | '/_app/settings/about'
     | '/_app/settings/appearance'
     | '/_app/settings/changelog'
+    | '/_app/settings/companion'
     | '/_app/settings/experts'
     | '/_app/settings/help'
     | '/_app/settings/memories'
@@ -264,10 +288,18 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  CompanionRoute: typeof CompanionRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/companion': {
+      id: '/companion'
+      path: '/companion'
+      fullPath: '/companion'
+      preLoaderRoute: typeof CompanionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -366,6 +398,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsExpertsRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/companion': {
+      id: '/_app/settings/companion'
+      path: '/companion'
+      fullPath: '/settings/companion'
+      preLoaderRoute: typeof AppSettingsCompanionRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/settings/changelog': {
       id: '/_app/settings/changelog'
       path: '/changelog'
@@ -415,6 +454,7 @@ interface AppSettingsRouteChildren {
   AppSettingsAboutRoute: typeof AppSettingsAboutRoute
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsChangelogRoute: typeof AppSettingsChangelogRoute
+  AppSettingsCompanionRoute: typeof AppSettingsCompanionRoute
   AppSettingsExpertsRoute: typeof AppSettingsExpertsRoute
   AppSettingsHelpRoute: typeof AppSettingsHelpRoute
   AppSettingsMemoriesRoute: typeof AppSettingsMemoriesRoute
@@ -430,6 +470,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsAboutRoute: AppSettingsAboutRoute,
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
   AppSettingsChangelogRoute: AppSettingsChangelogRoute,
+  AppSettingsCompanionRoute: AppSettingsCompanionRoute,
   AppSettingsExpertsRoute: AppSettingsExpertsRoute,
   AppSettingsHelpRoute: AppSettingsHelpRoute,
   AppSettingsMemoriesRoute: AppSettingsMemoriesRoute,
@@ -482,6 +523,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  CompanionRoute: CompanionRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

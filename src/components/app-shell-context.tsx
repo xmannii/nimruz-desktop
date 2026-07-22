@@ -1,9 +1,13 @@
 "use client";
 
-import type { ChatUpdate } from "@/hooks/use-chat-history";
+import type {
+  ChatCreationOptions,
+  ChatUpdate,
+} from "@/hooks/use-chat-history";
 import type { ChatRuntime } from "@/hooks/use-chat-runtimes";
 import type { WorkspaceInput } from "@/hooks/use-workspaces";
 import type { LocalChat, LocalWorkspace } from "@/lib/chat/storage";
+import type { CompanionPromptRequest } from "@/lib/companion";
 import type {
   ModelCatalogSnapshot,
   ModelConfig,
@@ -50,8 +54,15 @@ export type AppShellContextValue = {
   hasUsableModel: boolean;
   runningChatIds: ReadonlySet<string>;
   getChatRuntime: (chat: LocalChat) => ChatRuntime;
+  companionRequest:
+    | (CompanionPromptRequest & { chatId: string; workspaceId: string })
+    | null;
+  consumeCompanionRequest: (requestId: string) => void;
   getChatById: (id: string) => LocalChat | null;
-  createChat: (workspaceId?: string | null) => string;
+  createChat: (
+    workspaceId?: string | null,
+    options?: ChatCreationOptions
+  ) => string;
   selectChat: (id: string) => void;
   updateChat: (id: string, update: ChatUpdate) => void;
   setChatWorkspaceId: (chatId: string, workspaceId: string) => void;

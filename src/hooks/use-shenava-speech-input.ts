@@ -47,9 +47,18 @@ function mergeChunks(chunks: Float32Array[]) {
   return merged;
 }
 
+type ShenavaSpeechInputOptions = {
+  showTranscriptionSuccessToast?: boolean;
+  enableSpaceShortcut?: boolean;
+};
+
 export function useShenavaSpeechInput(
-  onTranscript: (transcript: string) => void
+  onTranscript: (transcript: string) => void,
+  options: ShenavaSpeechInputOptions = {}
 ) {
+  const showTranscriptionSuccessToast =
+    options.showTranscriptionSuccessToast ?? true;
+  const enableSpaceShortcut = options.enableSpaceShortcut ?? false;
   const model = useShenavaModel();
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -92,13 +101,15 @@ export function useShenavaSpeechInput(
         return;
       }
       transcriptCallbackRef.current(result.text);
-      toast.success("گفتار به متن تبدیل شد.");
+      if (showTranscriptionSuccessToast) {
+        toast.success("گفتار به متن تبدیل شد.");
+      }
     } catch {
       toast.error("تبدیل گفتار به متن ناموفق بود.");
     } finally {
       setIsTranscribing(false);
     }
-  }, []);
+  }, [showTranscriptionSuccessToast]);
 
   const startRecording = useCallback(async () => {
     if (startPendingRef.current) return;
@@ -178,7 +189,7 @@ export function useShenavaSpeechInput(
   }, []);
 
   useEffect(() => {
-    if (!isRecording) return;
+    if (!isRecording || enableSpaceShortcut) return;
 
     const handleRecordingShortcut = (event: globalThis.KeyboardEvent) => {
       if (
@@ -206,7 +217,7 @@ export function useShenavaSpeechInput(
 
     window.addEventListener("keydown", handleRecordingShortcut);
     return () => window.removeEventListener("keydown", handleRecordingShortcut);
-  }, [finishRecording, isRecording]);
+  }, [enableSpaceShortcut, finishRecording, isRecording]);
 
   const handleMicrophone = useCallback(async () => {
     if (isTranscribing) return;
@@ -226,6 +237,40 @@ export function useShenavaSpeechInput(
       setDownloadDialogOpen(true);
     }
   }, [finishRecording, isTranscribing, model, startRecording]);
+
+  useEffect(() => {
+    if (!enableSpaceShortcut) return;
+
+    const handleSpaceShortcut = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.code !== "Space" ||
+        event.repeat ||
+        event.isComposing ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest(
+          "button, input, textarea, select, [contenteditable='true'], [role='button'], [role='combobox'], [role='option'], [data-space-shortcut-ignore]"
+        )
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      void handleMicrophone();
+    };
+
+    window.addEventListener("keydown", handleSpaceShortcut);
+    return () => window.removeEventListener("keydown", handleSpaceShortcut);
+  }, [enableSpaceShortcut, handleMicrophone]);
 
   const downloadModel = useCallback(async (modelKey: ShenavaModelKey) => {
     try {
