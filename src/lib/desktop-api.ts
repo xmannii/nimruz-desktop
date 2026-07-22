@@ -1,6 +1,5 @@
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
 import type {
-  CompanionActivitySnapshot,
   CompanionDraft,
   CompanionConversationSnapshot,
   CompanionOpenChatRequest,
@@ -123,6 +122,7 @@ export type DesktopAPI = {
   };
   companion: {
     hide: () => Promise<void>;
+    quit: () => Promise<void>;
     openMain: (target?: CompanionOpenChatRequest) => Promise<void>;
     captureScreen: () => Promise<CompanionScreenshot>;
     submit: (draft: CompanionDraft) => Promise<{ requestId: string }>;
@@ -130,7 +130,6 @@ export type DesktopAPI = {
     reportConversation: (
       snapshot: CompanionConversationSnapshot
     ) => Promise<void>;
-    reportActivity: (snapshot: CompanionActivitySnapshot) => Promise<void>;
     clearConversation: () => Promise<void>;
     getScreenCapturePermission: () => Promise<CompanionScreenCapturePermission>;
     openScreenCaptureSettings: () => Promise<void>;
@@ -146,9 +145,6 @@ export type DesktopAPI = {
     ) => () => void;
     onConversation: (
       callback: (snapshot: CompanionConversationSnapshot) => void
-    ) => () => void;
-    onActivity: (
-      callback: (snapshot: CompanionActivitySnapshot) => void
     ) => () => void;
     onClearConversation: (callback: () => void) => () => void;
     onOpenChat: (

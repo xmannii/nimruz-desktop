@@ -18,12 +18,8 @@ import { useTypingChatTitles } from "@/hooks/use-typing-chat-title";
 import { useModelCatalog } from "@/hooks/use-model-catalog";
 import { useWorkspaces, type WorkspaceInput } from "@/hooks/use-workspaces";
 import { APP_HEADER_HEIGHT } from "@/lib/branding";
-import { getMessageText } from "@/lib/chat/message-text";
 import type { ChatUIMessage } from "@/lib/chat/message";
-import type {
-  CompanionConversationPart,
-  CompanionPromptRequest,
-} from "@/lib/companion";
+import type { CompanionPromptRequest } from "@/lib/companion";
 import { playCompletionDing } from "@/lib/notifications/sound";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
 import {
@@ -46,73 +42,6 @@ type AppShellProps = {
   children: ReactNode;
   initialChatId?: string;
 };
-
-function companionToolState(state: unknown, preliminary: unknown) {
-  if (state === "approval-requested") return "approval" as const;
-  if (state === "output-error" || state === "output-denied") {
-    return "failed" as const;
-  }
-  if (state === "output-available" && preliminary !== true) {
-    return "completed" as const;
-  }
-  return "running" as const;
-}
-
-function companionToolSubject(input: unknown): string | undefined {
-  if (!input || typeof input !== "object") return undefined;
-  const values = input as Record<string, unknown>;
-  const candidate =
-    values.path ??
-    values.url ??
-    values.query ??
-    values.command ??
-    values.title ??
-    values.name;
-  return typeof candidate === "string" && candidate.trim()
-    ? candidate.trim().slice(0, 180)
-    : undefined;
-}
-
-function companionMessageParts(
-  message: ChatUIMessage,
-  isRunningMessage: boolean
-): CompanionConversationPart[] {
-  const lastPartIndex = message.parts.length - 1;
-  return message.parts.flatMap((part, index): CompanionConversationPart[] => {
-    if (part.type === "text") {
-      return part.text.trim()
-        ? [{ type: "text", text: part.text.trim() }]
-        : [];
-    }
-    if (part.type === "reasoning") {
-      return [
-        {
-          type: "reasoning",
-          text: part.text ?? "",
-          state:
-            isRunningMessage && index === lastPartIndex
-              ? "running"
-              : "completed",
-        },
-      ];
-    }
-    if (!part.type.startsWith("tool-")) return [];
-    const toolPart = part as unknown as {
-      state?: string;
-      preliminary?: boolean;
-      input?: unknown;
-    };
-    const subject = companionToolSubject(toolPart.input);
-    return [
-      {
-        type: "tool",
-        toolName: part.type.replace(/^tool-/, ""),
-        state: companionToolState(toolPart.state, toolPart.preliminary),
-        ...(subject ? { subject } : {}),
-      },
-    ];
-  });
-}
 
 export function AppShell({ children, initialChatId }: AppShellProps) {
   const navigate = useNavigate();
@@ -487,19 +416,17 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     }
 
     const isChatRunning = runningChatIds.has(chat.id);
-    const lastMessage = chat.messages.at(-1);
     const messages = chat.messages.slice(-24).flatMap((message) => {
       if (message.role !== "user" && message.role !== "assistant") return [];
-      const parts = companionMessageParts(
-        message as ChatUIMessage,
-        isChatRunning && message === lastMessage
-      );
+      const chatMessage = message as ChatUIMessage;
+      const parts = chatMessage.parts;
       if (parts.length === 0) return [];
       return [
         {
           id: message.id,
           role: message.role,
           parts,
+          ...(chatMessage.metadata ? { metadata: chatMessage.metadata } : {}),
         },
       ];
     });
@@ -518,32 +445,6 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     runningChatIds,
     chats,
   ]);
-
-  const companionActivity = useMemo(() => {
-    return {
-      items: chats.flatMap((chat) => {
-        if (!runningChatIds.has(chat.id)) return [];
-        const lastUserMessage = chat.messages.findLast(
-          (message) => message.role === "user"
-        );
-        return [
-          {
-            chatId: chat.id,
-            workspaceId: chat.workspaceId ?? HOME_WORKSPACE_ID,
-            title: chat.title,
-            prompt: lastUserMessage ? getMessageText(lastUserMessage) : "",
-          },
-        ];
-      }),
-    };
-  }, [chats, runningChatIds]);
-  const companionActivityKey = JSON.stringify(companionActivity);
-
-  useEffect(() => {
-    void window.desktop.companion
-      .reportActivity(companionActivity)
-      .catch(() => undefined);
-  }, [companionActivityKey]);
 
   const handleOnboardingOpenChange = useCallback((open: boolean) => {
     setOnboardingOpen(open);

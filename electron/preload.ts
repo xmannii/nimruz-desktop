@@ -6,7 +6,6 @@ import type {
   WindowState,
 } from "@/lib/desktop-api";
 import type {
-  CompanionActivitySnapshot,
   CompanionConversationSnapshot,
   CompanionOpenChatRequest,
   CompanionPromptRequest,
@@ -62,6 +61,7 @@ const desktopApi: DesktopAPI = {
   },
   companion: {
     hide: () => ipcRenderer.invoke("companion:hide"),
+    quit: () => ipcRenderer.invoke("companion:quit"),
     openMain: (target) => ipcRenderer.invoke("companion:open-main", target),
     captureScreen: () => ipcRenderer.invoke("companion:capture-screen"),
     submit: (draft) => ipcRenderer.invoke("companion:submit", draft),
@@ -69,8 +69,6 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("companion:report-status", status),
     reportConversation: (snapshot) =>
       ipcRenderer.invoke("companion:report-conversation", snapshot),
-    reportActivity: (snapshot) =>
-      ipcRenderer.invoke("companion:report-activity", snapshot),
     clearConversation: () =>
       ipcRenderer.invoke("companion:clear-conversation"),
     getScreenCapturePermission: () =>
@@ -105,14 +103,6 @@ const desktopApi: DesktopAPI = {
       ) => callback(snapshot);
       ipcRenderer.on("companion:conversation", handler);
       return () => ipcRenderer.removeListener("companion:conversation", handler);
-    },
-    onActivity: (callback) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        snapshot: CompanionActivitySnapshot
-      ) => callback(snapshot);
-      ipcRenderer.on("companion:activity", handler);
-      return () => ipcRenderer.removeListener("companion:activity", handler);
     },
     onClearConversation: (callback) => {
       const handler = () => callback();

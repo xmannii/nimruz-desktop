@@ -4,7 +4,6 @@ import {
   fitCaptureSize,
   positionCompanionWindow,
   validateCompanionDraft,
-  validateCompanionActivity,
   validateCompanionConversation,
   validateCompanionStatus,
 } from "./companion";
@@ -102,11 +101,11 @@ test("bounds compact conversation snapshots", () => {
   assert.equal(snapshot.messages.length, 24);
   assert.equal(snapshot.messages[0]?.id, "message-6");
   assert.deepEqual(snapshot.messages.at(-1)?.parts, [
-    { type: "text", text: "message 29" },
+    { type: "text", text: " message 29 " },
   ]);
 });
 
-test("keeps reasoning and tool activity separate from assistant text", () => {
+test("preserves streamed reasoning, tool input, and intermediate output", () => {
   const snapshot = validateCompanionConversation({
     chatId: "chat-1",
     workspaceId: "home",
@@ -117,12 +116,18 @@ test("keeps reasoning and tool activity separate from assistant text", () => {
         id: "assistant-1",
         role: "assistant",
         parts: [
-          { type: "reasoning", text: "Inspecting files", state: "completed" },
+          { type: "reasoning", text: "Inspecting files" },
           {
-            type: "tool",
-            toolName: "read_file",
-            state: "running",
-            subject: "src/app.tsx",
+            type: "tool-run_command",
+            toolCallId: "tool-1",
+            state: "output-available",
+            preliminary: true,
+            input: { command: "pnpm test", cwd: "/workspace" },
+            output: {
+              status: "running",
+              stdout: "PASS first test\n",
+              stderr: "",
+            },
           },
           { type: "text", text: "I found the issue." },
         ],
@@ -131,37 +136,61 @@ test("keeps reasoning and tool activity separate from assistant text", () => {
   });
 
   assert.deepEqual(snapshot.messages[0]?.parts, [
-    { type: "reasoning", text: "Inspecting files", state: "completed" },
+    { type: "reasoning", text: "Inspecting files" },
     {
-      type: "tool",
-      toolName: "read_file",
-      state: "running",
-      subject: "src/app.tsx",
+      type: "tool-run_command",
+      toolCallId: "tool-1",
+      state: "output-available",
+      preliminary: true,
+      input: { command: "pnpm test", cwd: "/workspace" },
+      output: {
+        status: "running",
+        stdout: "PASS first test\n",
+        stderr: "",
+      },
     },
     { type: "text", text: "I found the issue." },
   ]);
 });
 
-test("bounds and sanitizes running companion activities", () => {
-  const snapshot = validateCompanionActivity({
-    items: [
+test("preserves approval details needed by the shared chat renderer", () => {
+  const snapshot = validateCompanionConversation({
+    chatId: "chat-1",
+    workspaceId: "home",
+    title: "Approval",
+    state: "running",
+    messages: [
       {
-        chatId: "chat-1",
-        workspaceId: "home",
-        title: "  Build the app  ",
-        prompt: "  Run the tests  ",
+        id: "assistant-approval",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-write_file",
+            toolCallId: "tool-approval",
+            state: "approval-requested",
+            input: { path: "src/app.tsx" },
+            approval: {
+              id: "approval-1",
+              reason: "Write access is required",
+              isAutomatic: false,
+            },
+          },
+        ],
       },
-      { chatId: "../bad", workspaceId: "home", title: "bad", prompt: "bad" },
     ],
   });
-  assert.deepEqual(snapshot.items, [
-    {
-      chatId: "chat-1",
-      workspaceId: "home",
-      title: "Build the app",
-      prompt: "Run the tests",
+
+  assert.deepEqual(snapshot.messages[0]?.parts[0], {
+    type: "tool-write_file",
+    toolCallId: "tool-approval",
+    state: "approval-requested",
+    input: { path: "src/app.tsx" },
+    approval: {
+      id: "approval-1",
+      reason: "Write access is required",
+      isAutomatic: false,
     },
-  ]);
+  });
 });
 
 test("sanitizes companion status updates", () => {

@@ -1,12 +1,7 @@
 "use client";
 
 import { NimruzLogo } from "@/components/logo";
-import { MessageResponse } from "@/components/ai-elements/message";
-import {
-  ChatMessageActions,
-  copyTextToClipboard,
-} from "@/components/chat/chat-message-actions";
-import { ChatToolInvocation } from "@/components/chat/chat-tool-invocation";
+import { ChatMessages } from "@/components/chat/chat-messages";
 import { ShenavaDownloadDialog } from "@/components/speech/shenava-download-dialog";
 import {
   Attachment,
@@ -18,8 +13,17 @@ import {
   AttachmentTitle,
 } from "@/components/ui/attachment";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
-import { Bubble, BubbleContent } from "@/components/ui/bubble";
 import { Button } from "@/components/ui/button";
 import {
   InputGroup,
@@ -38,15 +42,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import {
-  MessageScroller,
-  MessageScrollerButton,
-  MessageScrollerContent,
-  MessageScrollerItem,
-  MessageScrollerProvider,
-  MessageScrollerViewport,
-  useMessageScroller,
-} from "@/components/ui/message-scroller";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Tooltip,
@@ -63,14 +58,12 @@ import {
   type AgentMode,
 } from "@/lib/chat/agent-mode";
 import type {
-  CompanionActivitySnapshot,
-  CompanionConversationMessage,
-  CompanionConversationPart,
   CompanionConversationSnapshot,
   CompanionScreenCapturePermission,
   CompanionScreenshot,
   CompanionSubmissionStatus,
 } from "@/lib/companion";
+import type { ChatUIMessage } from "@/lib/chat/message";
 import type { ProviderModelRef } from "@/lib/models/catalog";
 import {
   DEFAULT_COMPANION_SHORTCUT_SETTINGS,
@@ -78,22 +71,21 @@ import {
   type CompanionShortcutStatus,
 } from "@/lib/settings/companion";
 import { HOME_WORKSPACE_ID } from "@/lib/workspace";
+import type { ChatStatus } from "ai";
 import {
   ArrowUpIcon,
-  BrainIcon,
   CheckIcon,
   ExternalLinkIcon,
   FolderIcon,
-  ListTodoIcon,
   Maximize2Icon,
   MicIcon,
   MonitorUpIcon,
   PlusIcon,
+  PowerIcon,
   SquareIcon,
   SparklesIcon,
   SlidersHorizontalIcon,
   ShieldAlertIcon,
-  WrenchIcon,
   XIcon,
 } from "lucide-react";
 import {
@@ -103,7 +95,6 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
-  type ReactNode,
 } from "react";
 import { toast } from "sonner";
 
@@ -115,223 +106,6 @@ type CompanionPhase =
   | "failed";
 
 const VOICE_WAVE_HEIGHTS = [8, 16, 24, 13, 28, 19, 10, 23, 15, 26, 12, 20];
-
-function CompanionMessageViewport({
-  isStreaming,
-  children,
-}: {
-  isStreaming: boolean;
-  children: ReactNode;
-}) {
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const isFollowingRef = useRef(true);
-  const { scrollToEnd } = useMessageScroller();
-
-  useEffect(() => {
-    if (!isStreaming) return;
-    isFollowingRef.current = true;
-    scrollToEnd({ behavior: "smooth" });
-  }, [isStreaming, scrollToEnd]);
-
-  useEffect(() => {
-    if (!isStreaming) return;
-    const viewport = viewportRef.current;
-    if (!viewport || typeof ResizeObserver === "undefined") return;
-    const content = viewport.querySelector<HTMLElement>(
-      '[data-slot="message-scroller-content"]'
-    );
-    if (!content) return;
-
-    let frame = 0;
-    const followContent = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        if (isFollowingRef.current) {
-          viewport.scrollTop = Math.max(
-            0,
-            viewport.scrollHeight - viewport.clientHeight
-          );
-        }
-      });
-    };
-    const observer = new ResizeObserver(followContent);
-    observer.observe(content);
-    followContent();
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, [isStreaming]);
-
-  function handleScroll() {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const distanceFromEnd =
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight;
-    isFollowingRef.current = distanceFromEnd <= 48;
-  }
-
-  return (
-    <MessageScrollerViewport
-      ref={viewportRef}
-      dir="rtl"
-      onScroll={handleScroll}
-    >
-      {children}
-    </MessageScrollerViewport>
-  );
-}
-
-const TOOL_LABELS: Record<string, string> = {
-  list_directory: "بررسی پوشه",
-  read_file: "خواندن فایل",
-  search_files: "جستجوی فایل‌ها",
-  grep: "جستجو در محتوا",
-  write_file: "نوشتن فایل",
-  apply_patch: "ویرایش فایل",
-  move_file: "انتقال فایل",
-  delete_file: "حذف فایل",
-  run_command: "اجرای فرمان",
-  fetch_url: "خواندن صفحه وب",
-  create_artifact: "ساخت خروجی",
-  update_task: "به‌روزرسانی کار",
-  write_plan: "نوشتن برنامه",
-  update_plan: "به‌روزرسانی برنامه",
-  spawn_subagent: "سپردن کار به ایجنت",
-  ask_user_question: "درخواست اطلاعات",
-};
-
-function CompanionToolPart({
-  part,
-}: {
-  part: Extract<CompanionConversationPart, { type: "tool" }>;
-}) {
-  const isLoading = part.state === "running" || part.state === "approval";
-  const isError = part.state === "failed";
-  const action = TOOL_LABELS[part.toolName] ?? part.toolName.replaceAll("_", " ");
-  const label =
-    part.state === "approval"
-      ? `${action} · منتظر تأیید`
-      : part.state === "running"
-        ? `در حال ${action}…`
-        : part.state === "failed"
-          ? `${action} ناموفق بود`
-          : `${action} انجام شد`;
-
-  return (
-    <ChatToolInvocation
-      icon={<WrenchIcon />}
-      label={
-        <span className="flex min-w-0 items-center gap-1.5">
-          <span className="shrink-0">{label}</span>
-          {part.subject ? (
-            <span dir="ltr" className="truncate text-[11px] opacity-70">
-              {part.subject}
-            </span>
-          ) : null}
-        </span>
-      }
-      isLoading={isLoading}
-      isError={isError}
-    />
-  );
-}
-
-function CompanionAssistantPart({
-  part,
-  isStreaming,
-}: {
-  part: CompanionConversationPart;
-  isStreaming: boolean;
-}) {
-  if (part.type === "reasoning") {
-    const isLoading = part.state === "running";
-    return (
-      <ChatToolInvocation
-        icon={<BrainIcon />}
-        label={isLoading ? "در حال فکر کردن…" : "استدلال انجام شد"}
-        isLoading={isLoading}
-        expandable={!isLoading && Boolean(part.text)}
-        expandMode="click"
-        panelTitle="استدلال"
-      >
-        <p dir="auto" className="whitespace-pre-wrap text-start text-xs">
-          {part.text}
-        </p>
-      </ChatToolInvocation>
-    );
-  }
-  if (part.type === "tool") return <CompanionToolPart part={part} />;
-  return (
-    <div
-      dir="rtl"
-      className="w-full px-1 py-1 text-start text-sm leading-6 text-foreground"
-    >
-      <MessageResponse
-        mode={isStreaming ? "streaming" : "static"}
-        isAnimating={false}
-        className="text-sm leading-6"
-      >
-        {part.text}
-      </MessageResponse>
-    </div>
-  );
-}
-
-function CompanionMessage({
-  message,
-  isStreaming,
-}: {
-  message: CompanionConversationMessage;
-  isStreaming: boolean;
-}) {
-  if (message.role === "user") {
-    const text = message.parts
-      .filter(
-        (part): part is Extract<CompanionConversationPart, { type: "text" }> =>
-          part.type === "text"
-      )
-      .map((part) => part.text)
-      .join("\n\n");
-    if (!text) return null;
-    return (
-      <Bubble align="start" variant="default">
-        <BubbleContent dir="auto" className="whitespace-pre-wrap text-start">
-          {text}
-        </BubbleContent>
-      </Bubble>
-    );
-  }
-
-  const copyText = message.parts
-    .filter(
-      (part): part is Extract<CompanionConversationPart, { type: "text" }> =>
-        part.type === "text"
-    )
-    .map((part) => part.text)
-    .join("\n\n");
-
-  return (
-    <div className="flex w-full max-w-full flex-col gap-1">
-      {message.parts.map((part, index) => (
-        <CompanionAssistantPart
-          key={`${message.id}-${part.type}-${index}`}
-          part={part}
-          isStreaming={isStreaming}
-        />
-      ))}
-      {!isStreaming && copyText ? (
-        <ChatMessageActions
-          showCopy
-          className="mt-0"
-          onCopy={() =>
-            void copyTextToClipboard(copyText, "پاسخ کپی شد.")
-          }
-        />
-      ) : null}
-    </div>
-  );
-}
 
 function formatRecordingDuration(seconds: number) {
   const minutes = Math.floor(seconds / 60);
@@ -366,9 +140,7 @@ export function CompanionView() {
     useState<CompanionConversationSnapshot | null>(null);
   const [shortcutStatus, setShortcutStatus] =
     useState<CompanionShortcutStatus | null>(null);
-  const [activity, setActivity] = useState<CompanionActivitySnapshot>({
-    items: [],
-  });
+  const [quitDialogOpen, setQuitDialogOpen] = useState(false);
   const [capturePermission, setCapturePermission] =
     useState<CompanionScreenCapturePermission | null>(null);
   const [modelRef, setModelRef] = useState<ProviderModelRef | null>(null);
@@ -387,7 +159,7 @@ export function CompanionView() {
         const prefix = current.trimEnd();
         return prefix ? `${prefix} ${transcript}` : transcript;
       });
-      window.setTimeout(() => microphoneButtonRef.current?.focus(), 0);
+      window.setTimeout(() => textareaRef.current?.focus(), 0);
     },
     {
       enableSpaceShortcut: !isBusy,
@@ -427,7 +199,6 @@ export function CompanionView() {
     void window.desktop.companion
       .getScreenCapturePermission()
       .then(setCapturePermission);
-    return window.desktop.companion.onActivity(setActivity);
   }, []);
 
   useEffect(() => {
@@ -512,16 +283,18 @@ export function CompanionView() {
   }, [conversation?.chatId, status?.chatId]);
 
   const hasConversation = Boolean(conversation || status?.chatId);
-  const hasLiveStructuredProgress = Boolean(
-    conversation?.messages
-      .at(-1)
-      ?.parts.some(
-        (part) =>
-          (part.type === "reasoning" && part.state === "running") ||
-          (part.type === "tool" &&
-            (part.state === "running" || part.state === "approval"))
-      )
+  const chatMessages = (conversation?.messages ?? []) as ChatUIMessage[];
+  const hasAssistantMessage = chatMessages.some(
+    (message) => message.role === "assistant"
   );
+  const chatStatus: ChatStatus =
+    phase === "submitting" || (phase === "running" && !hasAssistantMessage)
+      ? "submitted"
+      : phase === "running"
+        ? "streaming"
+        : phase === "failed"
+          ? "error"
+          : "ready";
   const shortcutSettings =
     shortcutStatus?.settings ?? DEFAULT_COMPANION_SHORTCUT_SETTINGS;
   const shortcutLabel = formatCompanionAccelerator(
@@ -664,23 +437,21 @@ export function CompanionView() {
           <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <NimruzLogo className="size-5" aria-hidden />
           </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="truncate text-sm font-semibold">
-                {conversation?.title ?? "دستیار سریع نیمروز"}
-              </p>
-              <Badge variant={isBusy ? "default" : "secondary"}>
-                {isBusy ? "در حال کار" : "ایجنت"}
-              </Badge>
-            </div>
-            <div className="mt-1.5 flex items-center gap-1.5">
-              {shortcutStatus?.state === "registered" ? (
+          <div className="flex min-w-0 flex-col gap-1 text-[10px] text-muted-foreground">
+            {shortcutStatus?.state === "registered" ? (
+              <span className="flex items-center gap-1.5">
+                <span>بازکردن</span>
                 <Kbd title="میانبر بازکردن دستیار">{shortcutLabel}</Kbd>
-              ) : null}
-              {shortcutStatus?.microphoneState === "registered" ? (
-                <Kbd title="میانبر میکروفن">{microphoneShortcutLabel}</Kbd>
-              ) : null}
-            </div>
+              </span>
+            ) : null}
+            {shortcutStatus?.microphoneState === "registered" ? (
+              <span className="flex items-center gap-1.5">
+                <span>میکروفن</span>
+                <Kbd title="میانبر شروع و پایان میکروفن">
+                  {microphoneShortcutLabel}
+                </Kbd>
+              </span>
+            ) : null}
           </div>
         </div>
         <div className="titlebar-no-drag flex items-center gap-1">
@@ -718,6 +489,22 @@ export function CompanionView() {
             />
             <TooltipContent>باز کردن برنامه کامل</TooltipContent>
           </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="خروج کامل از نیمروز"
+                  onClick={() => setQuitDialogOpen(true)}
+                >
+                  <PowerIcon />
+                </Button>
+              }
+            />
+            <TooltipContent>خروج کامل از نیمروز</TooltipContent>
+          </Tooltip>
           <Button
             type="button"
             variant="ghost"
@@ -730,49 +517,31 @@ export function CompanionView() {
         </div>
       </header>
 
-      {activity.items.length > 0 ? (
-        <section className="shrink-0 border-y bg-muted/30 px-2.5 py-2">
-          <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
-            <div className="flex min-w-0 items-center gap-2 text-xs font-medium">
-              <Spinner />
-              <span>ایجنت‌ها در حال کارند</span>
-            </div>
-            <Badge variant="secondary">
-              {activity.items.length.toLocaleString("fa-IR")}
-            </Badge>
-          </div>
-          <div className="flex flex-col gap-1">
-            {activity.items.slice(0, 2).map((item) => {
-              const isCurrent = item.chatId === conversation?.chatId;
-              return (
-                <Button
-                  key={item.chatId}
-                  type="button"
-                  variant={isCurrent ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-auto w-full justify-start px-2 py-1.5 text-start"
-                  onClick={() =>
-                    void window.desktop.companion.openMain({
-                      chatId: item.chatId,
-                      workspaceId: item.workspaceId,
-                    })
-                  }
-                >
-                  <ListTodoIcon data-icon="inline-start" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{item.title}</span>
-                    {item.prompt ? (
-                      <span className="block truncate text-xs font-normal text-muted-foreground">
-                        {item.prompt}
-                      </span>
-                    ) : null}
-                  </span>
-                </Button>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
+      <AlertDialog open={quitDialogOpen} onOpenChange={setQuitDialogOpen}>
+        <AlertDialogContent dir="rtl" size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>از نیمروز خارج شوید؟</AlertDialogTitle>
+            <AlertDialogDescription>
+              برنامه، آیکن سینی و کارهای در حال اجرا کاملاً بسته می‌شوند.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>انصراف</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                void window.desktop.companion.quit().catch(() => {
+                  setQuitDialogOpen(false);
+                  toast.error("خروج کامل از نیمروز ناموفق بود.");
+                });
+              }}
+            >
+              <PowerIcon data-icon="inline-start" />
+              خروج کامل
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {hasConversation ? (
         <section className="flex min-h-0 flex-1 flex-col">
@@ -795,59 +564,19 @@ export function CompanionView() {
             </Badge>
           </div>
 
-          <MessageScrollerProvider
-            autoScroll={false}
-            defaultScrollPosition="end"
-          >
-            <MessageScroller className="min-h-0 flex-1">
-              <CompanionMessageViewport isStreaming={isBusy}>
-                <MessageScrollerContent className="gap-3 px-3 py-4">
-                  {(conversation?.messages.length ?? 0) > 0 ? (
-                    conversation?.messages.map((message, index) => (
-                      <MessageScrollerItem
-                        key={message.id}
-                        messageId={message.id}
-                      >
-                        <CompanionMessage
-                          message={message}
-                          isStreaming={
-                            isBusy &&
-                            index === (conversation?.messages.length ?? 0) - 1 &&
-                            message.role === "assistant"
-                          }
-                        />
-                      </MessageScrollerItem>
-                    ))
-                  ) : (
-                    <MessageScrollerItem className="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-center text-muted-foreground">
-                      {phase === "failed" ? (
-                        <XIcon aria-hidden />
-                      ) : (
-                        <Spinner />
-                      )}
-                      <p className="text-sm">
-                        {phase === "failed"
-                          ? status?.message || "شروع گفتگو ناموفق بود."
-                          : "در حال آماده‌کردن گفتگو…"}
-                      </p>
-                    </MessageScrollerItem>
-                  )}
-                  {isBusy &&
-                  (conversation?.messages.length ?? 0) > 0 &&
-                  !hasLiveStructuredProgress ? (
-                    <MessageScrollerItem>
-                      <ChatToolInvocation
-                        icon={<SparklesIcon />}
-                        label="ایجنت در حال کار است…"
-                        isLoading
-                      />
-                    </MessageScrollerItem>
-                  ) : null}
-                </MessageScrollerContent>
-              </CompanionMessageViewport>
-              <MessageScrollerButton behavior="smooth" className="bottom-3" />
-            </MessageScroller>
-          </MessageScrollerProvider>
+          <div className="flex min-h-0 flex-1">
+            <ChatMessages
+              messages={chatMessages}
+              status={chatStatus}
+              error={
+                phase === "failed"
+                  ? new Error(status?.message || "شروع گفتگو ناموفق بود.")
+                  : undefined
+              }
+              isBusy={isBusy}
+              workspaceId={conversation?.workspaceId ?? status?.workspaceId}
+            />
+          </div>
 
           <form
             className="flex shrink-0 flex-col gap-2 border-t px-3 py-3"

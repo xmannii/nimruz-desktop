@@ -1,4 +1,5 @@
 import { isAgentMode, type AgentMode } from "@/lib/chat/agent-mode";
+import type { ChatUIMessage } from "@/lib/chat/message";
 import type { ProviderModelRef } from "@/lib/models/catalog";
 
 export const COMPANION_MAX_PROMPT_LENGTH = 12_000;
@@ -43,24 +44,11 @@ export type CompanionConversationMessage = {
   id: string;
   role: "user" | "assistant";
   parts: CompanionConversationPart[];
+  metadata?: ChatUIMessage["metadata"];
 };
 
-export type CompanionConversationPart =
-  | {
-      type: "text";
-      text: string;
-    }
-  | {
-      type: "reasoning";
-      text: string;
-      state: "running" | "completed";
-    }
-  | {
-      type: "tool";
-      toolName: string;
-      state: "running" | "completed" | "failed" | "approval";
-      subject?: string;
-    };
+/** A structured AI SDK message part, preserved for the shared chat renderer. */
+export type CompanionConversationPart = ChatUIMessage["parts"][number];
 
 export type CompanionConversationSnapshot = {
   chatId: string;
@@ -68,17 +56,6 @@ export type CompanionConversationSnapshot = {
   title: string;
   state: "idle" | "running" | "failed";
   messages: CompanionConversationMessage[];
-};
-
-export type CompanionActivityItem = {
-  chatId: string;
-  workspaceId: string;
-  title: string;
-  prompt: string;
-};
-
-export type CompanionActivitySnapshot = {
-  items: CompanionActivityItem[];
 };
 
 export type CompanionScreenCapturePermission =
@@ -156,6 +133,95 @@ function isSafeMessageId(value: unknown): value is string {
 function approximateBase64Bytes(value: string) {
   const padding = value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0;
   return Math.floor((value.length * 3) / 4) - padding;
+}
+
+const COMPANION_MAX_PARTS_PER_MESSAGE = 80;
+const COMPANION_MAX_VALUE_DEPTH = 12;
+const COMPANION_MAX_VALUE_ITEMS = 120;
+const COMPANION_MAX_VALUE_STRING_LENGTH = 64_000;
+const COMPANION_MAX_DATA_URL_LENGTH =
+  Math.ceil((COMPANION_MAX_SCREENSHOT_BYTES * 4) / 3) + 256;
+
+function sanitizeCloneableValue(
+  value: unknown,
+  depth = 0,
+  key = ""
+): unknown {
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const maxLength =
+      key === "url" && value.startsWith("data:image/")
+        ? COMPANION_MAX_DATA_URL_LENGTH
+        : COMPANION_MAX_VALUE_STRING_LENGTH;
+    return value.slice(0, maxLength);
+  }
+  if (depth >= COMPANION_MAX_VALUE_DEPTH) return undefined;
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, COMPANION_MAX_VALUE_ITEMS)
+      .map((item) => sanitizeCloneableValue(item, depth + 1))
+      .filter((item) => item !== undefined);
+  }
+  if (!value || typeof value !== "object") return undefined;
+
+  const output: Record<string, unknown> = {};
+  for (const [entryKey, entryValue] of Object.entries(value).slice(
+    0,
+    COMPANION_MAX_VALUE_ITEMS
+  )) {
+    const sanitized = sanitizeCloneableValue(
+      entryValue,
+      depth + 1,
+      entryKey
+    );
+    if (sanitized !== undefined) output[entryKey] = sanitized;
+  }
+  return output;
+}
+
+function sanitizeConversationPart(
+  value: unknown
+): CompanionConversationPart | null {
+  if (!value || typeof value !== "object" || !("type" in value)) return null;
+  const part = value as Record<string, unknown>;
+  if (
+    typeof part.type !== "string" ||
+    !/^(?:text|reasoning|file|step-start|source-url|source-document|tool-[\w-]{1,100}|data-[\w-]{1,100})$/.test(
+      part.type
+    )
+  ) {
+    return null;
+  }
+  if (
+    (part.type === "text" || part.type === "reasoning") &&
+    typeof part.text !== "string"
+  ) {
+    return null;
+  }
+  if (part.type.startsWith("tool-")) {
+    const state = part.state;
+    if (
+      !isSafeMessageId(part.toolCallId) ||
+      typeof state !== "string" ||
+      ![
+        "input-streaming",
+        "input-available",
+        "approval-requested",
+        "approval-responded",
+        "output-available",
+        "output-error",
+        "output-denied",
+      ].includes(state)
+    ) {
+      return null;
+    }
+  }
+
+  const sanitized = sanitizeCloneableValue(part);
+  return sanitized && typeof sanitized === "object"
+    ? (sanitized as CompanionConversationPart)
+    : null;
 }
 
 export function validateCompanionDraft(value: unknown): CompanionDraft {
@@ -272,68 +338,21 @@ export function validateCompanionConversation(
         return [];
       }
       const parts = message.parts
-        .slice(0, 40)
+        .slice(0, COMPANION_MAX_PARTS_PER_MESSAGE)
         .flatMap((part): CompanionConversationPart[] => {
-          if (!part || typeof part !== "object" || !("type" in part)) {
-            return [];
-          }
-          if (
-            part.type === "text" &&
-            "text" in part &&
-            typeof part.text === "string" &&
-            part.text.trim()
-          ) {
-            return [{ type: "text", text: part.text.trim().slice(0, 8_000) }];
-          }
-          if (
-            part.type === "reasoning" &&
-            "text" in part &&
-            typeof part.text === "string" &&
-            "state" in part &&
-            (part.state === "running" || part.state === "completed")
-          ) {
-            return [
-              {
-                type: "reasoning",
-                text: part.text.trim().slice(0, 4_000),
-                state: part.state,
-              },
-            ];
-          }
-          if (
-            part.type === "tool" &&
-            "toolName" in part &&
-            typeof part.toolName === "string" &&
-            /^[\w-]{1,100}$/.test(part.toolName) &&
-            "state" in part &&
-            ["running", "completed", "failed", "approval"].includes(
-              String(part.state)
-            )
-          ) {
-            return [
-              {
-                type: "tool",
-                toolName: part.toolName,
-                state: part.state as Extract<
-                  CompanionConversationPart,
-                  { type: "tool" }
-                >["state"],
-                ...("subject" in part &&
-                typeof part.subject === "string" &&
-                part.subject.trim()
-                  ? { subject: part.subject.trim().slice(0, 180) }
-                  : {}),
-              },
-            ];
-          }
-          return [];
+          const sanitized = sanitizeConversationPart(part);
+          return sanitized ? [sanitized] : [];
         });
       if (parts.length === 0) return [];
+      const metadata = sanitizeCloneableValue(message.metadata);
       return [
         {
           id: message.id,
           role: message.role,
           parts,
+          ...(metadata && typeof metadata === "object"
+            ? { metadata: metadata as ChatUIMessage["metadata"] }
+            : {}),
         },
       ];
     });
@@ -347,45 +366,6 @@ export function validateCompanionConversation(
         : "گفتگوی سریع",
     state: input.state as CompanionConversationSnapshot["state"],
     messages,
-  };
-}
-
-export function validateCompanionActivity(
-  value: unknown
-): CompanionActivitySnapshot {
-  const input =
-    value && typeof value === "object"
-      ? (value as Partial<CompanionActivitySnapshot>)
-      : {};
-  if (!Array.isArray(input.items)) {
-    throw new Error("فعالیت‌های دستیار سریع معتبر نیستند.");
-  }
-
-  return {
-    items: input.items.slice(0, 6).flatMap((item): CompanionActivityItem[] => {
-      if (
-        !item ||
-        typeof item !== "object" ||
-        !isSafeId(item.chatId) ||
-        !isSafeId(item.workspaceId)
-      ) {
-        return [];
-      }
-      return [
-        {
-          chatId: item.chatId,
-          workspaceId: item.workspaceId,
-          title:
-            typeof item.title === "string" && item.title.trim()
-              ? item.title.trim().slice(0, 120)
-              : "گفتگوی در حال اجرا",
-          prompt:
-            typeof item.prompt === "string"
-              ? item.prompt.trim().slice(0, 240)
-              : "",
-        },
-      ];
-    }),
   };
 }
 

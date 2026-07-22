@@ -16,12 +16,10 @@ import {
   COMPANION_WINDOW_SIZE,
   fitCaptureSize,
   positionCompanionWindow,
-  validateCompanionActivity,
   validateCompanionConversation,
   validateCompanionDraft,
   validateCompanionStatus,
   type CompanionOpenChatRequest,
-  type CompanionActivitySnapshot,
   type CompanionPromptRequest,
   type CompanionScreenshot,
   type CompanionScreenCapturePermission,
@@ -57,7 +55,6 @@ export class CompanionController {
   private tray: Tray | null = null;
   private window: BrowserWindow | null = null;
   private captureInProgress = false;
-  private activity: CompanionActivitySnapshot = { items: [] };
   private lastAnchor: CompanionAnchor = "tray";
   private shortcutStatus: CompanionShortcutStatus = {
     settings: DEFAULT_COMPANION_SHORTCUT_SETTINGS,
@@ -66,12 +63,12 @@ export class CompanionController {
   };
   private readonly channels = [
     "companion:hide",
+    "companion:quit",
     "companion:open-main",
     "companion:capture-screen",
     "companion:submit",
     "companion:report-status",
     "companion:report-conversation",
-    "companion:report-activity",
     "companion:clear-conversation",
     "companion:get-screen-capture-permission",
     "companion:open-screen-capture-settings",
@@ -104,7 +101,6 @@ export class CompanionController {
     window.focus();
     window.webContents.send("companion:visibility", true);
     window.webContents.send("companion:shortcut-status", this.shortcutStatus);
-    window.webContents.send("companion:activity", this.activity);
   }
 
   hide() {
@@ -353,6 +349,10 @@ export class CompanionController {
       this.assertSender(event, "companion");
       this.hide();
     });
+    ipcMain.handle("companion:quit", (event) => {
+      this.assertSender(event, "companion");
+      this.options.onQuit();
+    });
     ipcMain.handle(
       "companion:open-main",
       (event, target?: CompanionOpenChatRequest) => {
@@ -407,13 +407,6 @@ export class CompanionController {
       const snapshot = validateCompanionConversation(value);
       if (this.window && !this.window.isDestroyed()) {
         this.window.webContents.send("companion:conversation", snapshot);
-      }
-    });
-    ipcMain.handle("companion:report-activity", (event, value: unknown) => {
-      this.assertSender(event, "main");
-      this.activity = validateCompanionActivity(value);
-      if (this.window && !this.window.isDestroyed()) {
-        this.window.webContents.send("companion:activity", this.activity);
       }
     });
     ipcMain.handle("companion:clear-conversation", (event) => {
