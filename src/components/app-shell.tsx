@@ -18,6 +18,7 @@ import { useTypingChatTitles } from "@/hooks/use-typing-chat-title";
 import { useModelCatalog } from "@/hooks/use-model-catalog";
 import { useWorkspaces, type WorkspaceInput } from "@/hooks/use-workspaces";
 import { APP_HEADER_HEIGHT } from "@/lib/branding";
+import { playCompletionDing } from "@/lib/notifications/sound";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
 import {
   seedLastSeenVersionIfNeeded,
@@ -149,6 +150,34 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const unsubscribeSound =
+      window.desktop.notifications.onPlayCompletionSound(() => {
+        void playCompletionDing().catch(() => undefined);
+      });
+    const unsubscribeOpenChat = window.desktop.notifications.onOpenChat(
+      ({ chatId, workspaceId }) => {
+        const chat = getChatById(chatId);
+        if (!chat) return;
+        const targetWorkspaceId = chat.workspaceId ?? workspaceId;
+        selectChat(chatId);
+        if (targetWorkspaceId) setActiveWorkspaceId(targetWorkspaceId);
+        if (targetWorkspaceId) {
+          void navigate({
+            to: "/workspace/$workspaceId/chat/$chatId",
+            params: { workspaceId: targetWorkspaceId, chatId },
+          });
+        } else {
+          void navigate({ to: "/chat/$chatId", params: { chatId } });
+        }
+      }
+    );
+    return () => {
+      unsubscribeSound();
+      unsubscribeOpenChat();
+    };
+  }, [getChatById, navigate, selectChat, setActiveWorkspaceId]);
 
   useEffect(() => {
     if (!areSettingsHydrated || !isCatalogHydrated) return;

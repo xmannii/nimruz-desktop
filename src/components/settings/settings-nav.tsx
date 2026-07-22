@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  BellRingIcon,
   BrainIcon,
   BotIcon,
   CircleHelpIcon,
@@ -31,6 +32,7 @@ type SettingsPath =
   | "/settings/memories"
   | "/settings/experts"
   | "/settings/models"
+  | "/settings/notifications"
   | "/settings/speech"
   | "/settings/research-agents"
   | "/settings/skills"
@@ -69,6 +71,12 @@ export const SETTINGS_NAV_GROUPS: Array<{
         label: "ظاهر",
         icon: PaletteIcon,
         match: (pathname) => pathname.startsWith("/settings/appearance"),
+      },
+      {
+        to: "/settings/notifications",
+        label: "اعلان‌ها و صدا",
+        icon: BellRingIcon,
+        match: (pathname) => pathname.startsWith("/settings/notifications"),
       },
     ],
   },

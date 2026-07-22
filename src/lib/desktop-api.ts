@@ -14,6 +14,7 @@ import type {
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { AppearanceSettings } from "@/lib/settings/appearance";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import type { NotificationSettings } from "@/lib/settings/notifications";
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
 import type { Expert } from "@/lib/settings/experts";
@@ -78,6 +79,11 @@ export type AgentRunSnapshot = {
   approvals: ApprovalRecord[];
 };
 
+export type NotificationOpenChatPayload = {
+  chatId: string;
+  workspaceId: string | null;
+};
+
 export type DesktopAPI = {
   platform: NodeJS.Platform;
   isDesktop: true;
@@ -90,6 +96,16 @@ export type DesktopAPI = {
     close: () => Promise<void>;
     getState: () => Promise<WindowState>;
     onStateChange: (callback: (state: WindowState) => void) => () => void;
+  };
+  notifications: {
+    getSettings: () => Promise<NotificationSettings>;
+    saveSettings: (
+      settings: NotificationSettings
+    ) => Promise<NotificationSettings>;
+    onPlayCompletionSound: (callback: () => void) => () => void;
+    onOpenChat: (
+      callback: (payload: NotificationOpenChatPayload) => void
+    ) => () => void;
   };
   credentials: {
     getStatus: (providerId?: string) => Promise<CredentialStatus>;
