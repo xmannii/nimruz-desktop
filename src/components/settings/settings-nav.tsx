@@ -18,6 +18,7 @@ import {
   CpuIcon,
   InfoIcon,
   Mic2Icon,
+  PanelTopOpenIcon,
   PaletteIcon,
   SearchIcon,
   ScrollTextIcon,
@@ -32,6 +33,7 @@ type SettingsPath =
   | "/settings/experts"
   | "/settings/models"
   | "/settings/speech"
+  | "/settings/companion"
   | "/settings/research-agents"
   | "/settings/skills"
   | "/settings/appearance"
@@ -76,6 +78,12 @@ export const SETTINGS_NAV_GROUPS: Array<{
     id: "assistant",
     label: "دستیار و مدل‌ها",
     items: [
+      {
+        to: "/settings/companion",
+        label: "دستیار سریع",
+        icon: PanelTopOpenIcon,
+        match: (pathname) => pathname.startsWith("/settings/companion"),
+      },
       {
         to: "/settings/models",
         label: "مدل‌ها",

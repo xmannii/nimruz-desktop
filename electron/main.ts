@@ -8,6 +8,7 @@ import { WorkspaceFilesStore } from "./agent/workspace-files";
 import { WorkspaceEventBus } from "./agent/events";
 import { CredentialService } from "./credentials";
 import { CodexService } from "./codex/service";
+import { CompanionController } from "./companion/controller";
 import { registerIpcHandlers } from "./ipc";
 import {
   isSafeExternalHttpUrl,
@@ -55,7 +56,9 @@ let localServer: http.Server | null = null;
 let database: AppDatabase | null = null;
 let codex: CodexService | null = null;
 let shenava: ShenavaService | null = null;
+let companion: CompanionController | null = null;
 let rendererUrl = "";
+let isQuitting = false;
 
 function resolveShenavaWorkerPath() {
   const bundled = path.join(__dirname, "shenava-worker.cjs");
@@ -90,7 +93,8 @@ async function createWindow() {
   mainWindow.webContents.session.setPermissionRequestHandler(
     (webContents, permission, callback, details) => {
       const trusted =
-        webContents === mainWindow?.webContents &&
+        (webContents === mainWindow?.webContents ||
+          webContents === companion?.getWindow()?.webContents) &&
         isTrustedRendererUrl(details.requestingUrl, rendererUrl);
       const mediaTypes =
         permission === "media" && "mediaTypes" in details
@@ -106,7 +110,8 @@ async function createWindow() {
   mainWindow.webContents.session.setPermissionCheckHandler(
     (webContents, permission, requestingOrigin, details) => {
       const trusted =
-        webContents === mainWindow?.webContents &&
+        (webContents === mainWindow?.webContents ||
+          webContents === companion?.getWindow()?.webContents) &&
         isTrustedRendererUrl(requestingOrigin, rendererUrl);
       const audioOnly =
         permission === "media" &&
@@ -150,6 +155,12 @@ async function createWindow() {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
 
+  mainWindow.on("close", (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
+    mainWindow?.hide();
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -190,6 +201,7 @@ app.whenReady().then(async () => {
     shenava,
     sessionToken,
     getMainWindow: () => mainWindow,
+    getCompanionWindow: () => companion?.getWindow() ?? null,
     getRendererUrl: () => rendererUrl,
   });
 
@@ -240,15 +252,34 @@ app.whenReady().then(async () => {
   }
 
   await createWindow();
+  companion = new CompanionController({
+    rendererUrl,
+    preloadPath: path.join(__dirname, "preload.cjs"),
+    icon: resolveAppIcon(),
+    getMainWindow: () => mainWindow,
+    loadShortcutSettings: () => database!.loadCompanionShortcut(),
+    saveShortcutSettings: (value) => database!.saveCompanionShortcut(value),
+    onQuit: () => {
+      isQuitting = true;
+      app.quit();
+    },
+  });
+  await companion.initialize();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
       void createWindow();
+      return;
     }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
   });
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
+  companion?.dispose();
   shenava?.cancelDownload();
   codex?.dispose();
   localServer?.close();
@@ -257,10 +288,7 @@ app.on("before-quit", () => {
   database = null;
   codex = null;
   shenava = null;
+  companion = null;
 });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
+// A tray app deliberately stays alive when its main window is hidden.

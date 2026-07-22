@@ -1,5 +1,15 @@
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
 import type {
+  CompanionActivitySnapshot,
+  CompanionDraft,
+  CompanionConversationSnapshot,
+  CompanionOpenChatRequest,
+  CompanionPromptRequest,
+  CompanionScreenshot,
+  CompanionScreenCapturePermission,
+  CompanionSubmissionStatus,
+} from "@/lib/companion";
+import type {
   CodexAccountStatus,
   CodexLoginResult,
   CodexModelSyncResult,
@@ -14,6 +24,10 @@ import type {
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { AppearanceSettings } from "@/lib/settings/appearance";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import type {
+  CompanionShortcutSettings,
+  CompanionShortcutStatus,
+} from "@/lib/settings/companion";
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
 import type { Expert } from "@/lib/settings/experts";
@@ -90,6 +104,45 @@ export type DesktopAPI = {
     close: () => Promise<void>;
     getState: () => Promise<WindowState>;
     onStateChange: (callback: (state: WindowState) => void) => () => void;
+  };
+  companion: {
+    hide: () => Promise<void>;
+    openMain: (target?: CompanionOpenChatRequest) => Promise<void>;
+    captureScreen: () => Promise<CompanionScreenshot>;
+    submit: (draft: CompanionDraft) => Promise<{ requestId: string }>;
+    reportStatus: (status: CompanionSubmissionStatus) => Promise<void>;
+    reportConversation: (
+      snapshot: CompanionConversationSnapshot
+    ) => Promise<void>;
+    reportActivity: (snapshot: CompanionActivitySnapshot) => Promise<void>;
+    clearConversation: () => Promise<void>;
+    getScreenCapturePermission: () => Promise<CompanionScreenCapturePermission>;
+    openScreenCaptureSettings: () => Promise<void>;
+    getShortcutStatus: () => Promise<CompanionShortcutStatus>;
+    setShortcutSettings: (
+      settings: CompanionShortcutSettings
+    ) => Promise<CompanionShortcutStatus>;
+    onPrompt: (
+      callback: (request: CompanionPromptRequest) => void
+    ) => () => void;
+    onSubmissionStatus: (
+      callback: (status: CompanionSubmissionStatus) => void
+    ) => () => void;
+    onConversation: (
+      callback: (snapshot: CompanionConversationSnapshot) => void
+    ) => () => void;
+    onActivity: (
+      callback: (snapshot: CompanionActivitySnapshot) => void
+    ) => () => void;
+    onClearConversation: (callback: () => void) => () => void;
+    onOpenChat: (
+      callback: (target: CompanionOpenChatRequest) => void
+    ) => () => void;
+    onVisibilityChange: (callback: (visible: boolean) => void) => () => void;
+    onShortcutStatus: (
+      callback: (status: CompanionShortcutStatus) => void
+    ) => () => void;
+    onToggleMicrophone: (callback: () => void) => () => void;
   };
   credentials: {
     getStatus: (providerId?: string) => Promise<CredentialStatus>;

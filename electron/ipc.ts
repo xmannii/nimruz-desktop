@@ -73,15 +73,20 @@ function assertTrustedSender(
   event: IpcMainInvokeEvent,
   options: {
     getMainWindow: () => import("electron").BrowserWindow | null;
+    getCompanionWindow: () => import("electron").BrowserWindow | null;
     getRendererUrl: () => string;
   }
 ) {
-  const window = options.getMainWindow();
+  const windows = [options.getMainWindow(), options.getCompanionWindow()].filter(
+    (window): window is import("electron").BrowserWindow =>
+      Boolean(window && !window.isDestroyed())
+  );
+  const window = windows.find(
+    (candidate) => candidate.webContents === event.sender
+  );
   const frame = event.senderFrame;
   if (
     !window ||
-    window.isDestroyed() ||
-    event.sender !== window.webContents ||
     !frame ||
     frame !== window.webContents.mainFrame ||
     !isTrustedRendererUrl(frame.url, options.getRendererUrl())
@@ -100,6 +105,7 @@ export function registerIpcHandlers(options: {
   shenava: ShenavaService;
   sessionToken: string;
   getMainWindow: () => import("electron").BrowserWindow | null;
+  getCompanionWindow: () => import("electron").BrowserWindow | null;
   getRendererUrl: () => string;
 }) {
   const {
@@ -112,6 +118,7 @@ export function registerIpcHandlers(options: {
     shenava,
     sessionToken,
     getMainWindow,
+    getCompanionWindow,
     getRendererUrl,
   } = options;
 
@@ -120,7 +127,11 @@ export function registerIpcHandlers(options: {
     callback: (...args: TArgs) => TResult | Promise<TResult>
   ) {
     ipcMain.handle(channel, (event, ...args: unknown[]) => {
-      assertTrustedSender(event, { getMainWindow, getRendererUrl });
+      assertTrustedSender(event, {
+        getMainWindow,
+        getCompanionWindow,
+        getRendererUrl,
+      });
       return callback(...(args as TArgs));
     });
   }
@@ -169,9 +180,10 @@ export function registerIpcHandlers(options: {
   });
 
   shenava.onStatus((status) => {
-    const window = getMainWindow();
-    if (window && !window.isDestroyed()) {
-      window.webContents.send("speech:shenava:status-changed", status);
+    for (const window of [getMainWindow(), getCompanionWindow()]) {
+      if (window && !window.isDestroyed()) {
+        window.webContents.send("speech:shenava:status-changed", status);
+      }
     }
   });
 
@@ -903,6 +915,10 @@ export function registerIpcHandlers(options: {
   handle("updates:open-url", (url: string) => openExternalUrl(url));
 
   registerWindowControlHandlers(getMainWindow, (event) =>
-    assertTrustedSender(event, { getMainWindow, getRendererUrl })
+    assertTrustedSender(event, {
+      getMainWindow,
+      getCompanionWindow,
+      getRendererUrl,
+    })
   );
 }

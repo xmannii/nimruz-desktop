@@ -89,6 +89,12 @@ test("persists chats, projects, settings, memories, and credentials", async () =
         enabled: true,
       },
     ]);
+    database.saveCompanionShortcut({
+      enabled: true,
+      accelerator: "Command+Shift+K",
+      microphoneEnabled: true,
+      microphoneAccelerator: "Command+Shift+M",
+    });
     database.setCredential("openrouter", Buffer.from("encrypted"), "••••1234");
 
     assert.ok(
@@ -103,6 +109,12 @@ test("persists chats, projects, settings, memories, and credentials", async () =
     assert.equal(database.loadPersonalization().nickname, "مانی");
     assert.equal(database.loadMemories()[0]?.id, "memory-1");
     assert.equal(database.loadSubagents()[0]?.id, "research-model");
+    assert.deepEqual(database.loadCompanionShortcut(), {
+      enabled: true,
+      accelerator: "Command+Shift+K",
+      microphoneEnabled: true,
+      microphoneAccelerator: "Command+Shift+M",
+    });
     assert.equal(database.getCredential("openrouter")?.hint, "••••1234");
 
     database.deleteWorkspace(project.id);

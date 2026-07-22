@@ -34,7 +34,8 @@ function createEmptyChat(
   model: ModelId = DEFAULT_MODEL,
   id: string = nanoid(),
   workspaceId: string | null = HOME_WORKSPACE_ID,
-  providerId: string = DEFAULT_PROVIDER_ID
+  providerId: string = DEFAULT_PROVIDER_ID,
+  agentMode: AgentMode = DEFAULT_AGENT_MODE
 ): LocalChat {
   const now = Date.now();
 
@@ -45,7 +46,7 @@ function createEmptyChat(
     model,
     messages: [],
     workspaceId,
-    agentMode: DEFAULT_AGENT_MODE,
+    agentMode,
     createdAt: now,
     updatedAt: now,
   };
@@ -113,6 +114,11 @@ export type ChatUpdate = {
   messages: UIMessage[];
   model: ModelId;
   providerId?: string;
+  agentMode?: AgentMode;
+};
+
+export type ChatCreationOptions = {
+  model?: ProviderModelRef;
   agentMode?: AgentMode;
 };
 
@@ -265,15 +271,24 @@ export function useChatHistory(
     [chats]
   );
 
-  const createChat = useCallback((workspaceId: string | null = HOME_WORKSPACE_ID) => {
+  const createChat = useCallback((
+    workspaceId: string | null = HOME_WORKSPACE_ID,
+    options: ChatCreationOptions = {}
+  ) => {
     const currentChat = chats.find((chat) => chat.id === activeChatId);
+    const requestedModel = options.model;
     const chat = createEmptyChat(
-      defaultModelRef?.modelId ?? currentChat?.model ?? DEFAULT_MODEL,
+      (requestedModel?.modelId ??
+        defaultModelRef?.modelId ??
+        currentChat?.model ??
+        DEFAULT_MODEL) as ModelId,
       nanoid(),
       workspaceId ?? HOME_WORKSPACE_ID,
-      defaultModelRef?.providerId ??
+      requestedModel?.providerId ??
+        defaultModelRef?.providerId ??
         currentChat?.providerId ??
-        DEFAULT_PROVIDER_ID
+        DEFAULT_PROVIDER_ID,
+      sanitizeAgentMode(options.agentMode)
     );
     const emptyChats = chats.filter((item) => item.messages.length === 0);
 

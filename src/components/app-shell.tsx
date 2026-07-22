@@ -18,6 +18,14 @@ import { useTypingChatTitles } from "@/hooks/use-typing-chat-title";
 import { useModelCatalog } from "@/hooks/use-model-catalog";
 import { useWorkspaces, type WorkspaceInput } from "@/hooks/use-workspaces";
 import { APP_HEADER_HEIGHT } from "@/lib/branding";
+import {
+  getMessageText,
+} from "@/lib/chat/message-text";
+import type { ChatUIMessage } from "@/lib/chat/message";
+import type {
+  CompanionConversationPart,
+  CompanionPromptRequest,
+} from "@/lib/companion";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
 import {
   seedLastSeenVersionIfNeeded,
@@ -29,6 +37,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -39,8 +48,88 @@ type AppShellProps = {
   initialChatId?: string;
 };
 
+function companionToolState(state: unknown, preliminary: unknown) {
+  if (state === "approval-requested") return "approval" as const;
+  if (state === "output-error" || state === "output-denied") {
+    return "failed" as const;
+  }
+  if (state === "output-available" && preliminary !== true) {
+    return "completed" as const;
+  }
+  return "running" as const;
+}
+
+function companionToolSubject(input: unknown): string | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const values = input as Record<string, unknown>;
+  const candidate =
+    values.path ??
+    values.url ??
+    values.query ??
+    values.command ??
+    values.title ??
+    values.name;
+  return typeof candidate === "string" && candidate.trim()
+    ? candidate.trim().slice(0, 180)
+    : undefined;
+}
+
+function companionMessageParts(
+  message: ChatUIMessage,
+  isRunningMessage: boolean
+): CompanionConversationPart[] {
+  const lastPartIndex = message.parts.length - 1;
+  return message.parts.flatMap((part, index): CompanionConversationPart[] => {
+    if (part.type === "text") {
+      return part.text.trim()
+        ? [{ type: "text", text: part.text.trim() }]
+        : [];
+    }
+    if (part.type === "reasoning") {
+      return [
+        {
+          type: "reasoning",
+          text: part.text ?? "",
+          state:
+            isRunningMessage && index === lastPartIndex
+              ? "running"
+              : "completed",
+        },
+      ];
+    }
+    if (!part.type.startsWith("tool-")) return [];
+    const toolPart = part as unknown as {
+      state?: string;
+      preliminary?: boolean;
+      input?: unknown;
+    };
+    const subject = companionToolSubject(toolPart.input);
+    return [
+      {
+        type: "tool",
+        toolName: part.type.replace(/^tool-/, ""),
+        state: companionToolState(toolPart.state, toolPart.preliminary),
+        ...(subject ? { subject } : {}),
+      },
+    ];
+  });
+}
+
 export function AppShell({ children, initialChatId }: AppShellProps) {
   const navigate = useNavigate();
+  const navigateToChat = useCallback(
+    (chatId: string, workspaceId: string | null) => {
+      if (workspaceId) {
+        void navigate({
+          to: "/workspace/$workspaceId/chat/$chatId",
+          params: { workspaceId, chatId },
+        });
+        return;
+      }
+      void navigate({ to: "/chat/$chatId", params: { chatId } });
+    },
+    [navigate]
+  );
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const isSettingsRoute = pathname.startsWith("/settings");
   const isTranscriptionRoute = pathname.startsWith("/transcribe");
@@ -128,6 +217,18 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   } = useAppSettings();
 
   const [credentialRefreshSignal, setCredentialRefreshSignal] = useState(0);
+  const [queuedCompanionRequest, setQueuedCompanionRequest] =
+    useState<CompanionPromptRequest | null>(null);
+  const [companionRequest, setCompanionRequest] = useState<
+    (CompanionPromptRequest & { chatId: string; workspaceId: string }) | null
+  >(null);
+  const [companionChatTarget, setCompanionChatTarget] = useState<{
+    chatId: string;
+    workspaceId: string;
+  } | null>(null);
+  const companionJobsRef = useRef(
+    new Map<string, { requestId: string; workspaceId: string }>()
+  );
   const [onboardingCompleted, setOnboardingCompleted] = useState<
     boolean | null
   >(null);
@@ -206,6 +307,217 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     setOnboardingOpen(true);
   }, []);
 
+  const consumeCompanionRequest = useCallback((requestId: string) => {
+    setCompanionRequest((current) =>
+      current?.requestId === requestId ? null : current
+    );
+  }, []);
+
+  useEffect(() => {
+    return window.desktop.companion.onPrompt((request) => {
+      setQueuedCompanionRequest((current) => {
+        if (current) {
+          void window.desktop.companion.reportStatus({
+            requestId: request.requestId,
+            state: "failed",
+            message: "درخواست قبلی هنوز در حال آماده‌سازی است.",
+          });
+          return current;
+        }
+        return request;
+      });
+    });
+  }, []);
+
+  useEffect(() => {
+    return window.desktop.companion.onClearConversation(() => {
+      setCompanionChatTarget(null);
+    });
+  }, []);
+
+  useEffect(() => {
+    return window.desktop.companion.onOpenChat((target) => {
+      const chat = getChatById(target.chatId);
+      if (!chat) return;
+      selectChat(target.chatId);
+      setActiveWorkspaceId(target.workspaceId);
+      navigateToChat(target.chatId, target.workspaceId);
+    });
+  }, [getChatById, navigateToChat, selectChat, setActiveWorkspaceId]);
+
+  useEffect(() => {
+    return window.desktop.workspaceEvents.subscribe((event) => {
+      if (
+        event.type !== "run-changed" ||
+        (event.status !== "completed" &&
+          event.status !== "failed" &&
+          event.status !== "cancelled")
+      ) {
+        return;
+      }
+
+      void window.desktop.storage
+        .getAgentRun(event.runId)
+        .then((snapshot) => {
+          const chatId = snapshot?.run.chatId;
+          if (!chatId) return;
+          const job = companionJobsRef.current.get(chatId);
+          if (!job) return;
+          companionJobsRef.current.delete(chatId);
+          void window.desktop.companion.reportStatus({
+            requestId: job.requestId,
+            state: event.status === "completed" ? "completed" : "failed",
+            chatId,
+            workspaceId: job.workspaceId,
+            ...(event.status === "cancelled"
+              ? { message: "اجرای ایجنت متوقف شد." }
+              : snapshot.run.error
+                ? { message: snapshot.run.error }
+                : {}),
+          });
+        })
+        .catch((error) => {
+          console.error("Failed to resolve companion run status:", error);
+        });
+    });
+  }, []);
+
+  useEffect(() => {
+    if (
+      !queuedCompanionRequest ||
+      !isHydrated ||
+      !areWorkspacesHydrated ||
+      !areSettingsHydrated ||
+      !isCatalogHydrated ||
+      companionRequest
+    ) {
+      return;
+    }
+
+    const request = queuedCompanionRequest;
+    const existingChat = request.chatId
+      ? getChatById(request.chatId)
+      : null;
+    const workspaceId =
+      existingChat?.workspaceId ??
+      (request.workspaceId &&
+      workspaces.some((workspace) => workspace.id === request.workspaceId)
+        ? request.workspaceId
+        : activeWorkspaceId ?? HOME_WORKSPACE_ID);
+    const requestedModel = resolveModel(request.model);
+    const chatId =
+      existingChat?.id ??
+      createChat(workspaceId, {
+        ...(requestedModel
+          ? {
+              model: {
+                providerId: requestedModel.providerId,
+                modelId: requestedModel.modelId,
+              },
+            }
+          : {}),
+        ...(request.agentMode ? { agentMode: request.agentMode } : {}),
+      });
+    setQueuedCompanionRequest(null);
+    setCompanionRequest({ ...request, chatId, workspaceId });
+    setCompanionChatTarget({ chatId, workspaceId });
+    companionJobsRef.current.set(chatId, {
+      requestId: request.requestId,
+      workspaceId,
+    });
+    setActiveWorkspaceId(workspaceId);
+    if (existingChat) selectChat(chatId);
+    navigateToChat(chatId, workspaceId);
+    void window.desktop.companion.reportStatus({
+      requestId: request.requestId,
+      state: "accepted",
+      chatId,
+      workspaceId,
+    });
+  }, [
+    activeWorkspaceId,
+    areSettingsHydrated,
+    areWorkspacesHydrated,
+    companionRequest,
+    createChat,
+    getChatById,
+    isCatalogHydrated,
+    isHydrated,
+    navigateToChat,
+    queuedCompanionRequest,
+    resolveModel,
+    selectChat,
+    setActiveWorkspaceId,
+    workspaces,
+  ]);
+
+  useEffect(() => {
+    if (!companionChatTarget || !isHydrated) return;
+    const chat = getChatById(companionChatTarget.chatId);
+    if (!chat) {
+      setCompanionChatTarget(null);
+      return;
+    }
+
+    const isChatRunning = runningChatIds.has(chat.id);
+    const lastMessage = chat.messages.at(-1);
+    const messages = chat.messages.slice(-24).flatMap((message) => {
+      if (message.role !== "user" && message.role !== "assistant") return [];
+      const parts = companionMessageParts(
+        message as ChatUIMessage,
+        isChatRunning && message === lastMessage
+      );
+      if (parts.length === 0) return [];
+      return [
+        {
+          id: message.id,
+          role: message.role,
+          parts,
+        },
+      ];
+    });
+
+    void window.desktop.companion.reportConversation({
+      chatId: chat.id,
+      workspaceId: companionChatTarget.workspaceId,
+      title: chat.title,
+      state: isChatRunning ? "running" : "idle",
+      messages,
+    });
+  }, [
+    companionChatTarget,
+    getChatById,
+    isHydrated,
+    runningChatIds,
+    chats,
+  ]);
+
+  const companionActivity = useMemo(() => {
+    return {
+      items: chats.flatMap((chat) => {
+        if (!runningChatIds.has(chat.id)) return [];
+        const lastUserMessage = chat.messages.findLast(
+          (message) => message.role === "user"
+        );
+        return [
+          {
+            chatId: chat.id,
+            workspaceId: chat.workspaceId ?? HOME_WORKSPACE_ID,
+            title: chat.title,
+            prompt: lastUserMessage ? getMessageText(lastUserMessage) : "",
+          },
+        ];
+      }),
+    };
+  }, [chats, runningChatIds]);
+  const companionActivityKey = JSON.stringify(companionActivity);
+
+  useEffect(() => {
+    void window.desktop.companion
+      .reportActivity(companionActivity)
+      .catch(() => undefined);
+  }, [companionActivityKey]);
+
   const handleOnboardingOpenChange = useCallback((open: boolean) => {
     setOnboardingOpen(open);
     if (!open) setOnboardingCompleted(true);
@@ -238,6 +550,8 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       hasUsableModel,
       runningChatIds,
       getChatRuntime,
+      companionRequest,
+      consumeCompanionRequest,
       getChatById,
       createChat,
       selectChat,
@@ -305,6 +619,8 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       hasUsableModel,
       runningChatIds,
       getChatRuntime,
+      companionRequest,
+      consumeCompanionRequest,
       getChatById,
       createChat,
       selectChat,
@@ -339,17 +655,6 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       getProvider,
     ]
   );
-
-  function navigateToChat(chatId: string, workspaceId: string | null) {
-    if (workspaceId) {
-      void navigate({
-        to: "/workspace/$workspaceId/chat/$chatId",
-        params: { workspaceId, chatId },
-      });
-      return;
-    }
-    void navigate({ to: "/chat/$chatId", params: { chatId } });
-  }
 
   function handleNewChat() {
     const workspaceId = activeWorkspaceId;
