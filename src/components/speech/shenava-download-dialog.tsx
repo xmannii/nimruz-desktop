@@ -109,8 +109,9 @@ export function ShenavaDownloadDialog({
               </ProgressValue>
             </Progress>
             <p className="text-sm leading-6 text-muted-foreground">
-              می‌توانید این پنجره را ببندید؛ دانلود در پس‌زمینه ادامه پیدا
-              می‌کند و درصد پیشرفت در نوار بالای برنامه نمایش داده می‌شود.
+              اگر اینترنت قطع شود، برنامه خودکار دوباره تلاش می‌کند و دانلود
+              را از همین نقطه ادامه می‌دهد. می‌توانید این پنجره را ببندید؛
+              دانلود در پس‌زمینه ادامه پیدا می‌کند.
             </p>
           </div>
         ) : (
@@ -168,6 +169,13 @@ export function ShenavaDownloadDialog({
                 {Math.round(definition.parameters / 1_000_000).toLocaleString("fa-IR")} میلیون پارامتر · {formatBytes(definition.totalBytes)}
               </span>
             </div>
+
+            {!modelStatus.installed && modelStatus.downloadedBytes > 0 ? (
+              <p className="text-sm leading-6 text-muted-foreground">
+                {formatBytes(modelStatus.downloadedBytes)} از دانلود قبلی ذخیره
+                شده است و ادامه دانلود از همان نقطه انجام می‌شود.
+              </p>
+            ) : null}
 
             <Alert>
               <ShieldAlertIcon />
@@ -239,7 +247,9 @@ export function ShenavaDownloadDialog({
                 )}
                 {modelStatus.installed
                   ? "استفاده از این مدل"
-                  : "پذیرش مجوز و دانلود"}
+                  : modelStatus.downloadedBytes > 0
+                    ? "ادامه دانلود"
+                    : "پذیرش مجوز و دانلود"}
               </Button>
             </>
           )}
