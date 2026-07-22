@@ -36,6 +36,7 @@ import {
   isSafeExternalHttpUrl,
   isTrustedRendererUrl,
 } from "../renderer-security";
+import { createTrayIcon } from "../tray-icon";
 
 const COMPANION_WIDTH = COMPANION_WINDOW_SIZE.width;
 const COMPANION_HEIGHT = COMPANION_WINDOW_SIZE.height;
@@ -197,12 +198,7 @@ export class CompanionController {
     const icon = this.options.icon;
     if (!icon || icon.isEmpty()) return;
 
-    const trayIcon = icon.resize({
-      width: process.platform === "darwin" ? 18 : 20,
-      height: process.platform === "darwin" ? 18 : 20,
-      quality: "best",
-    });
-    if (process.platform === "darwin") trayIcon.setTemplateImage(true);
+    const trayIcon = createTrayIcon(icon);
     const tray = new Tray(trayIcon);
     tray.setToolTip(`${APP_NAME_FA} — دستیار سریع`);
     tray.on("click", () => this.toggle("tray"));
