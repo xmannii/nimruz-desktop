@@ -18,6 +18,7 @@ import { Route as AppWorkspaceWorkspaceIdRouteImport } from './routes/_app.works
 import { Route as AppSettingsSpeechRouteImport } from './routes/_app.settings.speech'
 import { Route as AppSettingsSkillsRouteImport } from './routes/_app.settings.skills'
 import { Route as AppSettingsResearchAgentsRouteImport } from './routes/_app.settings.research-agents'
+import { Route as AppSettingsNotificationsRouteImport } from './routes/_app.settings.notifications'
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppSettingsMemoriesRouteImport } from './routes/_app.settings.memories'
 import { Route as AppSettingsHelpRouteImport } from './routes/_app.settings.help'
@@ -72,6 +73,12 @@ const AppSettingsResearchAgentsRoute =
   AppSettingsResearchAgentsRouteImport.update({
     id: '/research-agents',
     path: '/research-agents',
+    getParentRoute: () => AppSettingsRoute,
+  } as any)
+const AppSettingsNotificationsRoute =
+  AppSettingsNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
     getParentRoute: () => AppSettingsRoute,
   } as any)
 const AppSettingsModelsRoute = AppSettingsModelsRouteImport.update({
@@ -139,6 +146,7 @@ export interface FileRoutesByFullPath {
   '/settings/help': typeof AppSettingsHelpRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
+  '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings/speech': typeof AppSettingsSpeechRoute
@@ -158,6 +166,7 @@ export interface FileRoutesByTo {
   '/settings/help': typeof AppSettingsHelpRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
+  '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings/speech': typeof AppSettingsSpeechRoute
@@ -179,6 +188,7 @@ export interface FileRoutesById {
   '/_app/settings/help': typeof AppSettingsHelpRoute
   '/_app/settings/memories': typeof AppSettingsMemoriesRoute
   '/_app/settings/models': typeof AppSettingsModelsRoute
+  '/_app/settings/notifications': typeof AppSettingsNotificationsRoute
   '/_app/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/_app/settings/skills': typeof AppSettingsSkillsRoute
   '/_app/settings/speech': typeof AppSettingsSpeechRoute
@@ -201,6 +211,7 @@ export interface FileRouteTypes {
     | '/settings/help'
     | '/settings/memories'
     | '/settings/models'
+    | '/settings/notifications'
     | '/settings/research-agents'
     | '/settings/skills'
     | '/settings/speech'
@@ -220,6 +231,7 @@ export interface FileRouteTypes {
     | '/settings/help'
     | '/settings/memories'
     | '/settings/models'
+    | '/settings/notifications'
     | '/settings/research-agents'
     | '/settings/skills'
     | '/settings/speech'
@@ -240,6 +252,7 @@ export interface FileRouteTypes {
     | '/_app/settings/help'
     | '/_app/settings/memories'
     | '/_app/settings/models'
+    | '/_app/settings/notifications'
     | '/_app/settings/research-agents'
     | '/_app/settings/skills'
     | '/_app/settings/speech'
@@ -316,6 +329,13 @@ declare module '@tanstack/react-router' {
       path: '/research-agents'
       fullPath: '/settings/research-agents'
       preLoaderRoute: typeof AppSettingsResearchAgentsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/notifications': {
+      id: '/_app/settings/notifications'
+      path: '/notifications'
+      fullPath: '/settings/notifications'
+      preLoaderRoute: typeof AppSettingsNotificationsRouteImport
       parentRoute: typeof AppSettingsRoute
     }
     '/_app/settings/models': {
@@ -399,6 +419,7 @@ interface AppSettingsRouteChildren {
   AppSettingsHelpRoute: typeof AppSettingsHelpRoute
   AppSettingsMemoriesRoute: typeof AppSettingsMemoriesRoute
   AppSettingsModelsRoute: typeof AppSettingsModelsRoute
+  AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
   AppSettingsResearchAgentsRoute: typeof AppSettingsResearchAgentsRoute
   AppSettingsSkillsRoute: typeof AppSettingsSkillsRoute
   AppSettingsSpeechRoute: typeof AppSettingsSpeechRoute
@@ -413,6 +434,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsHelpRoute: AppSettingsHelpRoute,
   AppSettingsMemoriesRoute: AppSettingsMemoriesRoute,
   AppSettingsModelsRoute: AppSettingsModelsRoute,
+  AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,
   AppSettingsResearchAgentsRoute: AppSettingsResearchAgentsRoute,
   AppSettingsSkillsRoute: AppSettingsSkillsRoute,
   AppSettingsSpeechRoute: AppSettingsSpeechRoute,

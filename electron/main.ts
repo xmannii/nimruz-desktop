@@ -1,4 +1,10 @@
-import { app, BrowserWindow, nativeImage, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  nativeImage,
+  Notification,
+  shell,
+} from "electron";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import type http from "node:http";
@@ -17,6 +23,10 @@ import { startServer } from "./server";
 import { SkillStore } from "./skills/store";
 import { AppDatabase } from "./storage/database";
 import { ShenavaService } from "./shenava/service";
+import {
+  DesktopNotificationService,
+  type NativeNotificationPayload,
+} from "./notifications/service";
 import { attachWindowStateEvents } from "./window-controls";
 import {
   APP_NAME,
@@ -26,6 +36,9 @@ import {
 import { HOME_WORKSPACE_ID } from "@/lib/workspace";
 
 app.setName(APP_NAME);
+if (process.platform === "win32") {
+  app.setAppUserModelId("dev.nimruz.desktop");
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -55,7 +68,22 @@ let localServer: http.Server | null = null;
 let database: AppDatabase | null = null;
 let codex: CodexService | null = null;
 let shenava: ShenavaService | null = null;
+let notificationService: DesktopNotificationService | null = null;
 let rendererUrl = "";
+const activeNotifications = new Set<Notification>();
+
+function presentNativeNotification(
+  payload: NativeNotificationPayload,
+  onClick: () => void
+) {
+  const notification = new Notification(payload);
+  activeNotifications.add(notification);
+  const release = () => activeNotifications.delete(notification);
+  notification.on("click", onClick);
+  notification.on("close", release);
+  notification.on("failed", release);
+  notification.show();
+}
 
 function resolveShenavaWorkerPath() {
   const bundled = path.join(__dirname, "shenava-worker.cjs");
@@ -176,6 +204,18 @@ app.whenReady().then(async () => {
     userDataPath,
     workerScript: resolveShenavaWorkerPath(),
   });
+  notificationService = new DesktopNotificationService({
+    database,
+    getWindow: () => mainWindow,
+    nativeNotificationsSupported: () => Notification.isSupported(),
+    presentNativeNotification,
+  });
+  workspaceEvents.onEvent((event) =>
+    notificationService?.handleWorkspaceEvent(event)
+  );
+  shenava.onStatus((status) =>
+    notificationService?.handleShenavaStatus(status)
+  );
   database.ensureHomeWorkspace();
   workspaceFiles.ensureManagedRoot(HOME_WORKSPACE_ID);
   const sessionToken = randomBytes(32).toString("base64url");
@@ -257,6 +297,8 @@ app.on("before-quit", () => {
   database = null;
   codex = null;
   shenava = null;
+  notificationService = null;
+  activeNotifications.clear();
 });
 
 app.on("window-all-closed", () => {

@@ -9,6 +9,7 @@ import type { LegacyImportResult } from "@/lib/desktop-api";
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { AppearanceSettings } from "@/lib/settings/appearance";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import type { NotificationSettings } from "@/lib/settings/notifications";
 import type { SubagentModel } from "@/lib/settings/subagents";
 import type {
   SkillDocument,
@@ -126,6 +127,14 @@ export function registerIpcHandlers(options: {
   }
 
   handle("auth:get-session-token", () => sessionToken);
+
+  handle(
+    "notifications:get-settings",
+    (): NotificationSettings => database.loadNotificationSettings()
+  );
+  handle("notifications:save-settings", (value: unknown) =>
+    database.saveNotificationSettings(value)
+  );
 
   handle("speech:shenava:status", () => shenava.getStatus());
   handle("speech:shenava:download", (modelKey: ShenavaModelKey) =>

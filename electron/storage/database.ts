@@ -37,6 +37,11 @@ import {
   type PersonalizationSettings,
 } from "@/lib/settings/personalization";
 import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  sanitizeNotificationSettings,
+  type NotificationSettings,
+} from "@/lib/settings/notifications";
+import {
   sanitizeMemories,
   type MemoryEntry,
 } from "@/lib/settings/memories";
@@ -1633,6 +1638,34 @@ export class AppDatabase {
       .prepare(
         `INSERT INTO settings (key, value_json, updated_at)
          VALUES ('appearance', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(settings), Date.now());
+    return settings;
+  }
+
+  loadNotificationSettings(): NotificationSettings {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("notifications");
+    if (typeof row?.value_json !== "string") {
+      return DEFAULT_NOTIFICATION_SETTINGS;
+    }
+    try {
+      return sanitizeNotificationSettings(JSON.parse(row.value_json));
+    } catch {
+      return DEFAULT_NOTIFICATION_SETTINGS;
+    }
+  }
+
+  saveNotificationSettings(value: unknown): NotificationSettings {
+    const settings = sanitizeNotificationSettings(value);
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('notifications', ?, ?)
          ON CONFLICT(key) DO UPDATE SET
            value_json = excluded.value_json,
            updated_at = excluded.updated_at`

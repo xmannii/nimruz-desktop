@@ -1,6 +1,14 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { CodexAccountStatus } from "@/lib/codex";
-import type { DesktopAPI, WindowState } from "@/lib/desktop-api";
+import type {
+  DesktopAPI,
+  NotificationOpenChatPayload,
+  WindowState,
+} from "@/lib/desktop-api";
+import {
+  NOTIFICATION_OPEN_CHAT_CHANNEL,
+  NOTIFICATION_PLAY_SOUND_CHANNEL,
+} from "./notifications/service";
 
 const desktopApi: DesktopAPI = {
   platform: process.platform,
@@ -19,6 +27,28 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.on("window:state-changed", handler);
       return () => {
         ipcRenderer.removeListener("window:state-changed", handler);
+      };
+    },
+  },
+  notifications: {
+    getSettings: () => ipcRenderer.invoke("notifications:get-settings"),
+    saveSettings: (settings) =>
+      ipcRenderer.invoke("notifications:save-settings", settings),
+    onPlayCompletionSound: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on(NOTIFICATION_PLAY_SOUND_CHANNEL, handler);
+      return () => {
+        ipcRenderer.removeListener(NOTIFICATION_PLAY_SOUND_CHANNEL, handler);
+      };
+    },
+    onOpenChat: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: NotificationOpenChatPayload
+      ) => callback(payload);
+      ipcRenderer.on(NOTIFICATION_OPEN_CHAT_CHANNEL, handler);
+      return () => {
+        ipcRenderer.removeListener(NOTIFICATION_OPEN_CHAT_CHANNEL, handler);
       };
     },
   },

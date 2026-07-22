@@ -11,6 +11,7 @@ import {
   HOME_WORKSPACE_TITLE,
 } from "@/lib/workspace";
 import { DEFAULT_PERSONALIZATION_SETTINGS } from "@/lib/settings/personalization";
+import { DEFAULT_NOTIFICATION_SETTINGS } from "@/lib/settings/notifications";
 import {
   CODEX_BASE_URL,
   CODEX_PROVIDER_ID,
@@ -71,6 +72,11 @@ test("persists chats, projects, settings, memories, and credentials", async () =
       ...DEFAULT_PERSONALIZATION_SETTINGS,
       nickname: "مانی",
     });
+    database.saveNotificationSettings({
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      agentCompleted: false,
+      completionSound: true,
+    });
     database.saveMemories([
       {
         id: "memory-1",
@@ -101,6 +107,8 @@ test("persists chats, projects, settings, memories, and credentials", async () =
     );
     assert.equal(database.loadChats()[0]?.messages[0]?.role, "user");
     assert.equal(database.loadPersonalization().nickname, "مانی");
+    assert.equal(database.loadNotificationSettings().agentCompleted, false);
+    assert.equal(database.loadNotificationSettings().completionSound, true);
     assert.equal(database.loadMemories()[0]?.id, "memory-1");
     assert.equal(database.loadSubagents()[0]?.id, "research-model");
     assert.equal(database.getCredential("openrouter")?.hint, "••••1234");
