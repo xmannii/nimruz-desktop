@@ -53,6 +53,10 @@ import {
 import { testMcpServerConnection } from "./agent/mcp";
 import type { TurnCheckpointManager } from "./git/checkpoint-manager";
 import type { RunApprovalBroker } from "./agent/approval-broker";
+import {
+  CHAT_QUEUE_TEXT_LIMIT,
+  type ChatQueuedMessageKind,
+} from "@/lib/chat/queue";
 
 const execFileAsync = promisify(execFile);
 const MAX_DIFF_CHARS = 120_000;
@@ -255,6 +259,9 @@ export function registerIpcHandlers(options: {
     codex.cancelLogin(loginId)
   );
   handle("codex:logout", () => codex.logout());
+  handle("codex:wait-chat-idle", (chatId: string) =>
+    codex.waitForChatIdle(chatId)
+  );
   handle("codex:sync-models", () => codex.syncModels());
 
   codex.onStatusChanged(() => {
@@ -898,6 +905,44 @@ export function registerIpcHandlers(options: {
       approvals: database.listApprovals(runId),
     };
   });
+  handle("storage:list-queued-chat-messages", (chatId: string) =>
+    database.listQueuedChatMessages(chatId)
+  );
+  handle(
+    "storage:enqueue-chat-message",
+    (
+      chatId: string,
+      text: string,
+      kind: ChatQueuedMessageKind = "follow_up"
+    ) => {
+      if (!/^[\w-]{1,128}$/.test(chatId)) {
+        throw new Error("Invalid chat id.");
+      }
+      if (
+        typeof text !== "string" ||
+        !text.trim() ||
+        text.length > CHAT_QUEUE_TEXT_LIMIT
+      ) {
+        throw new Error("Queued message text is invalid.");
+      }
+      if (kind !== "follow_up" && kind !== "steer") {
+        throw new Error("Invalid queued message kind.");
+      }
+      return database.enqueueChatMessage({
+        id: nanoid(),
+        chatId,
+        text,
+        kind,
+        createdAt: Date.now(),
+      });
+    }
+  );
+  handle("storage:shift-queued-chat-message", (chatId: string) =>
+    database.shiftQueuedChatMessage(chatId)
+  );
+  handle("storage:delete-queued-chat-message", (id: string) =>
+    database.deleteQueuedChatMessage(id)
+  );
   handle(
     "storage:resolve-run-approval",
     (

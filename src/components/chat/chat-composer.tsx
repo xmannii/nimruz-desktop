@@ -72,7 +72,9 @@ import {
   FolderIcon,
   GitBranchIcon,
   ListTodoIcon,
+  ListPlusIcon,
   PlayIcon,
+  CornerDownLeftIcon,
   SquareIcon,
 } from "lucide-react";
 import {
@@ -118,6 +120,8 @@ type ChatComposerProps = {
   status: ChatStatus;
   onSubmit: () => void;
   onStop: () => void;
+  onQueue?: () => void;
+  onSteer?: () => void;
   centered?: boolean;
   messages?: ChatUIMessage[];
   chatId: string;
@@ -149,6 +153,8 @@ export function ChatComposer({
   status,
   onSubmit,
   onStop,
+  onQueue,
+  onSteer,
   centered = false,
   messages = [],
   chatId,
@@ -412,9 +418,10 @@ export function ChatComposer({
 
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!canSend || isBusy) return;
+    if (!canSend) return;
     setAddMenuOpen(false);
-    onSubmit();
+    if (isBusy) onQueue?.();
+    else onSubmit();
   }
 
   function handleTextChange(el: HTMLTextAreaElement) {
@@ -526,7 +533,7 @@ export function ChatComposer({
     onChange: (e: ChangeEvent<HTMLTextAreaElement>) =>
       handleTextChange(e.currentTarget),
     onKeyDown: handleKeyDown,
-    disabled: isBusy || Boolean(pendingQuestion),
+    disabled: Boolean(pendingQuestion),
   };
 
   const badgeProps = selectedExpert
@@ -566,6 +573,22 @@ export function ChatComposer({
       )}
       onSubmit={handleSubmit}
     >
+      {isBusy && canSend && onQueue && onSteer ? (
+        <div
+          dir="rtl"
+          className="mb-1.5 flex items-center justify-end gap-1.5"
+        >
+          <Button type="submit" size="sm" variant="outline">
+            <ListPlusIcon data-icon="inline-start" />
+            افزودن به صف
+          </Button>
+          <Button type="button" size="sm" onClick={onSteer}>
+            <CornerDownLeftIcon data-icon="inline-start" />
+            هدایت اکنون
+          </Button>
+        </div>
+      ) : null}
+
       {hasExpertPicker ? (
         <ExpertSlashSuggestions
           suggestions={expertSuggestions}

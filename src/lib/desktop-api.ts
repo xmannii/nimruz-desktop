@@ -1,5 +1,9 @@
 import type { LocalChat, LocalProject } from "@/lib/chat/storage";
 import type {
+  ChatQueuedMessage,
+  ChatQueuedMessageKind,
+} from "@/lib/chat/queue";
+import type {
   CompanionDraft,
   CompanionConversationSnapshot,
   CompanionOpenChatRequest,
@@ -180,6 +184,7 @@ export type DesktopAPI = {
     startLogin: (flow?: "browser" | "device-code") => Promise<CodexLoginResult>;
     cancelLogin: (loginId: string) => Promise<void>;
     logout: () => Promise<void>;
+    waitForChatIdle: (chatId: string) => Promise<boolean>;
     syncModels: () => Promise<CodexModelSyncResult>;
     onStatusChange: (callback: (status: CodexAccountStatus) => void) => () => void;
   };
@@ -365,6 +370,16 @@ export type DesktopAPI = {
       limit?: number;
     }) => Promise<AgentRun[]>;
     getAgentRun: (runId: string) => Promise<AgentRunSnapshot | null>;
+    listQueuedChatMessages: (chatId: string) => Promise<ChatQueuedMessage[]>;
+    enqueueChatMessage: (
+      chatId: string,
+      text: string,
+      kind?: ChatQueuedMessageKind
+    ) => Promise<ChatQueuedMessage>;
+    shiftQueuedChatMessage: (
+      chatId: string
+    ) => Promise<ChatQueuedMessage | null>;
+    deleteQueuedChatMessage: (id: string) => Promise<boolean>;
     resolveRunApproval: (
       approvalId: string,
       decision: { approved: boolean; forSession?: boolean }

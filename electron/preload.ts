@@ -163,6 +163,8 @@ const desktopApi: DesktopAPI = {
     cancelLogin: (loginId) =>
       ipcRenderer.invoke("codex:login-cancel", loginId),
     logout: () => ipcRenderer.invoke("codex:logout"),
+    waitForChatIdle: (chatId) =>
+      ipcRenderer.invoke("codex:wait-chat-idle", chatId),
     syncModels: () => ipcRenderer.invoke("codex:sync-models"),
     onStatusChange: (callback) => {
       const handler = (
@@ -367,6 +369,14 @@ const desktopApi: DesktopAPI = {
     listAgentRuns: (options) =>
       ipcRenderer.invoke("storage:list-agent-runs", options),
     getAgentRun: (runId) => ipcRenderer.invoke("storage:get-agent-run", runId),
+    listQueuedChatMessages: (chatId) =>
+      ipcRenderer.invoke("storage:list-queued-chat-messages", chatId),
+    enqueueChatMessage: (chatId, text, kind) =>
+      ipcRenderer.invoke("storage:enqueue-chat-message", chatId, text, kind),
+    shiftQueuedChatMessage: (chatId) =>
+      ipcRenderer.invoke("storage:shift-queued-chat-message", chatId),
+    deleteQueuedChatMessage: (id) =>
+      ipcRenderer.invoke("storage:delete-queued-chat-message", id),
     resolveRunApproval: (approvalId, decision) =>
       ipcRenderer.invoke(
         "storage:resolve-run-approval",

@@ -561,6 +561,33 @@ export class CodexService {
     }
   }
 
+  /**
+   * Waits until a stopped native turn has released its per-chat lock.
+   * The HTTP stream can finish slightly before app-server thread cleanup, so
+   * steering callers must not immediately start a replacement turn.
+   */
+  async waitForChatIdle(chatId: string, timeoutMs = 15_000): Promise<boolean> {
+    if (!/^[\w-]{1,128}$/.test(chatId)) return false;
+    if (!this.activeChats.has(chatId)) return true;
+    return new Promise<boolean>((resolve) => {
+      const event = `chat-idle:${chatId}`;
+      const onIdle = () => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        this.events.off(event, onIdle);
+        resolve(!this.activeChats.has(chatId));
+      }, Math.min(Math.max(timeoutMs, 100), 30_000));
+      this.events.once(event, onIdle);
+      if (!this.activeChats.has(chatId)) {
+        clearTimeout(timer);
+        this.events.off(event, onIdle);
+        resolve(true);
+      }
+    });
+  }
+
   async syncModels(): Promise<CodexModelSyncResult> {
     const epoch = this.accountEpoch;
     if (this.modelSync?.epoch === epoch) return this.modelSync.promise;
@@ -914,6 +941,7 @@ export class CodexService {
       unsubscribeExit();
       this.activeTurnInterruptors.delete(options.chatId);
       this.activeChats.delete(options.chatId);
+      this.events.emit(`chat-idle:${options.chatId}`);
       if (threadId) this.activeNativeTurns.delete(threadId);
     }
   }

@@ -57,6 +57,7 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 - **Turn checkpoints and diffs** — review the exact file patch from each completed agent run and safely restore it while the checkout still matches
 - **Workspace MCP tools** — connect stdio, HTTP, or SSE MCP servers; discovered tools are namespaced and require per-call approval
 - **Approvals** — risky tools ask before running; optional “always allow” per workspace
+- **Durable follow-ups** — queue text while an agent works, or steer by interrupting and continuing with the new instruction
 - **Side panel** — files, artifacts, tasks, activity, and workspace settings
 - **Composer context** — attach files/artifacts, workspace picker, and `@`-mentions
 

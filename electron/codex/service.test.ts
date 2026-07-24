@@ -869,10 +869,13 @@ test("interrupts an aborted turn and does not persist an incomplete mapping", as
       onEvent: () => undefined,
     });
     await waitForRequest(client, "turn/start");
+    const idle = service.waitForChatIdle("chat-abort", 1_000);
     controller.abort();
 
     const result = await pending;
     assert.equal(result.status, "interrupted");
+    assert.equal(await idle, true);
+    assert.equal(await service.waitForChatIdle("chat-idle", 100), true);
     assert.deepEqual(
       client.requests.find((request) => request.method === "turn/interrupt")
         ?.params,

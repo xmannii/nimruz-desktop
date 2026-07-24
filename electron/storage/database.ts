@@ -12,6 +12,11 @@ import {
   sanitizeMcpServerIds,
   type LocalChat,
 } from "@/lib/chat/storage";
+import {
+  CHAT_QUEUE_LIMIT,
+  CHAT_QUEUE_TEXT_LIMIT,
+  type ChatQueuedMessage,
+} from "@/lib/chat/queue";
 import type { CodexChatThread, CodexModelDescriptor } from "@/lib/codex";
 import {
   CODEX_PROVIDER_ID,
@@ -707,6 +712,23 @@ export class AppDatabase {
           CREATE INDEX IF NOT EXISTS turn_checkpoints_workspace_id_idx
             ON turn_checkpoints(workspace_id, created_at DESC);
           PRAGMA user_version = 11;
+        `);
+      });
+    }
+
+    if (currentVersion < 12) {
+      this.transaction(() => {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS chat_queued_messages (
+            id TEXT PRIMARY KEY,
+            chat_id TEXT NOT NULL REFERENCES chats(id) ON DELETE CASCADE,
+            text TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            created_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS chat_queued_messages_chat_id_idx
+            ON chat_queued_messages(chat_id, created_at ASC);
+          PRAGMA user_version = 12;
         `);
       });
     }
@@ -1485,6 +1507,132 @@ export class AppDatabase {
         finishedAt:
           row.finished_at == null ? null : asNumber(row.finished_at),
       }));
+  }
+
+  enqueueChatMessage(message: ChatQueuedMessage): ChatQueuedMessage {
+    if (
+      !validateId(message.id) ||
+      !validateId(message.chatId) ||
+      !["follow_up", "steer"].includes(message.kind)
+    ) {
+      throw new Error("Invalid queued chat message.");
+    }
+    const text = message.text.trim();
+    if (!text || text.length > CHAT_QUEUE_TEXT_LIMIT) {
+      throw new Error("Queued message text is invalid.");
+    }
+    const count = asNumber(
+      this.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM chat_queued_messages WHERE chat_id = ?"
+        )
+        .get(message.chatId)?.count ?? 0
+    );
+    if (count >= CHAT_QUEUE_LIMIT) {
+      throw new Error(`A chat can queue at most ${CHAT_QUEUE_LIMIT} messages.`);
+    }
+    const value = { ...message, text };
+    this.database
+      .prepare(
+        `INSERT INTO chat_queued_messages (id, chat_id, text, kind, created_at)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(
+        value.id,
+        value.chatId,
+        value.text,
+        value.kind,
+        Number(value.createdAt)
+      );
+    return value;
+  }
+
+  listQueuedChatMessages(chatId: string): ChatQueuedMessage[] {
+    if (!validateId(chatId)) return [];
+    return this.database
+      .prepare(
+        `SELECT id, chat_id, text, kind, created_at
+           FROM chat_queued_messages
+          WHERE chat_id = ?
+          ORDER BY CASE kind WHEN 'steer' THEN 0 ELSE 1 END,
+                   created_at ASC`
+      )
+      .all(chatId)
+      .map((row) => ({
+        id: String(row.id),
+        chatId: String(row.chat_id),
+        text: String(row.text),
+        kind: row.kind === "steer" ? "steer" : "follow_up",
+        createdAt: asNumber(row.created_at),
+      }));
+  }
+
+  deleteQueuedChatMessage(id: string): boolean {
+    if (!validateId(id)) return false;
+    return (
+      this.database
+        .prepare("DELETE FROM chat_queued_messages WHERE id = ?")
+        .run(id).changes > 0
+    );
+  }
+
+  /**
+   * Atomically claims the next durable message. Steers are intentionally
+   * ordered before ordinary follow-ups after they interrupt the active turn.
+   */
+  shiftQueuedChatMessage(chatId: string): ChatQueuedMessage | null {
+    if (!validateId(chatId)) return null;
+    return this.transaction(() => {
+      const next = this.listQueuedChatMessages(chatId)[0] ?? null;
+      if (!next) return null;
+      this.deleteQueuedChatMessage(next.id);
+      return next;
+    });
+  }
+
+  /**
+   * A renderer or provider stream cannot survive an Electron process exit.
+   * Convert stale active rows into explicit recoverable history on startup.
+   */
+  recoverInterruptedAgentRuns(now = Date.now()): number {
+    return this.transaction(() => {
+      const result = this.database
+        .prepare(
+          `UPDATE agent_runs
+              SET status = 'failed',
+                  error = 'Nimruz restarted before this run finished. Retry the turn or continue with a queued message.',
+                  updated_at = ?,
+                  finished_at = ?
+            WHERE status IN ('queued', 'running', 'awaiting_approval')
+              AND finished_at IS NULL`
+        )
+        .run(now, now);
+      this.database
+        .prepare(
+          `UPDATE approvals
+              SET decision = 'denied', decided_at = ?
+            WHERE decision = 'pending'
+              AND run_id IN (
+                SELECT id FROM agent_runs
+                 WHERE finished_at = ? AND status = 'failed'
+              )`
+        )
+        .run(now, now);
+      this.database
+        .prepare(
+          `UPDATE tool_calls
+              SET status = 'failed',
+                  error = 'Interrupted by application restart.',
+                  finished_at = ?
+            WHERE status IN ('queued', 'running', 'awaiting_approval')
+              AND run_id IN (
+                SELECT id FROM agent_runs
+                 WHERE finished_at = ? AND status = 'failed'
+              )`
+        )
+        .run(now, now);
+      return asNumber(result.changes);
+    });
   }
 
   addAgentRunStep(step: AgentRunStep): void {

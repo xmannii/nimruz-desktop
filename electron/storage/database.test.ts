@@ -477,6 +477,88 @@ test("deleting all chats also clears Codex thread mappings", async () => {
   });
 });
 
+test("persists ordered chat follow-ups and prioritizes steering", async () => {
+  await withDatabase((database) => {
+    database.saveWorkspace(project);
+    database.saveChats([chat]);
+    database.enqueueChatMessage({
+      id: "queued-one",
+      chatId: chat.id,
+      text: "Run the tests next.",
+      kind: "follow_up",
+      createdAt: 10,
+    });
+    database.enqueueChatMessage({
+      id: "queued-steer",
+      chatId: chat.id,
+      text: "Stop changing the API and keep it compatible.",
+      kind: "steer",
+      createdAt: 11,
+    });
+
+    assert.deepEqual(
+      database.listQueuedChatMessages(chat.id).map((item) => item.id),
+      ["queued-steer", "queued-one"]
+    );
+    assert.equal(
+      database.shiftQueuedChatMessage(chat.id)?.id,
+      "queued-steer"
+    );
+    assert.equal(database.shiftQueuedChatMessage(chat.id)?.id, "queued-one");
+    assert.equal(database.shiftQueuedChatMessage(chat.id), null);
+  });
+});
+
+test("recovers interrupted runs and their pending approvals after restart", async () => {
+  await withDatabase((database) => {
+    database.saveWorkspace(project);
+    database.saveChats([chat]);
+    database.saveAgentRun({
+      id: "run-restart",
+      workspaceId: project.id,
+      chatId: chat.id,
+      status: "awaiting_approval",
+      model: chat.model,
+      providerId: chat.providerId,
+      error: null,
+      stepCount: 1,
+      startedAt: 10,
+      updatedAt: 11,
+      finishedAt: null,
+    });
+    database.saveToolCall({
+      id: "tool-restart",
+      runId: "run-restart",
+      toolName: "run_command",
+      risk: "shell",
+      inputJson: "{}",
+      outputJson: null,
+      status: "awaiting_approval",
+      error: null,
+      startedAt: 11,
+      finishedAt: null,
+    });
+    database.saveApproval({
+      id: "approval-restart",
+      runId: "run-restart",
+      toolCallId: "tool-restart",
+      toolName: "run_command",
+      risk: "shell",
+      reason: "Run tests.",
+      decision: "pending",
+      decidedAt: null,
+      createdAt: 11,
+    });
+
+    assert.equal(database.recoverInterruptedAgentRuns(20), 1);
+    assert.equal(database.getAgentRun("run-restart")?.status, "failed");
+    assert.equal(database.getAgentRun("run-restart")?.finishedAt, 20);
+    assert.equal(database.listApprovals("run-restart")[0]?.decision, "denied");
+    assert.equal(database.listToolCalls("run-restart")[0]?.status, "failed");
+    assert.equal(database.recoverInterruptedAgentRuns(30), 0);
+  });
+});
+
 test("migrates a version-2 database to the combined version-10 schema", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nimruz-db-v2-"));
   const databasePath = path.join(directory, "test.sqlite3");
@@ -499,7 +581,7 @@ test("migrates a version-2 database to the combined version-10 schema", async ()
     });
     assert.equal(mapping.threadId, "migrated-thread");
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 11);
+    assert.equal(version?.user_version, 12);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
@@ -532,7 +614,7 @@ test("migrates an official version-3 database to the combined version-10 schema"
       "official-v3-thread"
     );
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 11);
+    assert.equal(version?.user_version, 12);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
@@ -565,7 +647,7 @@ test("migrates a Codex version-3 database to the combined version-10 schema", as
     assert.equal(database.loadChats()[0]?.pinned, true);
     assert.equal(database.loadChats()[0]?.pinnedAt, 10);
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 11);
+    assert.equal(version?.user_version, 12);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });

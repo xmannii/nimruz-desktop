@@ -201,6 +201,9 @@ async function createWindow() {
 app.whenReady().then(async () => {
   const userDataPath = app.getPath("userData");
   database = new AppDatabase(path.join(userDataPath, DATABASE_FILE));
+  // HTTP/model streams cannot be resumed after the Electron process exits.
+  // Preserve their audit rows, but never leave phantom active runs/approvals.
+  database.recoverInterruptedAgentRuns();
   const credentials = new CredentialService(database);
   codex = new CodexService({
     database,

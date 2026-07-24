@@ -48,6 +48,8 @@ import {
 import { ChatComposer } from "./chat-composer";
 import { ChatMessages } from "./chat-messages";
 import { ChatRunApprovals } from "./chat-run-approvals";
+import { ChatMessageQueue } from "./chat-message-queue";
+import type { ChatQueuedMessage } from "@/lib/chat/queue";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { generateChatTitle, fallbackTitleFromMessage } from "@/lib/chat/generate-chat-title";
 import { toast } from "sonner";
@@ -264,6 +266,10 @@ export function ChatSession({
   const handledCompanionRequestIds = useRef(new Set<string>());
   const isSuppressingAutoSendRef = useRef(false);
   const [activePlan, setActivePlan] = useState<PlanRecord | null>(null);
+  const [queuedMessages, setQueuedMessages] = useState<ChatQueuedMessage[]>([]);
+  const [queueDispatchReady, setQueueDispatchReady] = useState(true);
+  const isDrainingQueueRef = useRef(false);
+  const dispatchedQueueIdRef = useRef<string | null>(null);
   useEffect(() => {
     setModelRef({
       providerId: chat.providerId || DEFAULT_PROVIDER_ID,
@@ -276,6 +282,19 @@ export function ChatSession({
     setMcpServerIds(chat.mcpServerIds);
     handledWritePlanIds.current = new Set();
   }, [chat.id, chat.mcpServerIds]);
+
+  const loadQueuedMessages = useCallback(async () => {
+    const queued = await window.desktop.storage.listQueuedChatMessages(chat.id);
+    setQueuedMessages(queued);
+  }, [chat.id]);
+
+  useEffect(() => {
+    isDrainingQueueRef.current = false;
+    setQueueDispatchReady(true);
+    void loadQueuedMessages().catch((queueError) =>
+      console.error("Failed to load queued chat messages:", queueError)
+    );
+  }, [loadQueuedMessages]);
 
   const loadActivePlan = useCallback(async () => {
     if (!chat.workspaceId) {
@@ -333,6 +352,10 @@ export function ChatSession({
   ]);
 
   const handleChatError = useCallback((chatError: Error) => {
+    // A failed queued turn remains durable for explicit retry/removal instead
+    // of immediately entering an automatic failure loop.
+    dispatchedQueueIdRef.current = null;
+    setQueueDispatchReady(false);
     toast.error(getChatErrorMessage(chatError));
   }, []);
 
@@ -357,6 +380,21 @@ export function ChatSession({
   runtime.persistence.agentMode = agentMode;
   runtime.persistence.mcpServerIds = mcpServerIds;
   runtime.callbacks.onError = handleChatError;
+  runtime.callbacks.onFinish = () => {
+    // The transport can report "ready" just before it invokes onFinish.
+    // Open the queue only after message persistence and final callbacks settle.
+    const completedQueueId = dispatchedQueueIdRef.current;
+    dispatchedQueueIdRef.current = null;
+    if (completedQueueId) {
+      void window.desktop.storage
+        .deleteQueuedChatMessage(completedQueueId)
+        .then(() => loadQueuedMessages())
+        .catch((queueError) =>
+          console.error("Failed to acknowledge queued message:", queueError)
+        );
+    }
+    setQueueDispatchReady(true);
+  };
   runtime.callbacks.sendAutomaticallyWhen = (options) =>
     !isSuppressingAutoSendRef.current &&
     (lastAssistantMessageIsCompleteWithToolCalls(options) ||
@@ -769,15 +807,17 @@ export function ChatSession({
   async function submitMessage(override?: {
     text: string;
     attachments: ComposerAttachment[];
-  }) {
+  }): Promise<boolean> {
     const submissionText = override?.text ?? text;
     const submissionAttachments = override?.attachments ?? attachments;
     const trimmed = submissionText.trim();
     if (pendingQuestion) {
       toast.info("ابتدا سؤال بالای کادر پیام را پاسخ دهید.");
-      return;
+      return false;
     }
-    if ((!trimmed && submissionAttachments.length === 0) || isBusy) return;
+    if ((!trimmed && submissionAttachments.length === 0) || isBusy) {
+      return false;
+    }
 
     const pendingApprovalIds = findPendingToolApprovalIds(messages);
     if (pendingApprovalIds.length > 0) {
@@ -866,6 +906,7 @@ export function ChatSession({
         body: getRequestBody(),
       }
     );
+    setQueueDispatchReady(false);
     onChatChange(chatId, {
       messages: runtime.chat.messages,
       model: modelRef.modelId as ModelId,
@@ -876,11 +917,79 @@ export function ChatSession({
     setText("");
     setAttachments([]);
     setSelectedExpertSlug(null);
+    return true;
   }
 
   function handleSubmit() {
     void submitMessage();
   }
+
+  async function queueCurrentMessage(kind: "follow_up" | "steer") {
+    const trimmed = text.trim();
+    if (!trimmed || attachments.length > 0 || pendingQuestion) {
+      if (attachments.length > 0) {
+        toast.info("پیام‌های صف‌شده فعلاً فقط متنی هستند.");
+      }
+      return;
+    }
+    try {
+      await window.desktop.storage.enqueueChatMessage(chat.id, trimmed, kind);
+      setText("");
+      setSelectedExpertSlug(null);
+      await loadQueuedMessages();
+      if (kind === "steer") handleStop();
+    } catch (queueError) {
+      toast.error(getChatErrorMessage(queueError));
+    }
+  }
+
+  useEffect(() => {
+    if (
+      isBusy ||
+      !queueDispatchReady ||
+      pendingQuestion ||
+      queuedMessages.length === 0 ||
+      isDrainingQueueRef.current
+    ) {
+      return;
+    }
+    isDrainingQueueRef.current = true;
+    const next = queuedMessages[0];
+    void (async () => {
+      if (
+        modelRef.providerId === CODEX_PROVIDER_ID &&
+        !(await window.desktop.codex.waitForChatIdle(chat.id))
+      ) {
+        throw new Error("Codex did not finish stopping the previous turn.");
+      }
+      return submitMessage({ text: next.text, attachments: [] });
+    })()
+      .then((started) => {
+        if (started) dispatchedQueueIdRef.current = next.id;
+      })
+      .catch((queueError) => {
+        toast.error(getChatErrorMessage(queueError));
+      })
+      .finally(() => {
+        isDrainingQueueRef.current = false;
+      });
+  }, [
+    chat.id,
+    isBusy,
+    loadQueuedMessages,
+    modelRef.providerId,
+    pendingQuestion,
+    queueDispatchReady,
+    queuedMessages,
+  ]);
+
+  const removeQueuedMessage = useCallback(
+    async (id: string) => {
+      await window.desktop.storage.deleteQueuedChatMessage(id);
+      await loadQueuedMessages();
+    },
+    [loadQueuedMessages]
+  );
 
   useEffect(() => {
     if (
@@ -980,6 +1089,8 @@ export function ChatSession({
       status={status}
       onSubmit={handleSubmit}
       onStop={handleStop}
+      onQueue={() => void queueCurrentMessage("follow_up")}
+      onSteer={() => void queueCurrentMessage("steer")}
       centered={showCenteredComposer}
       messages={contextMessages}
       chatId={chat.id}
@@ -1048,6 +1159,14 @@ export function ChatSession({
           <ChatRunApprovals
             chatId={chat.id}
             workspaceId={chat.workspaceId}
+          />
+          <ChatMessageQueue
+            messages={queuedMessages}
+            onRemove={(id) =>
+              void removeQueuedMessage(id).catch((queueError) =>
+                toast.error(getChatErrorMessage(queueError))
+              )
+            }
           />
           <div className="mx-auto w-full max-w-3xl shrink-0 px-3 sm:px-6">
             {composer}
