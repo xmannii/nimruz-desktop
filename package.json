@@ -113,6 +113,7 @@
   "build": {
     "appId": "dev.nimruz.desktop",
     "productName": "Nimruz",
+    "npmRebuild": false,
     "asar": true,
     "asarUnpack": [
       "node_modules/@openai/codex-*/vendor/**/*",
