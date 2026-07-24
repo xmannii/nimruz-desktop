@@ -23,6 +23,7 @@ import { APP_NAME_FA } from "@/lib/branding";
 import { markOnboardingCompleted } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 import {
+  AppWindowIcon,
   FolderKanbanIcon,
   KeyRoundIcon,
   MessageSquareTextIcon,
@@ -159,6 +160,19 @@ const STEPS: OnboardingStep[] = [
       "با / در چت متخصص‌ها را فراخوانی کنید",
       "حافظه و مهارت‌ها را از تنظیمات مدیریت کنید",
       "دستیار می‌تواند صفحات وب را بخواند و در فضای کاری فایل بسازد",
+    ],
+  },
+  {
+    id: "companion",
+    icon: AppWindowIcon,
+    title: "دستیار سریع (Companion)",
+    description:
+      "یک پنجرهٔ شناور کوچک برای پیام سریع، بدون باز کردن کل برنامه. از هر جای دسکتاپ با میانبر سراسری در دسترس است.",
+    bullets: [
+      "با میانبر پیش‌فرض ⌘⇧Space (یا Ctrl+Shift+Space) پنجره را باز یا پنهان کنید",
+      "پیام بفرستید، اسکرین‌شات بگیرید و همان گفتگو را در پنجرهٔ کوچک دنبال کنید",
+      "میانبر باز کردن و میکروفن را از تنظیمات → Companion عوض کنید",
+      "وقتی ایجنت کارش تمام شد یا به تأیید نیاز داشت، اعلان دسکتاپ هم می‌آید",
     ],
   },
 ];
