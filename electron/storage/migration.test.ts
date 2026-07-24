@@ -146,7 +146,7 @@ test("migrates a v3 database to the latest schema version", async () => {
     ).database
       .prepare("PRAGMA user_version")
       .get() as { user_version: number };
-    assert.equal(version.user_version, 8);
+    assert.equal(version.user_version, 9);
   });
 });
 
@@ -242,7 +242,7 @@ test("supports the is_primary column added in v5", async () => {
   });
 });
 
-test("migrates the old combined Codex v4 lineage into agentic schema v8", async () => {
+test("migrates the old combined Codex v4 lineage into agentic schema v9", async () => {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "nimruz-migrate-codex-v4-")
   );
@@ -259,7 +259,7 @@ test("migrates the old combined Codex v4 lineage into agentic schema v8", async 
     const version = database.database
       .prepare("PRAGMA user_version")
       .get() as { user_version: number };
-    assert.equal(version.user_version, 8);
+    assert.equal(version.user_version, 9);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
@@ -311,7 +311,7 @@ test("adds Codex thread storage to the official agentic v5 lineage", async () =>
     const version = migrated.database
       .prepare("PRAGMA user_version")
       .get() as { user_version: number };
-    assert.equal(version.user_version, 8);
+    assert.equal(version.user_version, 9);
   } finally {
     migrated.close();
     await rm(directory, { recursive: true, force: true });
