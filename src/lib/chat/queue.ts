@@ -10,4 +10,3 @@ export type ChatQueuedMessage = {
 
 export const CHAT_QUEUE_LIMIT = 20;
 export const CHAT_QUEUE_TEXT_LIMIT = 20_000;
-

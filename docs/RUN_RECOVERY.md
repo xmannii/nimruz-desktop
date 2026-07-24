@@ -43,4 +43,3 @@ pnpm exec tsx --test electron/storage/database.test.ts electron/storage/migratio
 pnpm typecheck
 pnpm test
 ```
-
