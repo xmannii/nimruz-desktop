@@ -274,6 +274,13 @@ export function evaluateToolPolicy(options: {
   if (options.toolName.startsWith("expert_")) {
     return { type: "approved", reason: "Expert delegation is auto-approved." };
   }
+  if (options.toolName.startsWith("mcp_")) {
+    return {
+      type: "user-approval",
+      reason:
+        "MCP tools can access external systems and require approval for every call.",
+    };
+  }
   if (options.toolName === "spawn_subagent") {
     return {
       type: "approved",

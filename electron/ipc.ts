@@ -23,7 +23,9 @@ import {
 } from "@/lib/models/catalog";
 import {
   normalizeWorkspaceTrust,
+  sanitizeMcpServerConfig,
   sanitizeWorkspace,
+  type McpServerConfig,
   type TaskRecord,
   type WorkspaceRoot,
 } from "@/lib/workspace";
@@ -48,6 +50,7 @@ import {
   getAppVersion,
   openExternalUrl,
 } from "./updates";
+import { testMcpServerConnection } from "./agent/mcp";
 
 const execFileAsync = promisify(execFile);
 const MAX_DIFF_CHARS = 120_000;
@@ -535,6 +538,41 @@ export function registerIpcHandlers(options: {
       return updated;
     }
   );
+
+  handle("storage:list-mcp-servers", (workspaceId: string) => {
+    if (!database.getWorkspace(workspaceId)) {
+      throw new Error("Workspace not found.");
+    }
+    return database.listMcpServers(workspaceId);
+  });
+  handle("storage:save-mcp-server", (value: unknown) => {
+    const server = database.saveMcpServer(value);
+    workspaceEvents.emit({
+      type: "mcp-changed",
+      workspaceId: server.workspaceId,
+      serverId: server.id,
+    });
+    return server;
+  });
+  handle(
+    "storage:delete-mcp-server",
+    (workspaceId: string, serverId: string) => {
+      database.deleteMcpServer(serverId, workspaceId);
+      workspaceEvents.emit({
+        type: "mcp-changed",
+        workspaceId,
+        serverId,
+      });
+    }
+  );
+  handle("storage:test-mcp-server", async (value: unknown) => {
+    const server: McpServerConfig = sanitizeMcpServerConfig(value);
+    if (!database.getWorkspace(server.workspaceId)) {
+      throw new Error("Workspace not found.");
+    }
+    const cwd = workspaceFiles.primaryRootPath(server.workspaceId);
+    return testMcpServerConnection({ server, cwd });
+  });
 
   handle(
     "storage:list-workspace-files",

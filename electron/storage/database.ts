@@ -66,6 +66,8 @@ import {
   DEFAULT_WORKSPACE_TRUST,
   HOME_WORKSPACE_ID,
   normalizeWorkspaceTrust,
+  MCP_SERVER_LIMITS,
+  sanitizeMcpServerConfig,
   sanitizeWorkspace,
   sanitizeWorkspaceRoot,
   type AgentRun,
@@ -73,6 +75,7 @@ import {
   type ApprovalRecord,
   type ArtifactRecord,
   type LocalWorkspace,
+  type McpServerConfig,
   type PlanRecord,
   type PlanStatus,
   type TaskRecord,
@@ -610,6 +613,28 @@ export class AppDatabase {
       });
     }
 
+    if (currentVersion < 9) {
+      this.transaction(() => {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS mcp_servers (
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            transport TEXT NOT NULL,
+            command TEXT,
+            args_json TEXT NOT NULL DEFAULT '[]',
+            url TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS mcp_servers_workspace_id_idx
+            ON mcp_servers(workspace_id, created_at ASC);
+          PRAGMA user_version = 9;
+        `);
+      });
+    }
+
     if (currentVersion >= 2) {
       this.ensureBuiltinCatalog();
     }
@@ -989,6 +1014,112 @@ export class AppDatabase {
   deleteWorkspaceRoot(id: string): void {
     if (!validateId(id)) throw new Error("Invalid workspace root id.");
     this.database.prepare("DELETE FROM workspace_roots WHERE id = ?").run(id);
+  }
+
+  /** Return the MCP servers configured for one workspace in display order. */
+  listMcpServers(workspaceId: string): McpServerConfig[] {
+    if (!validateId(workspaceId)) throw new Error("Invalid workspace id.");
+    const rows = this.database
+      .prepare(
+        `SELECT id, workspace_id, name, transport, command, args_json, url,
+                enabled, created_at, updated_at
+           FROM mcp_servers
+          WHERE workspace_id = ?
+          ORDER BY created_at ASC`
+      )
+      .all(workspaceId);
+
+    return rows.flatMap((row) => {
+      let args: unknown = [];
+      try {
+        args = JSON.parse(String(row.args_json ?? "[]"));
+      } catch {
+        // Invalid legacy/manual rows are omitted by the shared sanitizer.
+      }
+      try {
+        return [
+          sanitizeMcpServerConfig({
+            id: row.id,
+            workspaceId: row.workspace_id,
+            name: row.name,
+            transport: row.transport,
+            command: row.command,
+            args,
+            url: row.url,
+            enabled: asBoolean(row.enabled),
+            createdAt: asNumber(row.created_at),
+            updatedAt: asNumber(row.updated_at),
+          }),
+        ];
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  /** Insert or update a validated MCP server owned by one workspace. */
+  saveMcpServer(value: unknown): McpServerConfig {
+    const server = sanitizeMcpServerConfig(value);
+    if (!this.getWorkspace(server.workspaceId)) {
+      throw new Error("Workspace not found.");
+    }
+
+    const existing = this.database
+      .prepare("SELECT workspace_id FROM mcp_servers WHERE id = ?")
+      .get(server.id);
+    if (
+      existing &&
+      String(existing.workspace_id) !== server.workspaceId
+    ) {
+      throw new Error("MCP server belongs to another workspace.");
+    }
+    if (
+      !existing &&
+      this.listMcpServers(server.workspaceId).length >=
+        MCP_SERVER_LIMITS.maxServersPerWorkspace
+    ) {
+      throw new Error("Workspace MCP server limit reached.");
+    }
+
+    this.database
+      .prepare(
+        `INSERT INTO mcp_servers (
+           id, workspace_id, name, transport, command, args_json, url,
+           enabled, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           name = excluded.name,
+           transport = excluded.transport,
+           command = excluded.command,
+           args_json = excluded.args_json,
+           url = excluded.url,
+           enabled = excluded.enabled,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`
+      )
+      .run(
+        server.id,
+        server.workspaceId,
+        server.name,
+        server.transport,
+        server.command ?? null,
+        JSON.stringify(server.args ?? []),
+        server.url ?? null,
+        server.enabled ? 1 : 0,
+        server.createdAt,
+        server.updatedAt
+      );
+    return server;
+  }
+
+  deleteMcpServer(id: string, workspaceId: string): void {
+    if (!validateId(id) || !validateId(workspaceId)) {
+      throw new Error("Invalid MCP server id.");
+    }
+    this.database
+      .prepare("DELETE FROM mcp_servers WHERE id = ? AND workspace_id = ?")
+      .run(id, workspaceId);
   }
 
   saveAgentRun(run: AgentRun): void {
