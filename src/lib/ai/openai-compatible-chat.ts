@@ -89,6 +89,123 @@ export async function fetchOpenAICompatibleChatCompletion(options: {
 }): Promise<string> {
   const { provider, apiKey, modelId, messages, timeoutMs = 20_000 } = options;
 
+  if (provider.kind === "anthropic") {
+    if (!apiKey) throw new Error("Anthropic API key is required.");
+    const system = messages
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n");
+    const response = await fetch(
+      `${provider.baseUrl.replace(/\/$/, "")}/messages`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: modelId,
+          max_tokens: 128,
+          ...(system ? { system } : {}),
+          messages: messages
+            .filter((message) => message.role !== "system")
+            .map((message) => ({
+              role: message.role,
+              content: message.content,
+            })),
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      }
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(
+        readCompletionErrorMessage(payload) ??
+          `Anthropic completion failed (HTTP ${response.status}).`
+      );
+    }
+    const blocks =
+      payload && typeof payload === "object"
+        ? (payload as { content?: unknown }).content
+        : null;
+    const text = Array.isArray(blocks)
+      ? blocks
+          .map((block) =>
+            block &&
+            typeof block === "object" &&
+            "text" in block &&
+            typeof block.text === "string"
+              ? block.text
+              : ""
+          )
+          .join("")
+      : "";
+    if (!text.trim()) throw new Error("Empty Anthropic completion response.");
+    return text;
+  }
+
+  if (provider.kind === "google") {
+    if (!apiKey) throw new Error("Google API key is required.");
+    const system = messages
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n");
+    const response = await fetch(
+      `${provider.baseUrl.replace(/\/$/, "")}/models/${encodeURIComponent(modelId)}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        body: JSON.stringify({
+          ...(system
+            ? { systemInstruction: { parts: [{ text: system }] } }
+            : {}),
+          contents: messages
+            .filter((message) => message.role !== "system")
+            .map((message) => ({
+              role: message.role === "assistant" ? "model" : "user",
+              parts: [{ text: message.content }],
+            })),
+          generationConfig: { maxOutputTokens: 128 },
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      }
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(
+        readCompletionErrorMessage(payload) ??
+          `Google completion failed (HTTP ${response.status}).`
+      );
+    }
+    const candidates =
+      payload && typeof payload === "object"
+        ? (payload as { candidates?: unknown }).candidates
+        : null;
+    const first = Array.isArray(candidates) ? candidates[0] : null;
+    const parts =
+      first && typeof first === "object"
+        ? (first as { content?: { parts?: unknown } }).content?.parts
+        : null;
+    const text = Array.isArray(parts)
+      ? parts
+          .map((part) =>
+            part &&
+            typeof part === "object" &&
+            "text" in part &&
+            typeof part.text === "string"
+              ? part.text
+              : ""
+          )
+          .join("")
+      : "";
+    if (!text.trim()) throw new Error("Empty Google completion response.");
+    return text;
+  }
+
   const response = await fetch(chatCompletionsUrl(provider.baseUrl), {
     method: "POST",
     headers: buildCompletionHeaders(provider, apiKey),

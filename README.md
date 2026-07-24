@@ -63,7 +63,7 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 - **Streaming chat** — markdown, code, math (KaTeX), Mermaid, RTL-first Persian UI
 - **Tool timeline** — connected reasoning + tool steps; long runs compact into one expandable summary
 - **Codex with ChatGPT sign-in** — sync and use models available to an eligible ChatGPT account in a restricted, isolated runtime
-- **OpenRouter & custom providers** — browse models, set defaults, optional reasoning effort
+- **Native model providers** — OpenAI, Anthropic, Google Gemini, OpenRouter, and generic OpenAI-compatible/local servers
 - **Web fetch** — `fetch_url` for public pages (SSRF-safe HTML → text)
 - **Auto titles** — conversations named from the first message
 - **Chat management** — pin, export Markdown/JSON, copy/regenerate, search history
@@ -112,6 +112,9 @@ Workspace-specific MCP servers can be added under **Settings → MCP servers**.
 Select a workspace, then test the connection before enabling it for agent turns. See
 [Workspace MCP tools](docs/MCP.md) for supported transports, lifecycle, and the
 current authentication boundary.
+
+For native provider transports, authentication boundaries, and adapter tests,
+see [Model provider adapters](docs/PROVIDERS.md).
 
 API keys are encrypted through macOS Keychain, Windows DPAPI, or a Linux libsecret/KWallet keyring. On Linux, storage is refused when only Electron's insecure `basic_text` backend is available.
 

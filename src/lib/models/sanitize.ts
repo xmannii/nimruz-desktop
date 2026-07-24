@@ -146,8 +146,8 @@ export function sanitizeProviderConfig(
     };
   }
 
-  if (kind === "openrouter") {
-    throw new Error("فقط ارائه‌دهنده داخلی OpenRouter مجاز است.");
+  if (kind === "openrouter" || kind === "codex") {
+    throw new Error("این نوع ارائه‌دهنده فقط برای تنظیمات داخلی مجاز است.");
   }
 
   const name = cleanText(input.name, PROVIDER_LIMITS.name);
@@ -158,7 +158,7 @@ export function sanitizeProviderConfig(
   return {
     id: input.id,
     name,
-    kind: "openai-compatible",
+    kind,
     baseUrl: normalizeBaseUrl(input.baseUrl),
     enabled: asBoolean(input.enabled, true),
     includeUsage: asBoolean(input.includeUsage, true),
