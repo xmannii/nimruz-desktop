@@ -8,6 +8,9 @@ export const CODEX_BASE_URL = "codex://chatgpt";
 
 export const PROVIDER_KINDS = [
   "openrouter",
+  "openai",
+  "anthropic",
+  "google",
   "openai-compatible",
   "codex",
 ] as const;

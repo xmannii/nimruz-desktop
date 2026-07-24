@@ -68,7 +68,7 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 - **Streaming chat** — markdown, code, math (KaTeX), Mermaid, RTL-first Persian UI
 - **Tool timeline** — connected reasoning + tool steps; long runs compact into one expandable summary
 - **Codex with ChatGPT sign-in** — sync eligible subscription models and run native coding tools inside Nimruz's approved workspace sandbox
-- **OpenRouter & custom providers** — browse models, set defaults, optional reasoning effort
+- **Native model providers** — OpenAI, Anthropic, Google Gemini, OpenRouter, and generic OpenAI-compatible/local servers
 - **Web fetch** — `fetch_url` for public pages (SSRF-safe HTML → text)
 - **Auto titles** — conversations named from the first message
 - **Chat management** — pin, export Markdown/JSON, copy/regenerate, search history
@@ -123,6 +123,9 @@ see [Git workflows](docs/GIT_WORKFLOWS.md).
 
 For PTY lifecycle, environment boundaries, and package-script discovery, see
 [Workspace terminal and test runner](docs/TERMINAL.md).
+
+For native provider transports, authentication boundaries, and adapter tests,
+see [Model provider adapters](docs/PROVIDERS.md).
 
 API keys are encrypted through macOS Keychain, Windows DPAPI, or a Linux libsecret/KWallet keyring. On Linux, storage is refused when only Electron's insecure `basic_text` backend is available.
 

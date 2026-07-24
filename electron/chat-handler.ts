@@ -16,7 +16,6 @@ import {
 import type { SkillCatalogEntry } from "@/lib/skills/catalog";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
-import { APP_NAME } from "@/lib/branding";
 import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
 import {
   findExplicitExpert,
@@ -27,8 +26,7 @@ import { generateChatTitleWithModel } from "@/lib/ai/generate-chat-title-model";
 import { fallbackTitleFromMessage } from "@/lib/ai/chat-title";
 import type { CodexService } from "./codex/service";
 import { handleCodexChatRequest } from "./codex/chat-handler";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { createLanguageModel } from "./agent/model";
 import {
   convertToModelMessages,
   createUIMessageStreamResponse,
@@ -69,32 +67,6 @@ export type ChatRuntimeOptions = {
   signal?: AbortSignal;
   skillsRuntime?: SkillsRuntime;
 };
-
-function createLanguageModel(resolved: ResolvedChatModel): LanguageModel {
-  const { provider, model, apiKey } = resolved;
-
-  if (provider.kind === "openrouter") {
-    if (!apiKey) {
-      throw new Error("کلید OpenRouter تنظیم نشده است.");
-    }
-    const openrouter = createOpenRouter({
-      apiKey,
-      appName: APP_NAME,
-    });
-    return openrouter.chat(model.modelId, {
-      usage: { include: true },
-    });
-  }
-
-  const compatible = createOpenAICompatible({
-    name: provider.id,
-    baseURL: provider.baseUrl,
-    apiKey: apiKey ?? undefined,
-    includeUsage: provider.includeUsage,
-  });
-
-  return compatible.chatModel(model.modelId);
-}
 
 export type ChatTitleRequestBody = {
   message: string;

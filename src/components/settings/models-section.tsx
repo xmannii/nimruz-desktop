@@ -38,6 +38,7 @@ import {
   OPENROUTER_PROVIDER_ID,
   type ModelConfig,
   type ProviderConfig,
+  type ProviderKind,
 } from "@/lib/models/catalog";
 import { cn } from "@/lib/utils";
 import {
@@ -59,14 +60,37 @@ import { toast } from "sonner";
 
 const PROVIDER_PRESETS = [
   {
+    id: "openai",
+    label: "OpenAI API",
+    kind: "openai",
+    baseUrl: "https://api.openai.com/v1",
+    authRequired: true,
+  },
+  {
+    id: "anthropic",
+    label: "Anthropic",
+    kind: "anthropic",
+    baseUrl: "https://api.anthropic.com/v1",
+    authRequired: true,
+  },
+  {
+    id: "google",
+    label: "Google Gemini",
+    kind: "google",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    authRequired: true,
+  },
+  {
     id: "lmstudio",
     label: "LM Studio",
+    kind: "openai-compatible",
     baseUrl: "http://localhost:1234/v1",
     authRequired: false,
   },
   {
     id: "ollama",
     label: "Ollama",
+    kind: "openai-compatible",
     baseUrl: "http://localhost:11434/v1",
     authRequired: false,
   },
@@ -75,6 +99,7 @@ const PROVIDER_PRESETS = [
 type ProviderDraft = {
   id: string;
   name: string;
+  kind: Exclude<ProviderKind, "openrouter" | "codex">;
   baseUrl: string;
   authRequired: boolean;
   includeUsage: boolean;
@@ -98,6 +123,7 @@ function emptyProviderDraft(): ProviderDraft {
   return {
     id: nanoid(),
     name: "",
+    kind: "openai-compatible",
     baseUrl: "http://localhost:1234/v1",
     authRequired: false,
     includeUsage: true,
@@ -300,6 +326,7 @@ export function ModelsSettingsSection({
     setProviderDraft({
       ...emptyProviderDraft(),
       name: preset?.label ?? "",
+      kind: preset?.kind ?? "openai-compatible",
       baseUrl: preset?.baseUrl ?? "http://localhost:1234/v1",
       authRequired: preset?.authRequired ?? false,
     });
@@ -311,6 +338,10 @@ export function ModelsSettingsSection({
     setProviderDraft({
       id: provider.id,
       name: provider.name,
+      kind:
+        provider.kind === "openrouter" || provider.kind === "codex"
+          ? "openai-compatible"
+          : provider.kind,
       baseUrl: provider.baseUrl,
       authRequired: provider.authRequired,
       includeUsage: provider.includeUsage,
@@ -325,7 +356,7 @@ export function ModelsSettingsSection({
       const saved = await window.desktop.providers.saveProvider({
         id: editingProviderId ?? providerDraft.id,
         name: providerDraft.name,
-        kind: "openai-compatible",
+        kind: providerDraft.kind,
         baseUrl: providerDraft.baseUrl,
         authRequired: providerDraft.authRequired,
         includeUsage: providerDraft.includeUsage,
@@ -977,6 +1008,32 @@ export function ModelsSettingsSection({
                 </FieldDescription>
               </Field>
               <Field>
+                <FieldLabel htmlFor="provider-kind">نوع API</FieldLabel>
+                <select
+                  id="provider-kind"
+                  dir="ltr"
+                  value={providerDraft.kind}
+                  onChange={(event) =>
+                    setProviderDraft((current) => ({
+                      ...current,
+                      kind: event.target.value as ProviderDraft["kind"],
+                    }))
+                  }
+                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic Messages</option>
+                  <option value="google">Google Gemini</option>
+                  <option value="openai-compatible">
+                    OpenAI-compatible
+                  </option>
+                </select>
+                <FieldDescription>
+                  انتخاب نوع درست، احراز هویت و قالب ابزارهای بومی همان
+                  ارائه‌دهنده را فعال می‌کند.
+                </FieldDescription>
+              </Field>
+              <Field>
                 <FieldLabel htmlFor="provider-api-key">کلید API (اختیاری)</FieldLabel>
                 <Input
                   id="provider-api-key"
@@ -1229,8 +1286,8 @@ function ModelsGettingStarted({
           <h2 className="text-base font-medium text-foreground">شروع سریع</h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
             برای شروع گفتگو یک مسیر را انتخاب کنید: اشتراک ChatGPT با Codex،
-            OpenRouter، اجرای محلی با LM Studio / Ollama، یا هر سرویس ابری دیگر
-            با API سازگار با OpenAI. سپس حداقل یک مدل را فعال کنید.
+            OpenRouter، OpenAI، Anthropic، Gemini یا اجرای محلی با LM Studio /
+            Ollama. سپس حداقل یک مدل را فعال کنید.
           </p>
         </div>
       </div>

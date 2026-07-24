@@ -17,6 +17,12 @@ import {
 } from "@/lib/models/discover-filter";
 import { normalizeBaseUrl } from "@/lib/models/sanitize";
 import { AppDatabase } from "./storage/database";
+import {
+  createProviderModelsRequest,
+  extractProviderModelItems,
+  providerModelId,
+  supportsProviderChat,
+} from "./providers/adapter";
 
 function cleanKey(value: unknown, required = true): string | null {
   if (typeof value !== "string" || !value.trim()) {
@@ -173,11 +179,24 @@ export class CredentialService {
         };
       }
 
-      const headers: Record<string, string> = {};
-      if (key) headers.Authorization = `Bearer ${key}`;
-
-      const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
-        headers,
+      const request = createProviderModelsRequest(
+        provider ?? {
+          id: providerId,
+          name: providerId,
+          kind: "openai-compatible",
+          baseUrl,
+          enabled: true,
+          includeUsage: true,
+          isBuiltin: false,
+          authRequired: Boolean(key),
+          createdAt: 0,
+          updatedAt: 0,
+        },
+        key,
+        baseUrl
+      );
+      const response = await fetch(request.url, {
+        headers: request.headers,
         signal: AbortSignal.timeout(15_000),
       });
 
@@ -228,11 +247,9 @@ export class CredentialService {
         : this.getKey(options.providerId);
 
     try {
-      const headers: Record<string, string> = {};
-      if (key) headers.Authorization = `Bearer ${key}`;
-
-      const response = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
-        headers,
+      const request = createProviderModelsRequest(provider, key, baseUrl);
+      const response = await fetch(request.url, {
+        headers: request.headers,
         signal: AbortSignal.timeout(20_000),
       });
 
@@ -251,10 +268,23 @@ export class CredentialService {
       const seen = new Set<string>();
       let skipped = 0;
 
-      for (const item of extractModelListItems(payload)) {
-        const modelId = extractModelId(item);
+      const nativeItems =
+        provider.kind === "anthropic" || provider.kind === "google"
+          ? extractProviderModelItems(provider, payload)
+          : extractModelListItems(payload);
+      for (const item of nativeItems) {
+        const modelId =
+          provider.kind === "anthropic" || provider.kind === "google"
+            ? providerModelId(provider, item)
+            : extractModelId(item);
         if (!modelId || seen.has(modelId)) continue;
-        if (!isChatCompletionDiscoverableModel(item, modelId)) {
+        if (
+          !supportsProviderChat(provider, item) ||
+          ((provider.kind === "openai" ||
+            provider.kind === "openai-compatible" ||
+            provider.kind === "openrouter") &&
+            !isChatCompletionDiscoverableModel(item, modelId))
+        ) {
           skipped += 1;
           continue;
         }
@@ -262,8 +292,15 @@ export class CredentialService {
         discovered.push({
           modelId,
           name:
-            typeof item.name === "string" && item.name.trim()
-              ? item.name.trim().slice(0, 120)
+            typeof (item.display_name ?? item.displayName ?? item.name) ===
+              "string" &&
+            String(item.display_name ?? item.displayName ?? item.name).trim()
+              ? String(
+                  item.display_name ?? item.displayName ?? item.name
+                )
+                  .trim()
+                  .replace(/^models\//, "")
+                  .slice(0, 120)
               : undefined,
         });
       }
