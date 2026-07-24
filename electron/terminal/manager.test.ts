@@ -21,9 +21,9 @@ async function fixture() {
     JSON.stringify({
       scripts: {
         "test:live":
-          'node -e "console.log(`PTY_TEST_OK:${process.env.NIMRUZ_WORKSPACE}`)"',
-        dev: 'node -e "console.log(`NOT_EXPOSED`)"',
-        "test&unsafe": 'node -e "console.log(`UNSAFE`)"',
+          `node -e "console.log('PTY_TEST_OK:' + process.env.NIMRUZ_WORKSPACE)"`,
+        dev: `node -e "console.log('NOT_EXPOSED')"`,
+        "test&unsafe": `node -e "console.log('UNSAFE')"`,
       },
     })
   );
@@ -128,7 +128,7 @@ test("discovers only safe test scripts and executes one in a real PTY", async ()
       {
         name: "test:live",
         command:
-          'node -e "console.log(`PTY_TEST_OK:${process.env.NIMRUZ_WORKSPACE}`)"',
+          `node -e "console.log('PTY_TEST_OK:' + process.env.NIMRUZ_WORKSPACE)"`,
       },
     ]);
 
