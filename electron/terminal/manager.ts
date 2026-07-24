@@ -19,8 +19,23 @@ const SAFE_SCRIPT_NAME_PATTERN = /^[A-Za-z0-9_.:-]+$/;
 
 type ManagedSession = {
   value: TerminalSession;
-  process: pty.IPty;
+  process: pty.IPty | null;
+  subscriptions: pty.IDisposable[];
 };
+
+function releaseExitedWindowsConout(processHandle: pty.IPty) {
+  if (process.platform !== "win32") return;
+  // node-pty 1.1.0 does not dispose its ConPTY output worker after a natural
+  // child exit (microsoft/node-pty#375 covers this worker lifecycle). The
+  // dependency is pinned, and this guarded compatibility hook prevents the
+  // worker thread from keeping Nimruz/test processes alive indefinitely.
+  const windowsInternals = processHandle as pty.IPty & {
+    _agent?: {
+      _conoutSocketWorker?: { dispose: () => void };
+    };
+  };
+  windowsInternals._agent?._conoutSocketWorker?.dispose();
+}
 
 function terminalEnvironment(cwd: string): Record<string, string> {
   const allowed = new Set([
@@ -224,18 +239,46 @@ export class WorkspaceTerminalManager {
       output: "",
       createdAt: Date.now(),
     };
-    const managed: ManagedSession = { value, process: processHandle };
+    const managed: ManagedSession = {
+      value,
+      process: processHandle,
+      subscriptions: [],
+    };
     this.#sessions.set(id, managed);
-    processHandle.onData((data) => {
-      value.output = `${value.output}${data}`.slice(-MAX_OUTPUT_CHARS);
-      this.#emit({ type: "data", sessionId: id, data });
-    });
-    processHandle.onExit(({ exitCode }) => {
-      value.status = "exited";
-      value.exitCode = exitCode;
-      this.#emit({ type: "exit", sessionId: id, exitCode });
-    });
+    managed.subscriptions.push(
+      processHandle.onData((data) => {
+        value.output = `${value.output}${data}`.slice(-MAX_OUTPUT_CHARS);
+        this.#emit({ type: "data", sessionId: id, data });
+      }),
+      processHandle.onExit(({ exitCode }) => {
+        value.status = "exited";
+        value.exitCode = exitCode;
+        this.#emit({ type: "exit", sessionId: id, exitCode });
+        // Release the output worker without calling kill() on an already
+        // exited ConPTY (which would spawn node-pty's console-list helper).
+        this.#releaseProcess(managed, false);
+      })
+    );
     return { ...value };
+  }
+
+  #releaseProcess(session: ManagedSession, kill = true) {
+    for (const subscription of session.subscriptions.splice(0)) {
+      subscription.dispose();
+    }
+    const processHandle = session.process;
+    session.process = null;
+    if (!processHandle) return;
+    if (!kill) {
+      releaseExitedWindowsConout(processHandle);
+      return;
+    }
+    try {
+      processHandle.kill();
+    } catch {
+      // The child may already have exited; kill still releases ConPTY on
+      // supported node-pty versions and an already-closed handle is harmless.
+    }
   }
 
   write(sessionId: string, data: string) {
@@ -246,12 +289,14 @@ export class WorkspaceTerminalManager {
     if (typeof data !== "string" || data.length > MAX_INPUT_CHARS) {
       throw new Error("Terminal input is too large.");
     }
-    session.process.write(data);
+    session.process?.write(data);
   }
 
   resize(sessionId: string, cols: number, rows: number) {
     const session = this.#sessions.get(sessionId);
-    if (!session || session.value.status !== "running") return;
+    if (!session || session.value.status !== "running" || !session.process) {
+      return;
+    }
     session.process.resize(
       Math.min(Math.max(Math.floor(cols), 20), 400),
       Math.min(Math.max(Math.floor(rows), 5), 200)
@@ -261,7 +306,7 @@ export class WorkspaceTerminalManager {
   close(sessionId: string) {
     const session = this.#sessions.get(sessionId);
     if (!session) return;
-    if (session.value.status === "running") session.process.kill();
+    this.#releaseProcess(session);
     this.#sessions.delete(sessionId);
   }
 

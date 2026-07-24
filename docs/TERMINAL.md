@@ -13,6 +13,9 @@ simulated command log.
   or reloading the renderer does not terminate them.
 - Sessions end when explicitly closed or when Nimruz exits. They are not
   restored after an application restart.
+- Completed Windows sessions release their ConPTY output worker immediately;
+  the bounded output snapshot remains available without keeping Electron or the
+  test runner alive.
 - Nimruz retains at most 250,000 output characters per session for reattachment
   and allows at most eight simultaneous sessions.
 
