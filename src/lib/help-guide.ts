@@ -340,12 +340,12 @@ export const HELP_TOPICS: HelpTopic[] = [
   {
     id: "mcp",
     title: "سرورهای MCP",
-    summary: "ابزارهای خارجی را به عامل فضای کاری وصل کنید.",
+    summary: "ابزارهای خارجی را به ایجنت فضای کاری وصل کنید.",
     blocks: [
       {
         type: "paragraph",
         text:
-          "با Model Context Protocol می‌توانید سرورهای محلی (stdio) یا راه‌دور (HTTP / SSE) را به یک فضای کاری وصل کنید تا عامل در حالت ایجنت از ابزارهای آن‌ها استفاده کند.",
+          "با Model Context Protocol می‌توانید سرورهای محلی (stdio) یا راه‌دور (HTTP / SSE) را به یک فضای کاری وصل کنید تا در حالت ایجنت از ابزارهای آن‌ها استفاده شود.",
       },
       {
         type: "bullets",

@@ -141,7 +141,7 @@ const STEPS: OnboardingStep[] = [
     icon: WaypointsIcon,
     title: "ابزارهای MCP",
     description:
-      "سرورهای Model Context Protocol را به هر فضای کاری وصل کنید تا عامل به ابزارهای محلی یا راه‌دور دسترسی داشته باشد.",
+      "سرورهای Model Context Protocol را به هر فضای کاری وصل کنید تا ایجنت به ابزارهای محلی یا راه‌دور دسترسی داشته باشد.",
     bullets: [
       "از تنظیمات → سرورهای MCP یک سرور stdio، HTTP یا SSE اضافه کنید",
       "قبل از فعال‌کردن، اتصال را آزمایش کنید تا ابزارها را ببینید",

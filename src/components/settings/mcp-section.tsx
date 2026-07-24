@@ -45,7 +45,7 @@ export function McpSettingsSection() {
   return (
     <SettingsSection
       title="سرورهای MCP"
-      description="ابزارهای محلی یا راه‌دور را به عامل یک فضای کاری وصل کنید. هر فراخوانی ابزار MCP جداگانه نیاز به تأیید دارد."
+      description="ابزارهای محلی یا راه‌دور را به ایجنت یک فضای کاری وصل کنید. هر فراخوانی ابزار MCP جداگانه نیاز به تأیید دارد."
       icon={WaypointsIcon}
     >
       <FieldGroup className="gap-4">

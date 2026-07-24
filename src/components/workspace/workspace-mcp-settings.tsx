@@ -291,7 +291,7 @@ export function WorkspaceMcpSettings({
             <div>
               <p className="text-sm font-medium">سرورهای MCP</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                ابزارهای محلی یا راه‌دور را به عامل این فضای کاری وصل کنید. هر
+                ابزارهای محلی یا راه‌دور را به ایجنت این فضای کاری وصل کنید. هر
                 فراخوانی ابزار MCP جداگانه نیاز به تأیید دارد.
               </p>
             </div>
