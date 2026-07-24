@@ -55,6 +55,7 @@ import type { TurnCheckpointManager } from "./git/checkpoint-manager";
 import type { RunApprovalBroker } from "./agent/approval-broker";
 import type { WorkspaceGitService } from "./git/workspace-git-service";
 import type { WorkspaceTerminalManager } from "./terminal/manager";
+import type { RemoteAccessService } from "./remote-access/service";
 import {
   CHAT_QUEUE_TEXT_LIMIT,
   type ChatQueuedMessageKind,
@@ -115,6 +116,7 @@ export function registerIpcHandlers(options: {
   workspaceFiles: WorkspaceFilesStore;
   checkpoints: TurnCheckpointManager;
   approvals: RunApprovalBroker;
+  remoteAccess: RemoteAccessService;
   git: WorkspaceGitService;
   terminals: WorkspaceTerminalManager;
   workspaceEvents: WorkspaceEventBus;
@@ -132,6 +134,7 @@ export function registerIpcHandlers(options: {
     workspaceFiles,
     checkpoints,
     approvals,
+    remoteAccess,
     git,
     terminals,
     workspaceEvents,
@@ -157,6 +160,9 @@ export function registerIpcHandlers(options: {
   }
 
   handle("auth:get-session-token", () => sessionToken);
+  handle("remote-access:status", () => remoteAccess.getStatus());
+  handle("remote-access:start", () => remoteAccess.start());
+  handle("remote-access:stop", () => remoteAccess.stop());
 
   handle(
     "notifications:get-settings",

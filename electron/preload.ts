@@ -24,6 +24,11 @@ const desktopApi: DesktopAPI = {
   auth: {
     getSessionToken: () => ipcRenderer.invoke("auth:get-session-token"),
   },
+  remoteAccess: {
+    getStatus: () => ipcRenderer.invoke("remote-access:status"),
+    start: () => ipcRenderer.invoke("remote-access:start"),
+    stop: () => ipcRenderer.invoke("remote-access:stop"),
+  },
   git: {
     status: (workspaceId, chatId) =>
       ipcRenderer.invoke("git:status", workspaceId, chatId),

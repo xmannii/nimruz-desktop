@@ -19,6 +19,11 @@ type PendingApproval = {
   cleanup: () => void;
 };
 
+export type PendingRunApproval = Pick<
+  PendingApproval,
+  "approval" | "toolCall"
+>;
+
 /**
  * Bridges long-lived native provider approval requests to the renderer.
  *
@@ -166,6 +171,14 @@ export class RunApprovalBroker {
     });
     pending.resolve(decision);
     return true;
+  }
+
+  /** Returns immutable snapshots for trusted monitoring surfaces. */
+  listPending(): PendingRunApproval[] {
+    return [...this.#pending.values()].map(({ approval, toolCall }) => ({
+      approval: { ...approval },
+      toolCall: { ...toolCall },
+    }));
   }
 
   cancelRun(runId: string) {

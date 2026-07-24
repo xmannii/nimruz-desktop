@@ -36,6 +36,7 @@ import {
   DesktopNotificationService,
   type NativeNotificationPayload,
 } from "./notifications/service";
+import { RemoteAccessService } from "./remote-access/service";
 import { attachWindowStateEvents } from "./window-controls";
 import {
   APP_NAME,
@@ -81,6 +82,7 @@ let notificationService: DesktopNotificationService | null = null;
 let approvalBroker: RunApprovalBroker | null = null;
 let companion: CompanionController | null = null;
 let terminals: WorkspaceTerminalManager | null = null;
+let remoteAccess: RemoteAccessService | null = null;
 let rendererUrl = "";
 const activeNotifications = new Set<Notification>();
 let isQuitting = false;
@@ -220,6 +222,7 @@ app.whenReady().then(async () => {
   const skills = new SkillStore();
   const workspaceEvents = new WorkspaceEventBus(() => mainWindow);
   approvalBroker = new RunApprovalBroker(database, workspaceEvents);
+  remoteAccess = new RemoteAccessService(database, approvalBroker);
   const workspaceFiles = new WorkspaceFilesStore(
     database,
     userDataPath,
@@ -263,6 +266,7 @@ app.whenReady().then(async () => {
     workspaceFiles,
     checkpoints,
     approvals: approvalBroker,
+    remoteAccess,
     git,
     terminals,
     workspaceEvents,
@@ -354,6 +358,7 @@ app.on("before-quit", () => {
   shenava?.cancelDownload();
   codex?.dispose();
   approvalBroker?.dispose();
+  void remoteAccess?.stop();
   terminals?.dispose();
   localServer?.close();
   database?.close();
@@ -363,6 +368,7 @@ app.on("before-quit", () => {
   shenava = null;
   notificationService = null;
   approvalBroker = null;
+  remoteAccess = null;
   terminals = null;
   activeNotifications.clear();
   companion = null;

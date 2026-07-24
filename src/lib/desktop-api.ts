@@ -68,6 +68,10 @@ import type {
   TerminalSession,
   WorkspaceTestScript,
 } from "@/lib/terminal";
+import type {
+  RemoteAccessSession,
+  RemoteAccessStatus,
+} from "@/lib/remote-access";
 
 export type CredentialStatus = {
   configured: boolean;
@@ -118,6 +122,11 @@ export type DesktopAPI = {
   isDesktop: true;
   auth: {
     getSessionToken: () => Promise<string>;
+  };
+  remoteAccess: {
+    getStatus: () => Promise<RemoteAccessStatus>;
+    start: () => Promise<RemoteAccessSession>;
+    stop: () => Promise<RemoteAccessStatus>;
   };
   git: {
     status: (

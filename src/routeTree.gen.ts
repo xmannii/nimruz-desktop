@@ -19,6 +19,7 @@ import { Route as AppWorkspaceWorkspaceIdRouteImport } from './routes/_app.works
 import { Route as AppSettingsSpeechRouteImport } from './routes/_app.settings.speech'
 import { Route as AppSettingsSkillsRouteImport } from './routes/_app.settings.skills'
 import { Route as AppSettingsResearchAgentsRouteImport } from './routes/_app.settings.research-agents'
+import { Route as AppSettingsRemoteAccessRouteImport } from './routes/_app.settings.remote-access'
 import { Route as AppSettingsNotificationsRouteImport } from './routes/_app.settings.notifications'
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppSettingsMemoriesRouteImport } from './routes/_app.settings.memories'
@@ -83,6 +84,11 @@ const AppSettingsResearchAgentsRoute =
     path: '/research-agents',
     getParentRoute: () => AppSettingsRoute,
   } as any)
+const AppSettingsRemoteAccessRoute = AppSettingsRemoteAccessRouteImport.update({
+  id: '/remote-access',
+  path: '/remote-access',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsNotificationsRoute =
   AppSettingsNotificationsRouteImport.update({
     id: '/notifications',
@@ -168,6 +174,7 @@ export interface FileRoutesByFullPath {
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/notifications': typeof AppSettingsNotificationsRoute
+  '/settings/remote-access': typeof AppSettingsRemoteAccessRoute
   '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings/speech': typeof AppSettingsSpeechRoute
@@ -191,6 +198,7 @@ export interface FileRoutesByTo {
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/notifications': typeof AppSettingsNotificationsRoute
+  '/settings/remote-access': typeof AppSettingsRemoteAccessRoute
   '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings/speech': typeof AppSettingsSpeechRoute
@@ -216,6 +224,7 @@ export interface FileRoutesById {
   '/_app/settings/memories': typeof AppSettingsMemoriesRoute
   '/_app/settings/models': typeof AppSettingsModelsRoute
   '/_app/settings/notifications': typeof AppSettingsNotificationsRoute
+  '/_app/settings/remote-access': typeof AppSettingsRemoteAccessRoute
   '/_app/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/_app/settings/skills': typeof AppSettingsSkillsRoute
   '/_app/settings/speech': typeof AppSettingsSpeechRoute
@@ -242,6 +251,7 @@ export interface FileRouteTypes {
     | '/settings/memories'
     | '/settings/models'
     | '/settings/notifications'
+    | '/settings/remote-access'
     | '/settings/research-agents'
     | '/settings/skills'
     | '/settings/speech'
@@ -265,6 +275,7 @@ export interface FileRouteTypes {
     | '/settings/memories'
     | '/settings/models'
     | '/settings/notifications'
+    | '/settings/remote-access'
     | '/settings/research-agents'
     | '/settings/skills'
     | '/settings/speech'
@@ -289,6 +300,7 @@ export interface FileRouteTypes {
     | '/_app/settings/memories'
     | '/_app/settings/models'
     | '/_app/settings/notifications'
+    | '/_app/settings/remote-access'
     | '/_app/settings/research-agents'
     | '/_app/settings/skills'
     | '/_app/settings/speech'
@@ -373,6 +385,13 @@ declare module '@tanstack/react-router' {
       path: '/research-agents'
       fullPath: '/settings/research-agents'
       preLoaderRoute: typeof AppSettingsResearchAgentsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/remote-access': {
+      id: '/_app/settings/remote-access'
+      path: '/remote-access'
+      fullPath: '/settings/remote-access'
+      preLoaderRoute: typeof AppSettingsRemoteAccessRouteImport
       parentRoute: typeof AppSettingsRoute
     }
     '/_app/settings/notifications': {
@@ -480,6 +499,7 @@ interface AppSettingsRouteChildren {
   AppSettingsMemoriesRoute: typeof AppSettingsMemoriesRoute
   AppSettingsModelsRoute: typeof AppSettingsModelsRoute
   AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
+  AppSettingsRemoteAccessRoute: typeof AppSettingsRemoteAccessRoute
   AppSettingsResearchAgentsRoute: typeof AppSettingsResearchAgentsRoute
   AppSettingsSkillsRoute: typeof AppSettingsSkillsRoute
   AppSettingsSpeechRoute: typeof AppSettingsSpeechRoute
@@ -497,6 +517,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsMemoriesRoute: AppSettingsMemoriesRoute,
   AppSettingsModelsRoute: AppSettingsModelsRoute,
   AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,
+  AppSettingsRemoteAccessRoute: AppSettingsRemoteAccessRoute,
   AppSettingsResearchAgentsRoute: AppSettingsResearchAgentsRoute,
   AppSettingsSkillsRoute: AppSettingsSkillsRoute,
   AppSettingsSpeechRoute: AppSettingsSpeechRoute,

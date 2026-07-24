@@ -22,6 +22,7 @@ import {
   PanelTopOpenIcon,
   PaletteIcon,
   SearchIcon,
+  RadioTowerIcon,
   ScrollTextIcon,
   SparklesIcon,
   UserRoundIcon,
@@ -37,6 +38,7 @@ type SettingsPath =
   | "/settings/notifications"
   | "/settings/speech"
   | "/settings/companion"
+  | "/settings/remote-access"
   | "/settings/research-agents"
   | "/settings/skills"
   | "/settings/mcp"
@@ -93,6 +95,12 @@ export const SETTINGS_NAV_GROUPS: Array<{
         label: "دستیار سریع",
         icon: PanelTopOpenIcon,
         match: (pathname) => pathname.startsWith("/settings/companion"),
+      },
+      {
+        to: "/settings/remote-access",
+        label: "دسترسی راه دور",
+        icon: RadioTowerIcon,
+        match: (pathname) => pathname.startsWith("/settings/remote-access"),
       },
       {
         to: "/settings/models",
