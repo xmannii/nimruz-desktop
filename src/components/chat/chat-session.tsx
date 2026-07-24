@@ -246,6 +246,9 @@ export function ChatSession({
   const [selectedExpertSlug, setSelectedExpertSlug] = useState<string | null>(
     null
   );
+  const [mcpServerIds, setMcpServerIds] = useState<string[] | undefined>(
+    chat.mcpServerIds
+  );
   const [modelRef, setModelRef] = useState<ProviderModelRef>({
     providerId: chat.providerId || DEFAULT_PROVIDER_ID,
     modelId: chat.model,
@@ -269,8 +272,9 @@ export function ChatSession({
 
   useEffect(() => {
     setAgentMode(sanitizeAgentMode(chat.agentMode ?? DEFAULT_AGENT_MODE));
+    setMcpServerIds(chat.mcpServerIds);
     handledWritePlanIds.current = new Set();
-  }, [chat.id]);
+  }, [chat.id, chat.mcpServerIds]);
 
   const loadActivePlan = useCallback(async () => {
     if (!chat.workspaceId) {
@@ -350,6 +354,7 @@ export function ChatSession({
   runtime.persistence.model = modelRef.modelId as ModelId;
   runtime.persistence.providerId = modelRef.providerId;
   runtime.persistence.agentMode = agentMode;
+  runtime.persistence.mcpServerIds = mcpServerIds;
   runtime.callbacks.onError = handleChatError;
   runtime.callbacks.sendAutomaticallyWhen = (options) =>
     !isSuppressingAutoSendRef.current &&
@@ -484,6 +489,7 @@ export function ChatSession({
       experts,
       subagents,
       selectedExpertSlug: selectedExpertSlug ?? undefined,
+      mcpServerIds,
       agentMode,
       chatId: chat.id,
       workspaceId: chat.workspaceId ?? undefined,
@@ -495,6 +501,7 @@ export function ChatSession({
       experts,
       subagents,
       memories,
+      mcpServerIds,
       modelRef.modelId,
       modelRef.providerId,
       personalization,
@@ -952,6 +959,8 @@ export function ChatSession({
 
   function handleWorkspaceChange(nextWorkspaceId: string) {
     if (chat.workspaceId === nextWorkspaceId) return;
+    setMcpServerIds(undefined);
+    runtime.persistence.mcpServerIds = undefined;
     setChatWorkspaceId(chat.id, nextWorkspaceId);
     setActiveWorkspaceId(nextWorkspaceId);
     void navigate({
@@ -990,6 +999,18 @@ export function ChatSession({
       }
       attachments={attachments}
       onAttachmentsChange={setAttachments}
+      mcpServerIds={mcpServerIds}
+      onMcpServerIdsChange={(ids) => {
+        setMcpServerIds(ids);
+        runtime.persistence.mcpServerIds = ids;
+        onChatChange(chat.id, {
+          messages,
+          model: modelRef.modelId as ModelId,
+          providerId: modelRef.providerId,
+          agentMode,
+          mcpServerIds: ids,
+        });
+      }}
     />
   );
 

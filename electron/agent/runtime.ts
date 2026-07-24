@@ -55,7 +55,12 @@ import { createSpawnSubagentTool } from "./subagent";
 import type { WorkspaceFilesStore } from "./workspace-files";
 import type { WorkspaceEventBus } from "./events";
 import { createLanguageModel } from "./model";
-import { createMcpToolSession, type McpToolSession } from "./mcp";
+import {
+  createMcpToolSession,
+  selectMcpServersForChat,
+  type McpToolSession,
+} from "./mcp";
+import { sanitizeMcpServerIds } from "@/lib/chat/storage";
 import type { CodexService } from "../codex/service";
 import { handleCodexChatRequest } from "../codex/chat-handler";
 import {
@@ -73,6 +78,7 @@ export type AgentRequestBody = {
   experts?: unknown;
   subagents?: unknown;
   selectedExpertSlug?: string;
+  mcpServerIds?: string[];
   chatId?: string;
   workspaceId?: string | null;
   agentMode?: AgentMode;
@@ -151,6 +157,7 @@ export async function handleAgentChatRequest(
     chatId = "unknown",
     workspaceId = null,
   } = body;
+  const mcpServerIds = sanitizeMcpServerIds(body.mcpServerIds);
   const agentMode = sanitizeAgentMode(body.agentMode ?? DEFAULT_AGENT_MODE);
   const isPlanMode = agentMode === "plan";
   const isChatMode = agentMode === "chat";
@@ -368,7 +375,10 @@ export async function handleAgentChatRequest(
     const cwd = deps.files.primaryRootPath(workspace.id);
     if (cwd) {
       mcpSession = await createMcpToolSession({
-        servers: deps.database.listMcpServers(workspace.id),
+        servers: selectMcpServersForChat(
+          deps.database.listMcpServers(workspace.id),
+          mcpServerIds
+        ),
         cwd,
       });
     }

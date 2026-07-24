@@ -22,6 +22,7 @@ import { Route as AppSettingsResearchAgentsRouteImport } from './routes/_app.set
 import { Route as AppSettingsNotificationsRouteImport } from './routes/_app.settings.notifications'
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppSettingsMemoriesRouteImport } from './routes/_app.settings.memories'
+import { Route as AppSettingsMcpRouteImport } from './routes/_app.settings.mcp'
 import { Route as AppSettingsHelpRouteImport } from './routes/_app.settings.help'
 import { Route as AppSettingsExpertsRouteImport } from './routes/_app.settings.experts'
 import { Route as AppSettingsCompanionRouteImport } from './routes/_app.settings.companion'
@@ -98,6 +99,11 @@ const AppSettingsMemoriesRoute = AppSettingsMemoriesRouteImport.update({
   path: '/memories',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsMcpRoute = AppSettingsMcpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsHelpRoute = AppSettingsHelpRouteImport.update({
   id: '/help',
   path: '/help',
@@ -158,6 +164,7 @@ export interface FileRoutesByFullPath {
   '/settings/companion': typeof AppSettingsCompanionRoute
   '/settings/experts': typeof AppSettingsExpertsRoute
   '/settings/help': typeof AppSettingsHelpRoute
+  '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/notifications': typeof AppSettingsNotificationsRoute
@@ -180,6 +187,7 @@ export interface FileRoutesByTo {
   '/settings/companion': typeof AppSettingsCompanionRoute
   '/settings/experts': typeof AppSettingsExpertsRoute
   '/settings/help': typeof AppSettingsHelpRoute
+  '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
   '/settings/notifications': typeof AppSettingsNotificationsRoute
@@ -204,6 +212,7 @@ export interface FileRoutesById {
   '/_app/settings/companion': typeof AppSettingsCompanionRoute
   '/_app/settings/experts': typeof AppSettingsExpertsRoute
   '/_app/settings/help': typeof AppSettingsHelpRoute
+  '/_app/settings/mcp': typeof AppSettingsMcpRoute
   '/_app/settings/memories': typeof AppSettingsMemoriesRoute
   '/_app/settings/models': typeof AppSettingsModelsRoute
   '/_app/settings/notifications': typeof AppSettingsNotificationsRoute
@@ -229,6 +238,7 @@ export interface FileRouteTypes {
     | '/settings/companion'
     | '/settings/experts'
     | '/settings/help'
+    | '/settings/mcp'
     | '/settings/memories'
     | '/settings/models'
     | '/settings/notifications'
@@ -251,6 +261,7 @@ export interface FileRouteTypes {
     | '/settings/companion'
     | '/settings/experts'
     | '/settings/help'
+    | '/settings/mcp'
     | '/settings/memories'
     | '/settings/models'
     | '/settings/notifications'
@@ -274,6 +285,7 @@ export interface FileRouteTypes {
     | '/_app/settings/companion'
     | '/_app/settings/experts'
     | '/_app/settings/help'
+    | '/_app/settings/mcp'
     | '/_app/settings/memories'
     | '/_app/settings/models'
     | '/_app/settings/notifications'
@@ -384,6 +396,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsMemoriesRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/mcp': {
+      id: '/_app/settings/mcp'
+      path: '/mcp'
+      fullPath: '/settings/mcp'
+      preLoaderRoute: typeof AppSettingsMcpRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/settings/help': {
       id: '/_app/settings/help'
       path: '/help'
@@ -457,6 +476,7 @@ interface AppSettingsRouteChildren {
   AppSettingsCompanionRoute: typeof AppSettingsCompanionRoute
   AppSettingsExpertsRoute: typeof AppSettingsExpertsRoute
   AppSettingsHelpRoute: typeof AppSettingsHelpRoute
+  AppSettingsMcpRoute: typeof AppSettingsMcpRoute
   AppSettingsMemoriesRoute: typeof AppSettingsMemoriesRoute
   AppSettingsModelsRoute: typeof AppSettingsModelsRoute
   AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
@@ -473,6 +493,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsCompanionRoute: AppSettingsCompanionRoute,
   AppSettingsExpertsRoute: AppSettingsExpertsRoute,
   AppSettingsHelpRoute: AppSettingsHelpRoute,
+  AppSettingsMcpRoute: AppSettingsMcpRoute,
   AppSettingsMemoriesRoute: AppSettingsMemoriesRoute,
   AppSettingsModelsRoute: AppSettingsModelsRoute,
   AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,

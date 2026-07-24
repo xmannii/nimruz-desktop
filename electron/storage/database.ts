@@ -8,7 +8,10 @@ import {
   sanitizeAgentMode,
   type AgentMode,
 } from "@/lib/chat/agent-mode";
-import type { LocalChat } from "@/lib/chat/storage";
+import {
+  sanitizeMcpServerIds,
+  type LocalChat,
+} from "@/lib/chat/storage";
 import type { CodexChatThread, CodexModelDescriptor } from "@/lib/codex";
 import {
   CODEX_PROVIDER_ID,
@@ -197,6 +200,15 @@ function parseMessages(value: unknown): LocalChat["messages"] {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+function parseMcpServerIds(value: unknown): string[] | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    return sanitizeMcpServerIds(JSON.parse(value));
+  } catch {
+    return undefined;
   }
 }
 
@@ -635,6 +647,17 @@ export class AppDatabase {
       });
     }
 
+    if (currentVersion < 10) {
+      this.transaction(() => {
+        if (!hasTableColumn(this.database, "chats", "mcp_server_ids_json")) {
+          this.database.exec(
+            "ALTER TABLE chats ADD COLUMN mcp_server_ids_json TEXT"
+          );
+        }
+        this.database.exec("PRAGMA user_version = 10");
+      });
+    }
+
     if (currentVersion >= 2) {
       this.ensureBuiltinCatalog();
     }
@@ -756,7 +779,7 @@ export class AppDatabase {
     return this.database
       .prepare(
         `SELECT id, title, provider_id, model, messages_json, workspace_id, agent_mode,
-                created_at, updated_at, title_is_custom, pinned, pinned_at
+                mcp_server_ids_json, created_at, updated_at, title_is_custom, pinned, pinned_at
            FROM chats
           ORDER BY pinned DESC, COALESCE(pinned_at, updated_at) DESC, updated_at DESC`
       )
@@ -773,6 +796,7 @@ export class AppDatabase {
         messages: parseMessages(row.messages_json),
         workspaceId:
           typeof row.workspace_id === "string" ? row.workspace_id : null,
+        mcpServerIds: parseMcpServerIds(row.mcp_server_ids_json),
         agentMode: sanitizeAgentMode(row.agent_mode) as AgentMode,
         createdAt: asNumber(row.created_at),
         updatedAt: asNumber(row.updated_at),
@@ -787,8 +811,8 @@ export class AppDatabase {
     const statement = this.database.prepare(`
       INSERT INTO chats (
         id, title, provider_id, model, messages_json, workspace_id, agent_mode,
-        created_at, updated_at, title_is_custom, pinned, pinned_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        mcp_server_ids_json, created_at, updated_at, title_is_custom, pinned, pinned_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         provider_id = excluded.provider_id,
@@ -796,6 +820,7 @@ export class AppDatabase {
         messages_json = excluded.messages_json,
         workspace_id = excluded.workspace_id,
         agent_mode = excluded.agent_mode,
+        mcp_server_ids_json = excluded.mcp_server_ids_json,
         created_at = excluded.created_at,
         updated_at = excluded.updated_at,
         title_is_custom = excluded.title_is_custom,
@@ -814,6 +839,9 @@ export class AppDatabase {
           JSON.stringify(chat.messages),
           validateId(chat.workspaceId) ? chat.workspaceId : null,
           sanitizeAgentMode(chat.agentMode ?? DEFAULT_AGENT_MODE),
+          chat.mcpServerIds === undefined
+            ? null
+            : JSON.stringify(sanitizeMcpServerIds(chat.mcpServerIds) ?? []),
           Number(chat.createdAt),
           Number(chat.updatedAt),
           chat.titleIsCustom ? 1 : 0,

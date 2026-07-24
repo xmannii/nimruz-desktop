@@ -30,6 +30,7 @@ import {
   PaletteIcon,
   SparklesIcon,
   UserRoundIcon,
+  WaypointsIcon,
   type LucideIcon,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
@@ -136,11 +137,25 @@ const STEPS: OnboardingStep[] = [
     ],
   },
   {
+    id: "mcp",
+    icon: WaypointsIcon,
+    title: "ابزارهای MCP",
+    description:
+      "سرورهای Model Context Protocol را به هر فضای کاری وصل کنید تا عامل به ابزارهای محلی یا راه‌دور دسترسی داشته باشد.",
+    bullets: [
+      "از تنظیمات → سرورهای MCP یک سرور stdio، HTTP یا SSE اضافه کنید",
+      "قبل از فعال‌کردن، اتصال را آزمایش کنید تا ابزارها را ببینید",
+      "از منوی + کنار کادر پیام، برای هر گفتگو مشخص کنید کدام سرور MCP فعال باشد",
+      "هر فراخوانی ابزار MCP جداگانه نیاز به تأیید شما دارد",
+    ],
+  },
+  {
     id: "tools",
     icon: MessageSquareTextIcon,
     title: "امکانات چت",
     description: "چند میانبر مفید تا سریع‌تر کار کنید:",
     bullets: [
+      "از منوی + فایل، MCP، مهارت یا متخصص را به پیام اضافه کنید",
       "با / در چت متخصص‌ها را فراخوانی کنید",
       "حافظه و مهارت‌ها را از تنظیمات مدیریت کنید",
       "دستیار می‌تواند صفحات وب را بخواند و در فضای کاری فایل بسازد",

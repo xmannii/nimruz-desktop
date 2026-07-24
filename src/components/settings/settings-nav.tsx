@@ -25,6 +25,7 @@ import {
   ScrollTextIcon,
   SparklesIcon,
   UserRoundIcon,
+  WaypointsIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -38,6 +39,7 @@ type SettingsPath =
   | "/settings/companion"
   | "/settings/research-agents"
   | "/settings/skills"
+  | "/settings/mcp"
   | "/settings/appearance"
   | "/settings/changelog"
   | "/settings/help"
@@ -122,6 +124,12 @@ export const SETTINGS_NAV_GROUPS: Array<{
         icon: BrainIcon,
         match: (pathname) => pathname.startsWith("/settings/memories"),
         badgeKey: "memories",
+      },
+      {
+        to: "/settings/mcp",
+        label: "سرورهای MCP",
+        icon: WaypointsIcon,
+        match: (pathname) => pathname.startsWith("/settings/mcp"),
       },
       {
         to: "/settings/skills",

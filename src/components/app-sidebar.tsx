@@ -49,6 +49,7 @@ import type { LocalChat, LocalWorkspace } from "@/lib/chat/storage";
 import type { WorkspaceInput } from "@/hooks/use-workspaces";
 import { SettingsSidebarNav } from "@/components/settings/settings-nav";
 import { ChatSidebarTitle } from "@/components/chat/chat-sidebar-title";
+import { useSpeech } from "@/components/speech/speech-provider";
 import { HOME_WORKSPACE_ID, isHomeWorkspace } from "@/lib/workspace";
 import {
   ArrowRightIcon,
@@ -118,6 +119,7 @@ export function AppSidebar({
   memoryCount = 0,
 }: AppSidebarProps) {
   const { isMobile, setOpenMobile, state } = useSidebar();
+  const { hasBusyItems, isLiveRecording } = useSpeech();
   const [historyOpen, setHistoryOpen] = useState(false);
   const [workspaceDialogOpen, setWorkspaceDialogOpen] = useState(false);
   const [editingWorkspace, setEditingWorkspace] =
@@ -289,7 +291,13 @@ export function AppSidebar({
                   }}
                 >
                   <AudioLinesIcon />
-                  <span>رونویسی صوت</span>
+                  <span className="flex-1 text-start">رونویسی صوت</span>
+                  {hasBusyItems || isLiveRecording ? (
+                    <LoaderCircleIcon
+                      className="animate-spin"
+                      aria-label="رونویسی در پس‌زمینه"
+                    />
+                  ) : null}
                 </SidebarMenuButton>
               </SidebarMenuItem>
 

@@ -5,6 +5,7 @@ import type { McpServerConfig } from "@/lib/workspace";
 import {
   createMcpToolSession,
   namespaceMcpTools,
+  selectMcpServersForChat,
   testMcpServerConnection,
 } from "./mcp";
 
@@ -27,6 +28,21 @@ const server: McpServerConfig = {
   createdAt: 1,
   updatedAt: 1,
 };
+
+test("selects an explicit per-chat MCP subset", () => {
+  const other = { ...server, id: "other-server", name: "Other" };
+  assert.deepEqual(
+    selectMcpServersForChat([server, other], undefined).map((item) => item.id),
+    ["echo-server", "other-server"]
+  );
+  assert.deepEqual(
+    selectMcpServersForChat([server, other], ["other-server"]).map(
+      (item) => item.id
+    ),
+    ["other-server"]
+  );
+  assert.deepEqual(selectMcpServersForChat([server, other], []), []);
+});
 
 test("namespaces MCP tools so they cannot replace built-in tools", () => {
   const tools = namespaceMcpTools(server, {

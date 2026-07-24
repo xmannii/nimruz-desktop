@@ -9,6 +9,15 @@ import {
 } from "@/lib/workspace";
 
 const MCP_CONNECT_TIMEOUT_MS = 15_000;
+
+export function selectMcpServersForChat(
+  servers: McpServerConfig[],
+  serverIds: string[] | undefined
+): McpServerConfig[] {
+  if (serverIds === undefined) return servers;
+  const selected = new Set(serverIds);
+  return servers.filter((server) => selected.has(server.id));
+}
 const MAX_PROVIDER_TOOL_NAME = 64;
 
 type ConnectedServer = {

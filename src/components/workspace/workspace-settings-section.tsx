@@ -14,7 +14,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { WorkspaceMcpSettings } from "@/components/workspace/workspace-mcp-settings";
 import type {
   LocalWorkspace,
   WorkspaceRoot,
@@ -242,10 +241,6 @@ export function WorkspaceSettingsSection({
               onCheckedChange={() => handleToggle("autoApproveShell")}
             />
           </div>
-        </FieldGroup>
-
-        <FieldGroup>
-          <WorkspaceMcpSettings workspaceId={workspace.id} />
         </FieldGroup>
       </div>
     </ScrollArea>

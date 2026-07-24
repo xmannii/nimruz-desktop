@@ -14,13 +14,19 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
   NativeSelect,
@@ -57,7 +63,7 @@ type McpDraft = {
 
 const EMPTY_DRAFT: McpDraft = {
   name: "",
-  transport: "stdio",
+  transport: "http",
   command: "",
   argsText: "",
   url: "",
@@ -65,7 +71,7 @@ const EMPTY_DRAFT: McpDraft = {
 
 const TRANSPORT_LABELS: Record<McpTransportKind, string> = {
   stdio: "محلی (stdio)",
-  http: "HTTP",
+  http: "HTTP Streamable",
   sse: "SSE",
 };
 
@@ -92,8 +98,10 @@ function connectionDetail(server: McpServerConfig) {
  */
 export function WorkspaceMcpSettings({
   workspaceId,
+  showHeading = true,
 }: {
   workspaceId: string;
+  showHeading?: boolean;
 }) {
   const [servers, setServers] = useState<McpServerConfig[]>([]);
   const [states, setStates] = useState<Record<string, McpServerState>>({});
@@ -102,7 +110,7 @@ export function WorkspaceMcpSettings({
   const [testingId, setTestingId] = useState<string | null>(null);
   const [editing, setEditing] = useState<McpServerConfig | null>(null);
   const [draft, setDraft] = useState<McpDraft>(EMPTY_DRAFT);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<McpServerConfig | null>(null);
 
   useEffect(() => {
@@ -133,13 +141,19 @@ export function WorkspaceMcpSettings({
   function openCreate() {
     setEditing(null);
     setDraft(EMPTY_DRAFT);
-    setDialogOpen(true);
+    setEditorOpen(true);
   }
 
   function openEdit(server: McpServerConfig) {
     setEditing(server);
     setDraft(serverDraft(server));
-    setDialogOpen(true);
+    setEditorOpen(true);
+  }
+
+  function closeEditor() {
+    setEditorOpen(false);
+    setEditing(null);
+    setDraft(EMPTY_DRAFT);
   }
 
   function buildConfig(existing?: McpServerConfig): McpServerConfig {
@@ -180,7 +194,7 @@ export function WorkspaceMcpSettings({
         delete next[saved.id];
         return next;
       });
-      setDialogOpen(false);
+      closeEditor();
       toast.success(editing ? "سرور MCP به‌روزرسانی شد" : "سرور MCP افزوده شد");
     } catch (error) {
       toast.error(
@@ -273,18 +287,22 @@ export function WorkspaceMcpSettings({
     <>
       <div className="flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-medium">سرورهای MCP</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              ابزارهای محلی یا راه‌دور را به عامل این فضای کاری وصل کنید. هر
-              فراخوانی ابزار MCP جداگانه نیاز به تأیید دارد.
-            </p>
-          </div>
+          {showHeading ? (
+            <div>
+              <p className="text-sm font-medium">سرورهای MCP</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                ابزارهای محلی یا راه‌دور را به عامل این فضای کاری وصل کنید. هر
+                فراخوانی ابزار MCP جداگانه نیاز به تأیید دارد.
+              </p>
+            </div>
+          ) : null}
           <Button
             type="button"
             size="sm"
             variant="outline"
+            className={showHeading ? undefined : "ms-auto"}
             disabled={
+              editorOpen ||
               loading ||
               servers.length >= MCP_SERVER_LIMITS.maxServersPerWorkspace
             }
@@ -294,6 +312,161 @@ export function WorkspaceMcpSettings({
             افزودن
           </Button>
         </div>
+
+        {editorOpen ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (canSave && !saving) void saveDraft();
+            }}
+          >
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>
+                  {editing ? "ویرایش سرور MCP" : "افزودن سرور MCP"}
+                </CardTitle>
+                <CardDescription>
+                  اتصال در فرایند اصلی نیمروز ساخته می‌شود و ابزارها فقط در همین
+                  فضای کاری در دسترس‌اند.
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent>
+                <FieldGroup className="gap-4">
+                  <Field>
+                    <FieldLabel htmlFor="mcp-server-name">نام</FieldLabel>
+                    <Input
+                      id="mcp-server-name"
+                      value={draft.name}
+                      maxLength={MCP_SERVER_LIMITS.name}
+                      placeholder="مثلاً ابزارهای پروژه"
+                      autoFocus
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="mcp-server-transport">
+                      نوع اتصال
+                    </FieldLabel>
+                    <NativeSelect
+                      id="mcp-server-transport"
+                      className="w-full"
+                      value={draft.transport}
+                      onChange={(event) =>
+                        setDraft((current) => ({
+                          ...current,
+                          transport: event.target.value as McpTransportKind,
+                        }))
+                      }
+                    >
+                      <NativeSelectOption value="http">
+                        HTTP جریانی (Streamable)
+                      </NativeSelectOption>
+                      <NativeSelectOption value="stdio">
+                        محلی (stdio)
+                      </NativeSelectOption>
+                      <NativeSelectOption value="sse">SSE</NativeSelectOption>
+                    </NativeSelect>
+                  </Field>
+
+                  {draft.transport === "stdio" ? (
+                    <>
+                      <Field>
+                        <FieldLabel htmlFor="mcp-server-command">
+                          فرمان اجرایی
+                        </FieldLabel>
+                        <Input
+                          id="mcp-server-command"
+                          dir="ltr"
+                          value={draft.command}
+                          maxLength={MCP_SERVER_LIMITS.command}
+                          placeholder="node یا مسیر کامل فایل اجرایی"
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              command: event.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
+                      <Field>
+                        <FieldLabel htmlFor="mcp-server-arguments">
+                          آرگومان‌ها
+                        </FieldLabel>
+                        <Textarea
+                          id="mcp-server-arguments"
+                          dir="ltr"
+                          rows={4}
+                          value={draft.argsText}
+                          placeholder={"server.mjs\n--mode\nreadonly"}
+                          onChange={(event) =>
+                            setDraft((current) => ({
+                              ...current,
+                              argsText: event.target.value,
+                            }))
+                          }
+                        />
+                        <FieldDescription>
+                          هر آرگومان را در یک خط بنویسید؛ فرمان از shell عبور
+                          نمی‌کند.
+                        </FieldDescription>
+                      </Field>
+                    </>
+                  ) : (
+                    <Field>
+                      <FieldLabel htmlFor="mcp-server-url">
+                        نشانی سرور
+                      </FieldLabel>
+                      <Input
+                        id="mcp-server-url"
+                        dir="ltr"
+                        type="url"
+                        value={draft.url}
+                        maxLength={MCP_SERVER_LIMITS.url}
+                        placeholder={
+                          draft.transport === "http"
+                            ? "https://example.com/mcp"
+                            : "https://example.com/sse"
+                        }
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            url: event.target.value,
+                          }))
+                        }
+                      />
+                    </Field>
+                  )}
+                </FieldGroup>
+              </CardContent>
+
+              <CardFooter className="justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={saving}
+                  onClick={closeEditor}
+                >
+                  انصراف
+                </Button>
+                <Button type="submit" disabled={!canSave || saving}>
+                  {saving ? (
+                    <Spinner data-icon="inline-start" />
+                  ) : (
+                    <PlugZapIcon data-icon="inline-start" />
+                  )}
+                  ذخیره
+                </Button>
+              </CardFooter>
+            </Card>
+          </form>
+        ) : null}
 
         <p className="rounded-lg bg-muted/45 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
           این نسخه عمداً فقط اتصال‌های بدون رمز را پشتیبانی می‌کند؛ کلیدها و
@@ -401,141 +574,6 @@ export function WorkspaceMcpSettings({
           </div>
         )}
       </div>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent dir="rtl">
-          <DialogHeader>
-            <DialogTitle>
-              {editing ? "ویرایش سرور MCP" : "افزودن سرور MCP"}
-            </DialogTitle>
-            <DialogDescription>
-              اتصال در فرایند اصلی نیمروز ساخته می‌شود و ابزارها فقط در همین
-              فضای کاری در دسترس‌اند.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="flex flex-col gap-4">
-            <label className="flex flex-col gap-1.5 text-sm">
-              نام
-              <Input
-                value={draft.name}
-                maxLength={MCP_SERVER_LIMITS.name}
-                placeholder="مثلاً ابزارهای پروژه"
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    name: event.target.value,
-                  }))
-                }
-              />
-            </label>
-
-            <label className="flex flex-col gap-1.5 text-sm">
-              نوع اتصال
-              <NativeSelect
-                className="w-full"
-                value={draft.transport}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    transport: event.target.value as McpTransportKind,
-                  }))
-                }
-              >
-                <NativeSelectOption value="stdio">
-                  محلی (stdio)
-                </NativeSelectOption>
-                <NativeSelectOption value="http">
-                  HTTP streamable
-                </NativeSelectOption>
-                <NativeSelectOption value="sse">SSE</NativeSelectOption>
-              </NativeSelect>
-            </label>
-
-            {draft.transport === "stdio" ? (
-              <>
-                <label className="flex flex-col gap-1.5 text-sm">
-                  فرمان اجرایی
-                  <Input
-                    dir="ltr"
-                    value={draft.command}
-                    maxLength={MCP_SERVER_LIMITS.command}
-                    placeholder="node یا مسیر کامل فایل اجرایی"
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        command: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-                <label className="flex flex-col gap-1.5 text-sm">
-                  آرگومان‌ها
-                  <Textarea
-                    dir="ltr"
-                    rows={4}
-                    value={draft.argsText}
-                    placeholder={"server.mjs\n--mode\nreadonly"}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        argsText: event.target.value,
-                      }))
-                    }
-                  />
-                  <span className="text-[11px] text-muted-foreground">
-                    هر آرگومان را در یک خط بنویسید؛ فرمان از shell عبور نمی‌کند.
-                  </span>
-                </label>
-              </>
-            ) : (
-              <label className="flex flex-col gap-1.5 text-sm">
-                نشانی سرور
-                <Input
-                  dir="ltr"
-                  type="url"
-                  value={draft.url}
-                  maxLength={MCP_SERVER_LIMITS.url}
-                  placeholder={
-                    draft.transport === "http"
-                      ? "https://example.com/mcp"
-                      : "https://example.com/sse"
-                  }
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      url: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={saving}
-              onClick={() => setDialogOpen(false)}
-            >
-              انصراف
-            </Button>
-            <Button
-              type="button"
-              disabled={!canSave || saving}
-              onClick={() => void saveDraft()}
-            >
-              {saving ? (
-                <Spinner data-icon="inline-start" />
-              ) : (
-                <PlugZapIcon data-icon="inline-start" />
-              )}
-              ذخیره
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <AlertDialog
         open={deleteTarget !== null}

@@ -1,6 +1,11 @@
 "use client";
 
 import { useShenavaModel } from "@/hooks/use-shenava-model";
+import { useSpeech } from "@/components/speech/speech-provider";
+import {
+  DEFAULT_MICROPHONE_ID,
+  openMicrophoneStream,
+} from "@/lib/speech/microphone";
 import {
   resamplePcm,
   SHENAVA_MODELS,
@@ -60,6 +65,11 @@ export function useShenavaSpeechInput(
     options.showTranscriptionSuccessToast ?? true;
   const enableSpaceShortcut = options.enableSpaceShortcut ?? false;
   const model = useShenavaModel();
+  const {
+    selectedMicrophoneId,
+    setSelectedMicrophoneId,
+    refreshMicrophones,
+  } = useSpeech();
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -122,15 +132,8 @@ export function useShenavaSpeechInput(
     let context: AudioContext | null = null;
     startPendingRef.current = true;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          autoGainControl: true,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-        video: false,
-      });
+      stream = await openMicrophoneStream(selectedMicrophoneId);
+      void refreshMicrophones().catch(() => undefined);
       context = new AudioContext();
       await context.resume();
       const source = context.createMediaStreamSource(stream);
@@ -171,13 +174,25 @@ export function useShenavaSpeechInput(
       if (context) void context.close().catch(() => undefined);
       if (error instanceof DOMException && error.name === "NotAllowedError") {
         toast.error("دسترسی میکروفن رد شد. آن را در تنظیمات سیستم فعال کنید.");
+      } else if (
+        error instanceof DOMException &&
+        (error.name === "NotFoundError" ||
+          error.name === "OverconstrainedError")
+      ) {
+        setSelectedMicrophoneId(DEFAULT_MICROPHONE_ID);
+        toast.error("میکروفن انتخاب‌شده در دسترس نیست؛ میکروفن سیستم فعال شد.");
       } else {
         toast.error("شروع ضبط صدا ناموفق بود.");
       }
     } finally {
       startPendingRef.current = false;
     }
-  }, [finishRecording]);
+  }, [
+    finishRecording,
+    refreshMicrophones,
+    selectedMicrophoneId,
+    setSelectedMicrophoneId,
+  ]);
 
   const cancelRecording = useCallback(() => {
     const session = recordingRef.current;

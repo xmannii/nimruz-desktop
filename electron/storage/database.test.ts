@@ -60,6 +60,7 @@ const chat: LocalChat = {
     },
   ],
   workspaceId: project.id,
+  mcpServerIds: ["server-one", "server-two"],
   createdAt: 3,
   updatedAt: 4,
   titleIsCustom: true,
@@ -113,6 +114,10 @@ test("persists chats, projects, settings, memories, and credentials", async () =
         .some((workspace) => workspace.id === HOME_WORKSPACE_ID)
     );
     assert.equal(database.loadChats()[0]?.messages[0]?.role, "user");
+    assert.deepEqual(database.loadChats()[0]?.mcpServerIds, [
+      "server-one",
+      "server-two",
+    ]);
     assert.equal(database.loadPersonalization().nickname, "مانی");
     assert.equal(database.loadNotificationSettings().agentCompleted, false);
     assert.equal(database.loadNotificationSettings().completionSound, true);
@@ -470,7 +475,7 @@ test("deleting all chats also clears Codex thread mappings", async () => {
   });
 });
 
-test("migrates a version-2 database to the combined version-9 schema", async () => {
+test("migrates a version-2 database to the combined version-10 schema", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nimruz-db-v2-"));
   const databasePath = path.join(directory, "test.sqlite3");
   let database = new AppDatabase(databasePath);
@@ -492,14 +497,14 @@ test("migrates a version-2 database to the combined version-9 schema", async () 
     });
     assert.equal(mapping.threadId, "migrated-thread");
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 9);
+    assert.equal(version?.user_version, 10);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test("migrates an official version-3 database to the combined version-9 schema", async () => {
+test("migrates an official version-3 database to the combined version-10 schema", async () => {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "nimruz-db-official-v3-")
   );
@@ -525,14 +530,14 @@ test("migrates an official version-3 database to the combined version-9 schema",
       "official-v3-thread"
     );
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 9);
+    assert.equal(version?.user_version, 10);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test("migrates a Codex version-3 database to the combined version-9 schema", async () => {
+test("migrates a Codex version-3 database to the combined version-10 schema", async () => {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "nimruz-db-codex-v3-")
   );
@@ -558,7 +563,7 @@ test("migrates a Codex version-3 database to the combined version-9 schema", asy
     assert.equal(database.loadChats()[0]?.pinned, true);
     assert.equal(database.loadChats()[0]?.pinnedAt, 10);
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 9);
+    assert.equal(version?.user_version, 10);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });

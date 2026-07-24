@@ -1,6 +1,11 @@
 "use client";
 
 import { ChatContextUsage } from "@/components/chat/chat-context-usage";
+import {
+  ComposerAddMenuPanel,
+  ComposerAddMenuTrigger,
+  type ComposerAddMenuProps,
+} from "@/components/chat/composer-add-menu";
 import { ExpertSlashSuggestions } from "@/components/chat/expert-slash-suggestions";
 import { ComposerContextChips } from "@/components/chat/composer-context-chips";
 import { ComposerWorkspacePicker } from "@/components/chat/composer-workspace-picker";
@@ -40,6 +45,7 @@ import {
   resolveSelectedExpert,
   type Expert,
 } from "@/lib/settings/experts";
+import type { SkillSummary } from "@/lib/skills";
 import { Button } from "@/components/ui/button";
 import {
   InputGroup,
@@ -58,7 +64,7 @@ import {
   type ReasoningEffort,
 } from "@/lib/models/reasoning";
 import type { ChatStatus } from "ai";
-import { ArrowUpIcon, ListTodoIcon, PlayIcon, PlusIcon, SquareIcon } from "lucide-react";
+import { ArrowUpIcon, ListTodoIcon, PlayIcon, SquareIcon } from "lucide-react";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -108,6 +114,8 @@ type ChatComposerProps = {
   onWorkspaceChange?: (workspaceId: string) => void;
   attachments?: ComposerAttachment[];
   onAttachmentsChange?: (attachments: ComposerAttachment[]) => void;
+  mcpServerIds?: string[];
+  onMcpServerIdsChange: (ids: string[] | undefined) => void;
 };
 
 export function ChatComposer({
@@ -134,6 +142,8 @@ export function ChatComposer({
   onWorkspaceChange,
   attachments = [],
   onAttachmentsChange,
+  mcpServerIds,
+  onMcpServerIdsChange,
 }: ChatComposerProps) {
   const { resolveModel, experts, workspaces } = useAppShell();
   const [isExpanded, setIsExpanded] = useState(false);
@@ -142,7 +152,9 @@ export function ChatComposer({
   const [mentionHighlight, setMentionHighlight] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
   const [hasStartedActivePlan, setHasStartedActivePlan] = useState(false);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const addMenuWrapperRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const collapsedWidthRef = useRef<number | null>(null);
@@ -185,6 +197,26 @@ export function ChatComposer({
   useEffect(() => {
     if (!text && !selectedExpert) setIsExpanded(false);
   }, [text, selectedExpert]);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+
+    function handleKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") setAddMenuOpen(false);
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      if (addMenuWrapperRef.current?.contains(event.target as Node)) return;
+      setAddMenuOpen(false);
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, [addMenuOpen]);
 
   useEffect(() => {
     setHasStartedActivePlan(false);
@@ -354,14 +386,20 @@ export function ChatComposer({
     });
   }
 
-  function selectExpert(expert: Expert) {
+  function selectExpert(expert: Expert, clearQuery = true) {
     onSelectedExpertChange(expert.slug);
-    onTextChange("");
+    if (clearQuery) onTextChange("");
     focusComposer();
   }
 
   function clearExpert() {
     onSelectedExpertChange(null);
+    focusComposer();
+  }
+
+  function insertSkill(skill: SkillSummary) {
+    const instruction = `از مهارت \`${skill.name}\` استفاده کن.`;
+    onTextChange(text.trim() ? `${instruction}\n\n${text}` : `${instruction}\n\n`);
     focusComposer();
   }
 
@@ -375,6 +413,7 @@ export function ChatComposer({
   function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!canSend || isBusy) return;
+    setAddMenuOpen(false);
     onSubmit();
   }
 
@@ -497,6 +536,24 @@ export function ChatComposer({
         disabled: isBusy || Boolean(pendingQuestion),
       }
     : null;
+  const addMenuProps: ComposerAddMenuProps = {
+    open: addMenuOpen,
+    onOpenChange: setAddMenuOpen,
+    workspaceId,
+    agentMode,
+    isCodexProvider,
+    supportsImages: modelConfig?.supportsImages ?? false,
+    supportsTools: modelConfig?.supportsTools ?? false,
+    canImportFiles: canImport,
+    fileUnavailableReason: attachmentTitle,
+    experts,
+    selectedExpertSlug,
+    onSelectExpert: (expert) => selectExpert(expert, false),
+    onAttachFiles: () => fileInputRef.current?.click(),
+    onInsertSkill: insertSkill,
+    mcpServerIds,
+    onMcpServerIdsChange,
+  };
 
   return (
     <form
@@ -580,91 +637,92 @@ export function ChatComposer({
         }}
       />
 
-      <MobileComposer
-        badgeProps={badgeProps}
-        textareaProps={textareaProps}
-        model={model}
-        onModelChange={onModelChange}
-        reasoningEffort={reasoningEffort}
-        onReasoningEffortChange={onReasoningEffortChange}
-        showReasoningEffort={showReasoningEffort}
-        reasoningEffortLevels={reasoningEffortLevels}
-        agentMode={agentMode}
-        onAgentModeChange={onAgentModeChange}
-        pendingQuestion={pendingQuestion}
-        onAnswerQuestion={onAnswerQuestion}
-        isBusy={isBusy}
-        canAttach={canAttach}
-        canImport={canImport}
-        attachmentTitle={attachmentTitle}
-        isImporting={isImporting}
-        onAttach={() => fileInputRef.current?.click()}
-        text={text}
-        canSend={canSend}
-        onStop={onStop}
-        centered={centered}
-        attachments={
-          canImport &&
-          (attachments.length > 0 || mentions.length > 0 || isImporting) ? (
-            <ComposerContextChips
-              attachments={attachments}
-              onRemoveAttachment={handleRemoveAttachment}
-              mentions={mentions}
-              onRemoveMention={handleRemoveMention}
-              isImporting={isImporting}
-            />
-          ) : null
-        }
-        speechInput={speechInput}
-      />
+      <div ref={addMenuWrapperRef} className="relative w-full">
+        <MobileComposer
+          badgeProps={badgeProps}
+          textareaProps={textareaProps}
+          model={model}
+          onModelChange={onModelChange}
+          reasoningEffort={reasoningEffort}
+          onReasoningEffortChange={onReasoningEffortChange}
+          showReasoningEffort={showReasoningEffort}
+          reasoningEffortLevels={reasoningEffortLevels}
+          agentMode={agentMode}
+          onAgentModeChange={onAgentModeChange}
+          pendingQuestion={pendingQuestion}
+          onAnswerQuestion={onAnswerQuestion}
+          isBusy={isBusy}
+          addMenuProps={addMenuProps}
+          isImporting={isImporting}
+          text={text}
+          canSend={canSend}
+          onStop={onStop}
+          centered={centered}
+          attachments={
+            canImport &&
+            (attachments.length > 0 || mentions.length > 0 || isImporting) ? (
+              <ComposerContextChips
+                attachments={attachments}
+                onRemoveAttachment={handleRemoveAttachment}
+                mentions={mentions}
+                onRemoveMention={handleRemoveMention}
+                isImporting={isImporting}
+              />
+            ) : null
+          }
+          speechInput={speechInput}
+        />
 
-      <DesktopComposer
-        badgeProps={badgeProps}
-        textareaRef={textareaRef}
-        textareaProps={textareaProps}
-        model={model}
-        onModelChange={onModelChange}
-        reasoningEffort={reasoningEffort}
-        onReasoningEffortChange={onReasoningEffortChange}
-        showReasoningEffort={showReasoningEffort}
-        reasoningEffortLevels={reasoningEffortLevels}
-        agentMode={agentMode}
-        onAgentModeChange={onAgentModeChange}
-        pendingQuestion={pendingQuestion}
-        onAnswerQuestion={onAnswerQuestion}
-        isBusy={isBusy}
-        canAttach={canAttach}
-        canImport={canImport}
-        attachmentTitle={attachmentTitle}
-        isImporting={isImporting}
-        onAttach={() => fileInputRef.current?.click()}
-        isExpanded={
-          centered ||
-          isExpanded ||
-          Boolean(selectedExpert) ||
-          Boolean(pendingQuestion) ||
-          attachments.length > 0 ||
-          mentions.length > 0 ||
-          isImporting
-        }
-        text={text}
-        canSend={canSend}
-        onStop={onStop}
-        centered={centered}
-        attachments={
-          canImport &&
-          (attachments.length > 0 || mentions.length > 0 || isImporting) ? (
-            <ComposerContextChips
-              attachments={attachments}
-              onRemoveAttachment={handleRemoveAttachment}
-              mentions={mentions}
-              onRemoveMention={handleRemoveMention}
-              isImporting={isImporting}
-            />
-          ) : null
-        }
-        speechInput={speechInput}
-      />
+        <DesktopComposer
+          badgeProps={badgeProps}
+          textareaRef={textareaRef}
+          textareaProps={textareaProps}
+          model={model}
+          onModelChange={onModelChange}
+          reasoningEffort={reasoningEffort}
+          onReasoningEffortChange={onReasoningEffortChange}
+          showReasoningEffort={showReasoningEffort}
+          reasoningEffortLevels={reasoningEffortLevels}
+          agentMode={agentMode}
+          onAgentModeChange={onAgentModeChange}
+          pendingQuestion={pendingQuestion}
+          onAnswerQuestion={onAnswerQuestion}
+          isBusy={isBusy}
+          addMenuProps={addMenuProps}
+          isImporting={isImporting}
+          isExpanded={
+            centered ||
+            isExpanded ||
+            Boolean(selectedExpert) ||
+            Boolean(pendingQuestion) ||
+            attachments.length > 0 ||
+            mentions.length > 0 ||
+            isImporting
+          }
+          text={text}
+          canSend={canSend}
+          onStop={onStop}
+          centered={centered}
+          attachments={
+            canImport &&
+            (attachments.length > 0 || mentions.length > 0 || isImporting) ? (
+              <ComposerContextChips
+                attachments={attachments}
+                onRemoveAttachment={handleRemoveAttachment}
+                mentions={mentions}
+                onRemoveMention={handleRemoveMention}
+                isImporting={isImporting}
+              />
+            ) : null
+          }
+          speechInput={speechInput}
+        />
+
+        <ComposerAddMenuPanel
+          {...addMenuProps}
+          placement={centered ? "bottom" : "top"}
+        />
+      </div>
 
       <ShenavaDownloadDialog
         open={speechInput.downloadDialogOpen}
@@ -743,11 +801,8 @@ type ComposerSharedProps = {
   pendingQuestion?: PendingAskUserQuestion | null;
   onAnswerQuestion?: (answers: { id: string; label: string }[]) => void;
   isBusy: boolean;
-  canAttach: boolean;
-  canImport?: boolean;
-  attachmentTitle?: string;
+  addMenuProps: ComposerAddMenuProps;
   isImporting?: boolean;
-  onAttach?: () => void;
   text: string;
   canSend?: boolean;
   onStop: () => void;
@@ -770,11 +825,8 @@ function MobileComposer({
   pendingQuestion = null,
   onAnswerQuestion,
   isBusy,
-  canAttach,
-  canImport = false,
-  attachmentTitle,
+  addMenuProps,
   isImporting = false,
-  onAttach,
   text,
   canSend = false,
   onStop,
@@ -828,23 +880,12 @@ function MobileComposer({
 
           <div className="flex items-center gap-2 border-t border-border/50 px-2 py-2">
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
-              <InputGroupButton
-                size="icon-sm"
-                type="button"
-                variant="secondary"
-                className="size-10 shrink-0 rounded-full"
-                aria-label="افزودن پیوست"
-                title={
-                  attachmentTitle ??
-                  (canImport || canAttach
-                    ? "افزودن فایل"
-                    : "برای افزودن فایل یک فضای کاری لازم است")
-                }
-                disabled={(!canImport && !canAttach) || isBusy || isImporting}
-                onClick={onAttach}
-              >
-                <PlusIcon />
-              </InputGroupButton>
+              <ComposerAddMenuTrigger
+                open={addMenuProps.open}
+                onOpenChange={addMenuProps.onOpenChange}
+                mobile
+                disabled={isBusy || isImporting}
+              />
 
               <AgentModePicker
                 value={agentMode}
@@ -924,11 +965,8 @@ function DesktopComposer({
   pendingQuestion = null,
   onAnswerQuestion,
   isBusy,
-  canAttach,
-  canImport = false,
-  attachmentTitle,
+  addMenuProps,
   isImporting = false,
-  onAttach,
   isExpanded,
   text,
   canSend = false,
@@ -1002,24 +1040,11 @@ function DesktopComposer({
               )}
             >
               <div className="flex items-center gap-1.5">
-                <InputGroupButton
-                  size="icon-sm"
-                  type="button"
-                  variant="secondary"
-                  aria-label="افزودن پیوست"
-                  title={
-                    attachmentTitle ??
-                    (canImport || canAttach
-                      ? "افزودن فایل"
-                      : "برای افزودن فایل یک فضای کاری لازم است")
-                  }
-                  disabled={
-                    (!canImport && !canAttach) || isBusy || isImporting
-                  }
-                  onClick={onAttach}
-                >
-                  <PlusIcon />
-                </InputGroupButton>
+                <ComposerAddMenuTrigger
+                  open={addMenuProps.open}
+                  onOpenChange={addMenuProps.onOpenChange}
+                  disabled={isBusy || isImporting}
+                />
 
                 <AgentModePicker
                   value={agentMode}

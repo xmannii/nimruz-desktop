@@ -22,7 +22,7 @@ Pre-built **Windows** and **macOS** installers are published on every [release](
 | **Windows** | `.exe` (NSIS) | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Linux** | AppImage | Build locally with `pnpm dist` |
 
-See [CHANGELOG.md](CHANGELOG.md) for **v1.2.0** release notes (local Persian speech-to-text, voice input, and a focused chat mode).
+See [CHANGELOG.md](CHANGELOG.md) for **v1.3.0** release notes (composer + menu, per-chat MCP, and MCP settings).
 
 ### macOS install
 
@@ -108,8 +108,8 @@ On first launch:
 2. Open **Settings → Models** and connect ChatGPT for Codex, add an OpenRouter key, or configure another provider.
 3. Create or open a **workspace** and link a project folder when you want the agent to touch files.
 
-Workspace-specific MCP servers can be added under **Workspace panel → Settings
-→ MCP servers**. Test the connection before enabling it for agent turns. See
+Workspace-specific MCP servers can be added under **Settings → MCP servers**.
+Select a workspace, then test the connection before enabling it for agent turns. See
 [Workspace MCP tools](docs/MCP.md) for supported transports, lifecycle, and the
 current authentication boundary.
 

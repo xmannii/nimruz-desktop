@@ -6,6 +6,7 @@ import {
   TranscriptionResultCard,
   type FileTranscriptionItem,
 } from "@/components/speech/transcription-result-card";
+import { useSpeech } from "@/components/speech/speech-provider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -57,22 +58,17 @@ import type { ProviderModelRef } from "@/lib/models/catalog";
 import {
   AUDIO_FILE_ACCEPT,
   formatAudioDuration,
-  MAX_AUDIO_DURATION_SECONDS,
   MAX_AUDIO_FILE_BYTES,
   isSupportedAudioFile,
-  splitPcmAtSilence,
 } from "@/lib/speech/file-transcription";
 import {
   DEFAULT_CORRECTION_PROMPT,
   MAX_CORRECTION_PROMPT_CHARS,
 } from "@/lib/speech/correction";
-import { requestTranscriptCorrection } from "@/lib/speech/request-correction";
 import {
   formatBytes,
-  resamplePcm,
   SHENAVA_MODEL_KEYS,
   SHENAVA_MODELS,
-  SHENAVA_SAMPLE_RATE,
   type ShenavaModelKey,
 } from "@/lib/speech/shenava";
 import { cn } from "@/lib/utils";
@@ -100,34 +96,6 @@ import { toast } from "sonner";
 
 const MAX_FILES_PER_BATCH = 20;
 
-type LiveRecordingSession = {
-  recorder: MediaRecorder;
-  stream: MediaStream;
-  elapsedTimer: number;
-  maximumDurationTimer: number;
-};
-
-function releaseLiveRecordingSession(session: LiveRecordingSession) {
-  window.clearInterval(session.elapsedTimer);
-  window.clearTimeout(session.maximumDurationTimer);
-  for (const track of session.stream.getTracks()) track.stop();
-}
-
-function recordingFileExtension(mimeType: string) {
-  if (mimeType.includes("ogg")) return "ogg";
-  if (mimeType.includes("mp4")) return "m4a";
-  return "webm";
-}
-
-type PendingTranscription = {
-  id: string;
-  file: File;
-  modelKey: ShenavaModelKey;
-  autoCorrect: boolean;
-  correctionPrompt: string;
-  correctionModel: ProviderModelRef | null;
-};
-
 function downloadCombinedTranscript(items: FileTranscriptionItem[]) {
   const completed = items.filter(
     (item) => item.status === "done" && item.transcript
@@ -149,43 +117,21 @@ function downloadCombinedTranscript(items: FileTranscriptionItem[]) {
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-async function decodeAudio(file: File) {
-  const context = new AudioContext();
-  try {
-    const encoded = await file.arrayBuffer();
-    const decoded = await context.decodeAudioData(encoded);
-    if (decoded.duration > MAX_AUDIO_DURATION_SECONDS) {
-      throw new Error("مدت فایل صوتی نباید بیشتر از یک ساعت باشد.");
-    }
-
-    const mono = new Float32Array(decoded.length);
-    for (let channel = 0; channel < decoded.numberOfChannels; channel += 1) {
-      const input = decoded.getChannelData(channel);
-      for (let index = 0; index < input.length; index += 1) {
-        mono[index] += input[index] / decoded.numberOfChannels;
-      }
-    }
-
-    return {
-      durationSeconds: decoded.duration,
-      samples: resamplePcm(mono, decoded.sampleRate, SHENAVA_SAMPLE_RATE),
-    };
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("یک ساعت")) {
-      throw error;
-    }
-    throw new Error(
-      "این فایل صوتی قابل خواندن نیست. WAV، MP3، M4A، AAC، FLAC، OGG یا WebM را امتحان کنید."
-    );
-  } finally {
-    await context.close().catch(() => undefined);
-  }
-}
-
 export function FileTranscriptionPage() {
   const shenava = useShenavaModel();
   const { defaultModelRef, hasUsableModel } = useAppShell();
-  const [items, setItems] = useState<FileTranscriptionItem[]>([]);
+  const {
+    items,
+    hasBusyItems,
+    addFiles: queueFiles,
+    correctItem,
+    removeItem,
+    clearCompleted,
+    isLiveRecording,
+    recordingSeconds,
+    startLiveRecording: beginLiveRecording,
+    stopLiveRecording,
+  } = useSpeech();
   const [isDragging, setIsDragging] = useState(false);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [autoCorrect, setAutoCorrect] = useState(false);
@@ -195,14 +141,6 @@ export function FileTranscriptionPage() {
   const [correctionModel, setCorrectionModel] =
     useState<ProviderModelRef | null>(defaultModelRef);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const itemsRef = useRef<FileTranscriptionItem[]>([]);
-  const queueRef = useRef<PendingTranscription[]>([]);
-  const processingRef = useRef(false);
-  const mountedRef = useRef(true);
-  const correctionControllersRef = useRef(new Map<string, AbortController>());
-  const liveRecordingRef = useRef<LiveRecordingSession | null>(null);
-  const [isLiveRecording, setIsLiveRecording] = useState(false);
-  const [recordingSeconds, setRecordingSeconds] = useState(0);
 
   const installedModelKeys = SHENAVA_MODEL_KEYS.filter(
     (modelKey) => shenava.status.models[modelKey].installed
@@ -212,171 +150,11 @@ export function FileTranscriptionPage() {
   const hasCompletedItems = items.some(
     (item) => item.status === "done" && item.transcript
   );
-  const hasBusyItems = items.some(
-    (item) =>
-      item.status === "queued" ||
-      item.status === "decoding" ||
-      item.status === "transcribing" ||
-      item.status === "correcting"
-  );
   const canUseAiCorrection = hasUsableModel && correctionModel !== null;
 
   useEffect(() => {
     if (!correctionModel && defaultModelRef) setCorrectionModel(defaultModelRef);
   }, [correctionModel, defaultModelRef]);
-
-  const replaceItems = useCallback(
-    (
-      update: (current: FileTranscriptionItem[]) => FileTranscriptionItem[]
-    ) => {
-      setItems((current) => {
-        const next = update(current);
-        itemsRef.current = next;
-        return next;
-      });
-    },
-    []
-  );
-
-  const updateItem = useCallback(
-    (id: string, update: Partial<FileTranscriptionItem>) => {
-      if (!mountedRef.current) return;
-      replaceItems((current) =>
-        current.map((item) => (item.id === id ? { ...item, ...update } : item))
-      );
-    },
-    [replaceItems]
-  );
-
-  const correctItem = useCallback(
-    async (
-      id: string,
-      text: string,
-      prompt: string,
-      aiModel: ProviderModelRef
-    ) => {
-      const controller = new AbortController();
-      correctionControllersRef.current.set(id, controller);
-      updateItem(id, {
-        status: "correcting",
-        progress: 88,
-        correctionError: null,
-      });
-      try {
-        const correctedText = await requestTranscriptCorrection({
-          text,
-          prompt,
-          model: aiModel,
-          signal: controller.signal,
-        });
-        updateItem(id, {
-          status: "done",
-          progress: 100,
-          correctedText,
-          correctionError: null,
-        });
-      } catch (error) {
-        if (controller.signal.aborted) return;
-        updateItem(id, {
-          status: "done",
-          progress: 100,
-          correctionError:
-            error instanceof Error
-              ? error.message
-              : "اصلاح متن با هوش مصنوعی ناموفق بود.",
-        });
-      } finally {
-        correctionControllersRef.current.delete(id);
-      }
-    },
-    [updateItem]
-  );
-
-  const drainQueue = useCallback(async () => {
-    if (processingRef.current) return;
-    processingRef.current = true;
-
-    try {
-      while (mountedRef.current && queueRef.current.length > 0) {
-        const job = queueRef.current.shift();
-        if (!job) break;
-        updateItem(job.id, { status: "decoding", progress: 3 });
-
-        try {
-          const decoded = await decodeAudio(job.file);
-          const chunks = splitPcmAtSilence(decoded.samples);
-          updateItem(job.id, {
-            status: "transcribing",
-            progress: 10,
-            durationSeconds: decoded.durationSeconds,
-          });
-
-          const transcripts: string[] = [];
-          for (let index = 0; index < chunks.length; index += 1) {
-            const result = await window.desktop.speech.shenava.transcribe(
-              chunks[index].slice().buffer as ArrayBuffer
-            );
-            if (result.text.trim()) transcripts.push(result.text.trim());
-            updateItem(job.id, {
-              progress: 10 + ((index + 1) / chunks.length) * 75,
-            });
-          }
-
-          const transcript = transcripts.join("\n\n").trim();
-          if (!transcript) {
-            throw new Error("گفتار قابل‌تشخیصی در این فایل شنیده نشد.");
-          }
-          updateItem(job.id, {
-            status: "done",
-            progress: 100,
-            transcript,
-          });
-
-          if (job.autoCorrect && job.correctionModel) {
-            await correctItem(
-              job.id,
-              transcript,
-              job.correctionPrompt,
-              job.correctionModel
-            );
-          }
-        } catch (error) {
-          updateItem(job.id, {
-            status: "error",
-            progress: 100,
-            error:
-              error instanceof Error
-                ? error.message
-                : "رونویسی این فایل ناموفق بود.",
-          });
-        }
-      }
-    } finally {
-      processingRef.current = false;
-    }
-  }, [correctItem, updateItem]);
-
-  useEffect(
-    () => {
-      mountedRef.current = true;
-      return () => {
-        mountedRef.current = false;
-        queueRef.current = [];
-        const recording = liveRecordingRef.current;
-        if (recording) {
-          recording.recorder.onstop = null;
-          if (recording.recorder.state !== "inactive") recording.recorder.stop();
-          releaseLiveRecordingSession(recording);
-          liveRecordingRef.current = null;
-        }
-        for (const controller of correctionControllersRef.current.values()) {
-          controller.abort();
-        }
-        for (const item of itemsRef.current) URL.revokeObjectURL(item.audioUrl);
-      };
-    },
-    []
-  );
 
   const addFiles = useCallback((fileList: FileList | File[]) => {
     if (!activeModelInstalled) {
@@ -394,44 +172,19 @@ export function FileTranscriptionPage() {
     }
     if (supported.length === 0) return;
 
-    const nextItems: FileTranscriptionItem[] = [];
-    const jobs: PendingTranscription[] = [];
-    for (const file of supported) {
-      const id = crypto.randomUUID();
-      nextItems.push({
-        id,
-        file,
-        audioUrl: URL.createObjectURL(file),
-        status: "queued",
-        progress: 0,
-        durationSeconds: null,
-        transcript: "",
-        correctedText: null,
-        error: null,
-        correctionError: null,
-        modelKey: shenava.status.activeModelKey,
-      });
-      jobs.push({
-        id,
-        file,
-        modelKey: shenava.status.activeModelKey,
-        autoCorrect: autoCorrect && canUseAiCorrection,
-        correctionPrompt,
-        correctionModel,
-      });
-    }
-
-    replaceItems((current) => [...nextItems, ...current]);
-    queueRef.current.push(...jobs);
-    void drainQueue();
+    queueFiles(supported, {
+      modelKey: shenava.status.activeModelKey,
+      autoCorrect: autoCorrect && canUseAiCorrection,
+      correctionPrompt,
+      correctionModel,
+    });
   }, [
     activeModelInstalled,
     autoCorrect,
     canUseAiCorrection,
     correctionModel,
     correctionPrompt,
-    drainQueue,
-    replaceItems,
+    queueFiles,
     shenava.status.activeModelKey,
   ]);
 
@@ -446,99 +199,26 @@ export function FileTranscriptionPage() {
     addFiles(event.dataTransfer.files);
   }
 
-  const stopLiveRecording = useCallback(() => {
-    const recording = liveRecordingRef.current;
-    if (!recording || recording.recorder.state === "inactive") return;
-    recording.recorder.stop();
-  }, []);
-
   const startLiveRecording = useCallback(async () => {
-    if (liveRecordingRef.current) {
-      stopLiveRecording();
-      return;
-    }
     if (!activeModelInstalled) {
       toast.error("ابتدا یک مدل شنوا را نصب و فعال کنید.");
       return;
     }
-    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-      toast.error("ضبط صدا در این دستگاه در دسترس نیست.");
-      return;
-    }
-
-    let stream: MediaStream | null = null;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          autoGainControl: true,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-        video: false,
-      });
-      const mimeType = [
-        "audio/webm;codecs=opus",
-        "audio/webm",
-        "audio/ogg;codecs=opus",
-      ].find((candidate) => MediaRecorder.isTypeSupported(candidate));
-      const recorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
-      const chunks: BlobPart[] = [];
-      const session: LiveRecordingSession = {
-        recorder,
-        stream,
-        elapsedTimer: window.setInterval(
-          () => setRecordingSeconds((seconds) => seconds + 1),
-          1_000
-        ),
-        maximumDurationTimer: window.setTimeout(() => {
-          toast.info("حداکثر زمان ضبط یک ساعت است؛ ضبط متوقف شد.");
-          recorder.stop();
-        }, MAX_AUDIO_DURATION_SECONDS * 1_000),
-      };
-
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) chunks.push(event.data);
-      };
-      recorder.onstop = () => {
-        if (liveRecordingRef.current === session) {
-          liveRecordingRef.current = null;
-        }
-        releaseLiveRecordingSession(session);
-        setIsLiveRecording(false);
-        setRecordingSeconds(0);
-        if (!mountedRef.current) return;
-
-        const type = recorder.mimeType || "audio/webm";
-        const audio = new Blob(chunks, { type });
-        if (audio.size === 0) {
-          toast.info("صدای کافی ضبط نشد. دوباره تلاش کنید.");
-          return;
-        }
-        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const file = new File(
-          [audio],
-          `recording-${timestamp}.${recordingFileExtension(type)}`,
-          { type }
-        );
-        addFiles([file]);
-      };
-      recorder.onerror = () => toast.error("ضبط صدا ناموفق بود.");
-      liveRecordingRef.current = session;
-      setRecordingSeconds(0);
-      setIsLiveRecording(true);
-      recorder.start(1_000);
-    } catch (error) {
-      for (const track of stream?.getTracks() ?? []) track.stop();
-      if (error instanceof DOMException && error.name === "NotAllowedError") {
-        toast.error("دسترسی میکروفن رد شد. آن را در تنظیمات سیستم فعال کنید.");
-      } else {
-        toast.error("شروع ضبط صدا ناموفق بود.");
-      }
-    }
-  }, [activeModelInstalled, addFiles, stopLiveRecording]);
+    await beginLiveRecording({
+      modelKey: shenava.status.activeModelKey,
+      autoCorrect: autoCorrect && canUseAiCorrection,
+      correctionPrompt,
+      correctionModel,
+    });
+  }, [
+    activeModelInstalled,
+    autoCorrect,
+    beginLiveRecording,
+    canUseAiCorrection,
+    correctionModel,
+    correctionPrompt,
+    shenava.status.activeModelKey,
+  ]);
 
   useEffect(() => {
     if (!isLiveRecording) return;
@@ -579,27 +259,9 @@ export function FileTranscriptionPage() {
   }
 
   function runManualCorrection(id: string) {
-    const item = itemsRef.current.find((candidate) => candidate.id === id);
+    const item = items.find((candidate) => candidate.id === id);
     if (!item?.transcript || !correctionModel) return;
     void correctItem(id, item.transcript, correctionPrompt, correctionModel);
-  }
-
-  function removeItem(id: string) {
-    const item = itemsRef.current.find((candidate) => candidate.id === id);
-    if (item) URL.revokeObjectURL(item.audioUrl);
-    queueRef.current = queueRef.current.filter((job) => job.id !== id);
-    replaceItems((current) => current.filter((candidate) => candidate.id !== id));
-  }
-
-  function clearCompleted() {
-    const removable = itemsRef.current.filter(
-      (item) => item.status === "done" || item.status === "error"
-    );
-    for (const item of removable) URL.revokeObjectURL(item.audioUrl);
-    const removableIds = new Set(removable.map((item) => item.id));
-    replaceItems((current) =>
-      current.filter((item) => !removableIds.has(item.id))
-    );
   }
 
   return (
@@ -611,7 +273,8 @@ export function FileTranscriptionPage() {
         <div className="min-w-0">
           <h1 className="text-lg font-medium tracking-tight">رونویسی صوت</h1>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            تبدیل خصوصی فایل یا ضبط زنده فارسی به متن با مدل نصب‌شده روی دستگاه
+            تبدیل خصوصی فایل یا ضبط زنده فارسی به متن؛ پردازش هنگام رفتن به
+            بخش‌های دیگر ادامه دارد
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -705,7 +368,7 @@ export function FileTranscriptionPage() {
                   <EmptyDescription>
                     {isLiveRecording
                       ? "برای پایان ضبط، روی دکمه پایان بزنید یا کلید فاصله را فشار دهید."
-                      : `پردازش صدا روی دستگاه انجام می‌شود. تا ${MAX_FILES_PER_BATCH.toLocaleString("fa-IR")} فایل، حداکثر ${formatBytes(MAX_AUDIO_FILE_BYTES)} و یک ساعت برای هر فایل.`}
+                      : `پردازش صدا روی دستگاه انجام می‌شود. تا ${MAX_FILES_PER_BATCH.toLocaleString("fa-IR")} فایل، حداکثر ${formatBytes(MAX_AUDIO_FILE_BYTES)} و دو ساعت برای هر فایل.`}
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>

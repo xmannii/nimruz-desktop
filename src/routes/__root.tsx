@@ -1,5 +1,6 @@
 import { ThemeProvider } from "@/components/theme-provider";
 import { AppearanceProvider } from "@/components/appearance-provider";
+import { SpeechProvider } from "@/components/speech/speech-provider";
 import { DirectionProvider } from "@/components/ui/direction";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -22,13 +23,15 @@ function RootLayout() {
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
       <AppearanceProvider>
         <DirectionProvider direction="rtl">
-          <TooltipProvider>
-            <Outlet />
-            <Toaster richColors position="top-center" />
-            {import.meta.env.DEV && !isCompanion ? (
-              <TanStackRouterDevtools position="bottom-left" />
-            ) : null}
-          </TooltipProvider>
+          <SpeechProvider>
+            <TooltipProvider>
+              <Outlet />
+              <Toaster richColors position="top-center" />
+              {import.meta.env.DEV && !isCompanion ? (
+                <TanStackRouterDevtools position="bottom-left" />
+              ) : null}
+            </TooltipProvider>
+          </SpeechProvider>
         </DirectionProvider>
       </AppearanceProvider>
     </ThemeProvider>

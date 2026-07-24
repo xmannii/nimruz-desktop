@@ -115,6 +115,7 @@ export type ChatUpdate = {
   model: ModelId;
   providerId?: string;
   agentMode?: AgentMode;
+  mcpServerIds?: string[];
 };
 
 export type ChatCreationOptions = {
@@ -311,7 +312,12 @@ export function useChatHistory(
     setChats((current) =>
       current.map((chat) =>
         chat.workspaceId === workspaceId
-          ? { ...chat, workspaceId: HOME_WORKSPACE_ID, updatedAt: Date.now() }
+          ? {
+              ...chat,
+              workspaceId: HOME_WORKSPACE_ID,
+              mcpServerIds: undefined,
+              updatedAt: Date.now(),
+            }
           : chat
       )
     );
@@ -322,7 +328,12 @@ export function useChatHistory(
       setChats((current) =>
         current.map((chat) =>
           chat.id === chatId
-            ? { ...chat, workspaceId, updatedAt: Date.now() }
+            ? {
+                ...chat,
+                workspaceId,
+                mcpServerIds: undefined,
+                updatedAt: Date.now(),
+              }
             : chat
         )
       );
@@ -359,11 +370,15 @@ export function useChatHistory(
       const nextAgentMode = sanitizeAgentMode(
         update.agentMode ?? chat.agentMode
       );
+      const nextMcpServerIds =
+        "mcpServerIds" in update ? update.mcpServerIds : chat.mcpServerIds;
 
       if (
         chat.model === update.model &&
         chat.providerId === nextProviderId &&
         sanitizeAgentMode(chat.agentMode) === nextAgentMode &&
+        JSON.stringify(chat.mcpServerIds) ===
+          JSON.stringify(nextMcpServerIds) &&
         areMessagesEqual(chat.messages, update.messages)
       ) {
         return current;
@@ -374,6 +389,7 @@ export function useChatHistory(
         ...update,
         providerId: nextProviderId,
         agentMode: nextAgentMode,
+        mcpServerIds: nextMcpServerIds,
         title: chat.titleIsCustom ? chat.title : getChatTitle(update.messages),
         updatedAt: Date.now(),
       };
