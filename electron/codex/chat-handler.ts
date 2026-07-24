@@ -1,5 +1,9 @@
 import type { ChatRequestBody, ResolvedChatModel } from "../chat-handler";
-import type { CodexTokenUsage, CodexService } from "./service";
+import type {
+  CodexTokenUsage,
+  CodexService,
+  CodexTurnWorkspace,
+} from "./service";
 import {
   buildChatSystemInstructions,
   buildSystemInstructions,
@@ -50,6 +54,7 @@ export async function handleCodexChatRequest(options: {
   codex: CodexService | null;
   signal?: AbortSignal;
   additionalInstructions?: string;
+  workspace?: CodexTurnWorkspace;
   runId?: string;
   onFinish?: (
     status: "completed" | "failed" | "cancelled",
@@ -62,6 +67,7 @@ export async function handleCodexChatRequest(options: {
     codex,
     signal,
     additionalInstructions,
+    workspace,
     runId,
     onFinish,
   } = options;
@@ -165,6 +171,7 @@ export async function handleCodexChatRequest(options: {
           reasoningEffort: selectedReasoningEffort,
           instructions,
           messages: body.messages,
+          workspace,
           signal,
           onEvent(event) {
             if (event.type === "text-delta") {

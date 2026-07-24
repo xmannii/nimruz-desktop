@@ -10,7 +10,7 @@
 
 > **Experimental software** — expect rough edges. Please test it and [report issues on GitHub](https://github.com/xmannii/nimruz-desktop/issues).
 
-Connect Codex through your ChatGPT account, [OpenRouter](https://openrouter.ai/), or any OpenAI-compatible provider. Tool-capable providers can work inside linked workspace folders with approvals, artifacts, and tasks; Codex runs as a subscription-backed conversational model in an isolated runtime. Chats, workspaces, memories, experts, skills, and settings remain local to your machine.
+Connect Codex through your ChatGPT account, [OpenRouter](https://openrouter.ai/), or any OpenAI-compatible provider. Tool-capable providers can work inside linked workspace folders with approvals, artifacts, and tasks. Codex can use its native coding tools in Agent mode, while Chat mode remains conversational and isolated. Chats, workspaces, memories, experts, skills, and settings remain local to your machine.
 
 ## Download
 
@@ -64,7 +64,7 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 
 - **Streaming chat** — markdown, code, math (KaTeX), Mermaid, RTL-first Persian UI
 - **Tool timeline** — connected reasoning + tool steps; long runs compact into one expandable summary
-- **Codex with ChatGPT sign-in** — sync and use models available to an eligible ChatGPT account in a restricted, isolated runtime
+- **Codex with ChatGPT sign-in** — sync eligible subscription models and run native coding tools inside Nimruz's approved workspace sandbox
 - **OpenRouter & custom providers** — browse models, set defaults, optional reasoning effort
 - **Web fetch** — `fetch_url` for public pages (SSRF-safe HTML → text)
 - **Auto titles** — conversations named from the first message
@@ -132,7 +132,18 @@ Codex availability, model access, credits, and rate limits follow the signed-in 
 
 Nimruz uses Codex's supported ChatGPT browser sign-in and experimental app-server interface. Codex owns token refresh and stores the session in the operating-system keyring; Nimruz does not copy the session tokens into SQLite or a plaintext `auth.json` file. See OpenAI's [Codex authentication documentation](https://learn.chatgpt.com/docs/auth) for how ChatGPT sign-in, workspace controls, and credential storage work. Logging out from the Codex card clears the Codex session and Nimruz's local Codex thread mappings.
 
-For local safety, Nimruz starts Codex with a least-privilege permission profile: commands can read only Codex's minimal runtime files and Nimruz's dedicated empty workspace, cannot write there, and have no network access. Shell, web-search, browser, connector, plugin, computer-use, and multi-agent tool surfaces are disabled, and no parent-process environment variables are exposed to model-run commands. This integration exposes Codex as a coding model inside Nimruz; it does **not** convert a ChatGPT subscription into general OpenAI API credit or replace an API key for custom providers. Codex usage is counted under the user's ChatGPT plan.
+For local safety, Codex Chat mode stays in a dedicated read-only runtime. In
+Agent mode, Nimruz passes only the linked workspace roots (or the chat's
+isolated worktree) to Codex and uses its `workspace-write` sandbox. Native
+command, file-change, and permission requests are persisted and shown in the
+same approval UI as other agent tools; the provider cannot continue until the
+user approves or denies the request. Network, web-search, browser, connector,
+plugin, computer-use, and multi-agent surfaces remain disabled, and no
+parent-process environment variables are exposed to model-run commands.
+Completed Git-backed turns receive the same checkpoint and diff as other
+workspace agents. This integration does **not** convert a ChatGPT subscription
+into general OpenAI API credit or replace an API key for custom providers.
+Codex usage is counted under the user's ChatGPT plan.
 
 ### Build a distributable
 

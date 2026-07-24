@@ -165,13 +165,15 @@ test("builds an isolated managed-login environment without inherited API credent
   assert.equal(source.Codex_Home, "attacker-controlled-home");
 });
 
-test("writes a least-privilege managed Codex configuration", async () => {
+test("writes a least-privilege managed Codex configuration with scoped coding tools", async () => {
   const config = createManagedCodexConfig();
   assert.match(config, /default_permissions = "nimruz-chat"/);
   assert.match(config, /":minimal" = "read"/);
   assert.match(config, /filesystem\.\":workspace_roots\"/);
   assert.match(config, /inherit = "none"/);
-  assert.match(config, /shell_tool = false/);
+  assert.match(config, /shell_tool = true/);
+  assert.match(config, /unified_exec = true/);
+  assert.match(config, /request_permissions = true/);
   assert.match(config, /remote_plugin = false/);
   assert.match(config, /tool_search = false/);
   assert.match(config, /web_search = "disabled"/);
@@ -241,7 +243,10 @@ test("initializes once, frames concurrent JSON-RPC requests, and forwards notifi
             title: "Nimruz Desktop",
             version: "9.8.7",
           },
-          capabilities: null,
+          capabilities: {
+            experimentalApi: true,
+            requestAttestation: false,
+          },
         },
       });
       assert.deepEqual(harness.received[1], {
@@ -336,6 +341,51 @@ test("rejects unsupported server-initiated requests without treating them as not
         }
       );
       assert.deepEqual(notifications, []);
+    }
+  );
+});
+
+test("delivers supported server requests and writes the caller response", async () => {
+  await withClient(
+    () =>
+      createProcessHarness((message, harness) => {
+        replyToInitialize(message, harness);
+        if (message.method === "ping" && message.id !== undefined) {
+          harness.send({ id: message.id, result: "pong" });
+        }
+      }),
+    async ({ client, harness }) => {
+      const requests: Array<{
+        id: number | string;
+        method: string;
+        params: unknown;
+      }> = [];
+      client.onServerRequest((request) => {
+        requests.push(request);
+        client.respondToServerRequest(request.id, {
+          result: { decision: "accept" },
+        });
+      });
+      assert.equal(await client.request("ping"), "pong");
+
+      harness.send({
+        id: "approval-2",
+        method: "item/commandExecution/requestApproval",
+        params: { command: "pnpm test" },
+      });
+      await new Promise((resolve) => setImmediate(resolve));
+
+      assert.deepEqual(requests, [
+        {
+          id: "approval-2",
+          method: "item/commandExecution/requestApproval",
+          params: { command: "pnpm test" },
+        },
+      ]);
+      assert.deepEqual(
+        harness.received.find((message) => message.id === "approval-2"),
+        { id: "approval-2", result: { decision: "accept" } }
+      );
     }
   );
 });

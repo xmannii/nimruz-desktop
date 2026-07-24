@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import type { ChatUIMessage } from "@/lib/chat/message";
+import type { CodexServerRequest } from "./app-server-client";
 import { CODEX_PROVIDER_ID } from "@/lib/models/catalog";
 import { AppDatabase } from "../storage/database";
 import {
@@ -30,11 +31,18 @@ type RequestHandler = (
 class FakeCodexClient implements CodexClient {
   readonly requests: RequestCall[] = [];
   readonly handlers = new Map<string, RequestHandler>();
+  readonly serverResponses: Array<{
+    id: number | string;
+    response: unknown;
+  }> = [];
   disposed = false;
   private readonly notificationListeners = new Set<
     (method: string, params: unknown) => void
   >();
   private readonly exitListeners = new Set<(error: Error) => void>();
+  private readonly serverRequestListeners = new Set<
+    (request: CodexServerRequest) => void
+  >();
 
   async request<T>(method: string, params?: unknown, timeoutMs?: number) {
     this.requests.push({ method, params, timeoutMs });
@@ -53,12 +61,25 @@ class FakeCodexClient implements CodexClient {
     return () => this.exitListeners.delete(listener);
   }
 
+  onServerRequest(listener: (request: CodexServerRequest) => void) {
+    this.serverRequestListeners.add(listener);
+    return () => this.serverRequestListeners.delete(listener);
+  }
+
+  respondToServerRequest(id: number | string, response: unknown) {
+    this.serverResponses.push({ id, response });
+  }
+
   emitNotification(method: string, params: unknown) {
     for (const listener of this.notificationListeners) listener(method, params);
   }
 
   emitExit(error: Error) {
     for (const listener of this.exitListeners) listener(error);
+  }
+
+  emitServerRequest(request: CodexServerRequest) {
+    for (const listener of this.serverRequestListeners) listener(request);
   }
 
   dispose() {
@@ -628,6 +649,84 @@ test("streams a new turn, enforces a read-only workspace, and persists continuit
     assert.equal(
       database.getCodexChatThread("chat-new")?.lastUserMessageId,
       "user-new"
+    );
+  });
+});
+
+test("runs Codex inside an approved workspace and resolves native command approval", async () => {
+  await withService(async ({ service, client }) => {
+    client.handlers.set("account/read", () => connectedAccount());
+    client.handlers.set("thread/start", () => ({
+      thread: { id: "thread-workspace" },
+    }));
+    client.handlers.set("turn/start", () => ({
+      turn: { id: "turn-workspace" },
+    }));
+
+    const approvalRequests: unknown[] = [];
+    const turn = service.runTurn({
+      chatId: "chat-workspace",
+      model: "gpt-5-codex",
+      instructions: "Work carefully.",
+      messages: [chatMessage("user-workspace", "user", "Run tests")],
+      workspace: {
+        cwd: "C:\\repo\\worktree",
+        roots: ["C:\\repo\\worktree"],
+        async onApproval(request) {
+          approvalRequests.push(request);
+          return { approved: true, forSession: false };
+        },
+      },
+      onEvent: () => undefined,
+    });
+
+    await waitForRequest(client, "turn/start");
+    client.emitServerRequest({
+      id: "approval-1",
+      method: "item/commandExecution/requestApproval",
+      params: {
+        threadId: "thread-workspace",
+        turnId: "turn-workspace",
+        itemId: "command-1",
+        command: "pnpm test",
+        cwd: "C:\\repo\\worktree",
+        reason: "Run the project tests.",
+      },
+    });
+    for (
+      let attempt = 0;
+      attempt < 100 && client.serverResponses.length === 0;
+      attempt += 1
+    ) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+
+    assert.equal(approvalRequests.length, 1);
+    assert.deepEqual(client.serverResponses, [
+      {
+        id: "approval-1",
+        response: { result: { decision: "accept" } },
+      },
+    ]);
+    client.emitNotification("turn/completed", {
+      threadId: "thread-workspace",
+      turn: { id: "turn-workspace", status: "completed" },
+    });
+    assert.equal((await turn).status, "completed");
+
+    assert.deepEqual(
+      client.requests.find((request) => request.method === "thread/start")
+        ?.params,
+      {
+        model: "gpt-5-codex",
+        cwd: "C:\\repo\\worktree",
+        runtimeWorkspaceRoots: ["C:\\repo\\worktree"],
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+        sandbox: "workspace-write",
+        developerInstructions: "Work carefully.",
+        ephemeral: false,
+      }
     );
   });
 });

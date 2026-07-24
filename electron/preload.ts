@@ -367,6 +367,12 @@ const desktopApi: DesktopAPI = {
     listAgentRuns: (options) =>
       ipcRenderer.invoke("storage:list-agent-runs", options),
     getAgentRun: (runId) => ipcRenderer.invoke("storage:get-agent-run", runId),
+    resolveRunApproval: (approvalId, decision) =>
+      ipcRenderer.invoke(
+        "storage:resolve-run-approval",
+        approvalId,
+        decision
+      ),
     loadOnboardingCompleted: () =>
       ipcRenderer.invoke("storage:load-onboarding-completed"),
     saveOnboardingCompleted: (completed) =>

@@ -62,9 +62,10 @@ import {
   type McpToolSession,
 } from "./mcp";
 import { sanitizeMcpServerIds } from "@/lib/chat/storage";
-import type { CodexService } from "../codex/service";
+import type { CodexService, CodexTurnWorkspace } from "../codex/service";
 import type { ChatWorktreeManager } from "../git/worktree-manager";
 import type { TurnCheckpointManager } from "../git/checkpoint-manager";
+import type { RunApprovalBroker } from "./approval-broker";
 import { handleCodexChatRequest } from "../codex/chat-handler";
 import {
   isCodexProvider,
@@ -96,6 +97,7 @@ export type AgentRuntimeDeps = {
   codex?: CodexService | null;
   worktrees?: ChatWorktreeManager;
   checkpoints?: TurnCheckpointManager;
+  approvals?: RunApprovalBroker;
   resolveModel: (
     providerId?: string,
     modelId?: string
@@ -322,6 +324,109 @@ export async function handleAgentChatRequest(
     const codexAbortSignal = abortSignal
       ? AbortSignal.any([abortSignal, wallAbortController.signal])
       : wallAbortController.signal;
+    let codexWorkspace: CodexTurnWorkspace | undefined;
+
+    if (workspace && !isChatMode) {
+      if (workspaceMode === "worktree") {
+        if (!deps.worktrees) {
+          finishRun("failed", "Worktree support is unavailable.");
+          return new Response(
+            JSON.stringify({ error: "Worktree support is unavailable." }),
+            { status: 503, headers: { "Content-Type": "application/json" } }
+          );
+        }
+        try {
+          await deps.worktrees.ensureWorktree(workspace.id, chatId);
+          deps.events?.emit({
+            type: "worktree-changed",
+            workspaceId: workspace.id,
+            chatId,
+          });
+        } catch (error) {
+          const message = getChatErrorMessage(error);
+          finishRun("failed", message);
+          return new Response(JSON.stringify({ error: message }), {
+            status: 409,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+
+      const cwd = deps.files.primaryRootPath(workspace.id, chatId);
+      const roots = deps.files
+        .listRoots(workspace.id, chatId)
+        .map((root) => root.path);
+      if (!cwd || roots.length === 0) {
+        finishRun("failed", "The workspace has no approved working folder.");
+        return new Response(
+          JSON.stringify({
+            error: "The workspace has no approved working folder.",
+          }),
+          { status: 409, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      if (!deps.approvals) {
+        finishRun("failed", "Codex approval support is unavailable.");
+        return new Response(
+          JSON.stringify({ error: "Codex approval support is unavailable." }),
+          { status: 503, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      if (deps.checkpoints) {
+        try {
+          await deps.checkpoints.begin({
+            runId,
+            chatId,
+            workspaceId: workspace.id,
+            workingPath: cwd,
+          });
+        } catch (error) {
+          const message = getChatErrorMessage(error);
+          if (!/not a git repository/i.test(message)) {
+            finishRun("failed", message);
+            return new Response(JSON.stringify({ error: message }), {
+              status: 500,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+        }
+      }
+
+      codexWorkspace = {
+        cwd,
+        roots,
+        onApproval: async (request) => {
+          const toolName =
+            request.kind === "command"
+              ? "codex_command"
+              : request.kind === "file-change"
+                ? "codex_file_change"
+                : "codex_permissions";
+          const risk =
+            request.kind === "command"
+              ? "shell"
+              : request.kind === "file-change"
+                ? "write"
+                : "external";
+          return deps.approvals!.request({
+            runId,
+            workspaceId: workspace.id,
+            toolName,
+            risk,
+            reason: request.reason,
+            input: redactSecrets({
+              command: request.command,
+              cwd: request.cwd,
+              itemId: request.itemId,
+              details: request.details,
+            }),
+            signal: codexAbortSignal,
+          });
+        },
+      };
+    }
+
     const workspaceContext = !isChatMode && workspace
       ? [
           "## Active Nimruz workspace context",
@@ -332,7 +437,12 @@ export async function handleAgentChatRequest(
           workspace.instructions?.trim()
             ? `Workspace instructions:\n${workspace.instructions.trim()}`
             : "",
-          "This Codex integration runs in an isolated, non-interactive directory. It cannot inspect linked workspace files, execute workspace tools, create artifacts, or update tasks. Do not claim that those actions were performed.",
+          codexWorkspace
+            ? [
+                `Approved workspace root: ${codexWorkspace.cwd}`,
+                "You are running in Nimruz's workspace-write sandbox. Work only inside the approved workspace roots. Use native Codex file and command tools, request approval when required, and verify changes before finishing.",
+              ].join("\n")
+            : "This Codex integration is in conversational isolation and cannot inspect linked workspace files or execute workspace tools.",
         ]
           .filter(Boolean)
           .join("\n\n")
@@ -347,14 +457,17 @@ export async function handleAgentChatRequest(
         codex: deps.codex ?? null,
         signal: codexAbortSignal,
         additionalInstructions: workspaceContext,
+        workspace: codexWorkspace,
         runId,
         onFinish(status, error) {
           finishRun(status, error);
+          void finalizeCheckpoint();
         },
       });
     } catch (error) {
       const message = getChatErrorMessage(error);
       finishRun("failed", message);
+      void finalizeCheckpoint();
       return new Response(JSON.stringify({ error: message }), {
         status: 500,
         headers: { "Content-Type": "application/json" },
@@ -372,6 +485,7 @@ export async function handleAgentChatRequest(
         // Preserve the response for the renderer even if its body is not JSON.
       }
       finishRun("failed", message);
+      void finalizeCheckpoint();
     }
 
     return response;

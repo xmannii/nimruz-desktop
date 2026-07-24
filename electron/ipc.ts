@@ -52,6 +52,7 @@ import {
 } from "./updates";
 import { testMcpServerConnection } from "./agent/mcp";
 import type { TurnCheckpointManager } from "./git/checkpoint-manager";
+import type { RunApprovalBroker } from "./agent/approval-broker";
 
 const execFileAsync = promisify(execFile);
 const MAX_DIFF_CHARS = 120_000;
@@ -107,6 +108,7 @@ export function registerIpcHandlers(options: {
   skills: SkillStore;
   workspaceFiles: WorkspaceFilesStore;
   checkpoints: TurnCheckpointManager;
+  approvals: RunApprovalBroker;
   workspaceEvents: WorkspaceEventBus;
   shenava: ShenavaService;
   sessionToken: string;
@@ -121,6 +123,7 @@ export function registerIpcHandlers(options: {
     skills,
     workspaceFiles,
     checkpoints,
+    approvals,
     workspaceEvents,
     shenava,
     sessionToken,
@@ -895,6 +898,28 @@ export function registerIpcHandlers(options: {
       approvals: database.listApprovals(runId),
     };
   });
+  handle(
+    "storage:resolve-run-approval",
+    (
+      approvalId: string,
+      decision: { approved?: boolean; forSession?: boolean }
+    ) => {
+      if (!/^[\w-]{1,128}$/.test(approvalId)) {
+        throw new Error("Invalid approval id.");
+      }
+      const resolved = approvals.resolve(approvalId, {
+        approved: decision?.approved === true,
+        forSession:
+          decision?.approved === true && decision?.forSession === true,
+      });
+      if (!resolved) {
+        throw new Error(
+          "This approval is no longer active. The run may have stopped."
+        );
+      }
+      return true;
+    }
+  );
 
   handle("storage:load-onboarding-completed", () =>
     database.loadOnboardingCompleted()

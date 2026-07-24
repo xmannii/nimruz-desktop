@@ -47,6 +47,7 @@ import {
 } from "react";
 import { ChatComposer } from "./chat-composer";
 import { ChatMessages } from "./chat-messages";
+import { ChatRunApprovals } from "./chat-run-approvals";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import { generateChatTitle, fallbackTitleFromMessage } from "@/lib/chat/generate-chat-title";
 import { toast } from "sonner";
@@ -796,19 +797,7 @@ export function ChatSession({
     }
 
     const isCodexProvider = modelRef.providerId === CODEX_PROVIDER_ID;
-    const usableAttachments =
-      isCodexProvider && !override ? [] : submissionAttachments;
-    if (
-      isCodexProvider &&
-      !override &&
-      !trimmed &&
-      submissionAttachments.length > 0
-    ) {
-      toast.error(
-        "پیوست‌های فضای کاری در حالت Codex در دسترس نیستند؛ یک پیام متنی بنویسید."
-      );
-      return;
-    }
+    const usableAttachments = submissionAttachments;
     const supportsImages =
       !isCodexProvider && (resolveModel(modelRef)?.supportsImages ?? false);
     const imageAttachments = usableAttachments.filter(
@@ -1055,6 +1044,10 @@ export function ChatSession({
             onToolApprovalResponse={handleToolApprovalResponse}
             workspaceId={chat.workspaceId}
             chatId={chat.id}
+          />
+          <ChatRunApprovals
+            chatId={chat.id}
+            workspaceId={chat.workspaceId}
           />
           <div className="mx-auto w-full max-w-3xl shrink-0 px-3 sm:px-6">
             {composer}

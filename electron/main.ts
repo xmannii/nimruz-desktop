@@ -14,6 +14,7 @@ import { WorkspaceFilesStore } from "./agent/workspace-files";
 import { ChatWorktreeManager } from "./git/worktree-manager";
 import { TurnCheckpointManager } from "./git/checkpoint-manager";
 import { WorkspaceEventBus } from "./agent/events";
+import { RunApprovalBroker } from "./agent/approval-broker";
 import { CredentialService } from "./credentials";
 import { CodexService } from "./codex/service";
 import { CompanionController } from "./companion/controller";
@@ -72,6 +73,7 @@ let database: AppDatabase | null = null;
 let codex: CodexService | null = null;
 let shenava: ShenavaService | null = null;
 let notificationService: DesktopNotificationService | null = null;
+let approvalBroker: RunApprovalBroker | null = null;
 let companion: CompanionController | null = null;
 let rendererUrl = "";
 const activeNotifications = new Set<Notification>();
@@ -208,6 +210,7 @@ app.whenReady().then(async () => {
   });
   const skills = new SkillStore();
   const workspaceEvents = new WorkspaceEventBus(() => mainWindow);
+  approvalBroker = new RunApprovalBroker(database, workspaceEvents);
   const workspaceFiles = new WorkspaceFilesStore(
     database,
     userDataPath,
@@ -242,6 +245,7 @@ app.whenReady().then(async () => {
     skills,
     workspaceFiles,
     checkpoints,
+    approvals: approvalBroker,
     workspaceEvents,
     shenava,
     sessionToken,
@@ -255,6 +259,7 @@ app.whenReady().then(async () => {
     files: workspaceFiles,
     worktrees,
     checkpoints,
+    approvals: approvalBroker,
     events: workspaceEvents,
     resolveModel: (providerId?: string, modelId?: string) => {
       const resolved = database?.resolveChatModel(providerId, modelId);
@@ -329,6 +334,7 @@ app.on("before-quit", () => {
   companion?.dispose();
   shenava?.cancelDownload();
   codex?.dispose();
+  approvalBroker?.dispose();
   localServer?.close();
   database?.close();
   localServer = null;
@@ -336,6 +342,7 @@ app.on("before-quit", () => {
   codex = null;
   shenava = null;
   notificationService = null;
+  approvalBroker = null;
   activeNotifications.clear();
   companion = null;
 });

@@ -8,7 +8,10 @@ import type {
   CodexModelSyncResult,
 } from "@/lib/codex";
 import type { ReasoningEffort } from "@/lib/models/reasoning";
-import { CodexAppServerClient } from "./app-server-client";
+import {
+  CodexAppServerClient,
+  type CodexServerRequest,
+} from "./app-server-client";
 import type { AppDatabase } from "../storage/database";
 
 type RecordValue = Record<string, unknown>;
@@ -39,10 +42,41 @@ export type CodexTurnResult = {
   usage: CodexTokenUsage | null;
 };
 
+export type CodexApprovalRequest = {
+  kind: "command" | "file-change" | "permissions";
+  itemId: string;
+  command: string | null;
+  cwd: string | null;
+  reason: string;
+  details: unknown;
+};
+
+export type CodexApprovalDecision = {
+  approved: boolean;
+  forSession: boolean;
+};
+
+export type CodexTurnWorkspace = {
+  /** Canonical primary root used as the native Codex cwd. */
+  cwd: string;
+  /** Canonical roots exposed to the Codex runtime for this thread. */
+  roots: string[];
+  onApproval: (
+    request: CodexApprovalRequest
+  ) => Promise<CodexApprovalDecision>;
+};
+
 export interface CodexClient {
   request<T>(method: string, params?: unknown, timeoutMs?: number): Promise<T>;
   onNotification(listener: (method: string, params: unknown) => void): () => void;
   onExit(listener: (error: Error) => void): () => void;
+  onServerRequest?: (listener: (request: CodexServerRequest) => void) => () => void;
+  respondToServerRequest?: (
+    id: number | string,
+    response:
+      | { result: unknown }
+      | { error: { code: number; message: string; data?: unknown } }
+  ) => void;
   dispose(): void;
 }
 
@@ -159,6 +193,10 @@ export class CodexService {
   private readonly events = new EventEmitter();
   private readonly activeChats = new Set<string>();
   private readonly activeTurnInterruptors = new Map<string, () => void>();
+  private readonly activeNativeTurns = new Map<
+    string,
+    { onApproval: CodexTurnWorkspace["onApproval"] }
+  >();
   private modelSync: {
     epoch: number;
     promise: Promise<CodexModelSyncResult>;
@@ -206,7 +244,136 @@ export class CodexService {
         void this.refreshAfterAccountChange();
       }
     });
+    this.client.onServerRequest?.((request) => {
+      void this.handleServerRequest(request);
+    });
     this.client.onExit(() => this.events.emit("status-changed"));
+  }
+
+  private async handleServerRequest(request: CodexServerRequest) {
+    const respond = this.client.respondToServerRequest;
+    if (!respond) return;
+    const params = asRecord(request.params);
+    const threadId =
+      asString(params?.threadId) ?? asString(params?.conversationId);
+    const active = threadId ? this.activeNativeTurns.get(threadId) : null;
+    if (!active) {
+      respond.call(this.client, request.id, {
+        error: {
+          code: -32001,
+          message: "The Codex turn is no longer active.",
+        },
+      });
+      return;
+    }
+
+    const itemId =
+      asString(params?.itemId) ??
+      asString(params?.callId) ??
+      `request-${String(request.id)}`;
+    let kind: CodexApprovalRequest["kind"];
+    if (
+      request.method === "item/commandExecution/requestApproval" ||
+      request.method === "execCommandApproval"
+    ) {
+      kind = "command";
+    } else if (
+      request.method === "item/fileChange/requestApproval" ||
+      request.method === "applyPatchApproval"
+    ) {
+      kind = "file-change";
+    } else if (request.method === "item/permissions/requestApproval") {
+      kind = "permissions";
+    } else {
+      respond.call(this.client, request.id, {
+        error: {
+          code: -32601,
+          message: `Nimruz does not support Codex request ${request.method}.`,
+        },
+      });
+      return;
+    }
+
+    const commandValue = params?.command;
+    const command = Array.isArray(commandValue)
+      ? commandValue.filter((part): part is string => typeof part === "string").join(" ")
+      : asString(commandValue);
+    const reason =
+      asString(params?.reason) ??
+      (kind === "command"
+        ? "Codex requests permission to run this command."
+        : kind === "file-change"
+          ? "Codex requests permission to change workspace files."
+          : "Codex requests additional workspace permissions.");
+
+    try {
+      const decision = await active.onApproval({
+        kind,
+        itemId,
+        command,
+        cwd: asString(params?.cwd),
+        reason,
+        details: request.params,
+      });
+      if (request.method === "execCommandApproval") {
+        respond.call(this.client, request.id, {
+          result: {
+            decision: decision.approved
+              ? decision.forSession
+                ? "approved_for_session"
+                : "approved"
+              : "denied",
+          },
+        });
+      } else if (request.method === "applyPatchApproval") {
+        respond.call(this.client, request.id, {
+          result: {
+            decision: decision.approved
+              ? decision.forSession
+                ? "approved_for_session"
+                : "approved"
+              : "denied",
+          },
+        });
+      } else if (request.method === "item/permissions/requestApproval") {
+        const requested = asRecord(params?.permissions);
+        respond.call(this.client, request.id, {
+          result: decision.approved
+            ? {
+                permissions: {
+                  ...(requested?.network
+                    ? { network: requested.network }
+                    : {}),
+                  ...(requested?.fileSystem
+                    ? { fileSystem: requested.fileSystem }
+                    : {}),
+                },
+                scope: decision.forSession ? "session" : "turn",
+              }
+            : { permissions: {}, scope: "turn" },
+        });
+      } else {
+        respond.call(this.client, request.id, {
+          result: {
+            decision: decision.approved
+              ? decision.forSession
+                ? "acceptForSession"
+                : "accept"
+              : "decline",
+          },
+        });
+      }
+    } catch (error) {
+      respond.call(this.client, request.id, {
+        error: {
+          code: -32002,
+          message:
+            error instanceof Error
+              ? error.message
+              : "Could not resolve the approval request.",
+        },
+      });
+    }
   }
 
   onStatusChanged(listener: () => void) {
@@ -483,6 +650,7 @@ export class CodexService {
     reasoningEffort?: ReasoningEffort;
     instructions: string;
     messages: ChatUIMessage[];
+    workspace?: CodexTurnWorkspace;
     signal?: AbortSignal;
     onEvent: (event: CodexTurnEvent) => void;
   }): Promise<CodexTurnResult> {
@@ -526,12 +694,23 @@ export class CodexService {
 
       if (stored && canResume) {
         try {
+          const threadOptions = options.workspace
+            ? {
+                cwd: options.workspace.cwd,
+                runtimeWorkspaceRoots: options.workspace.roots,
+                approvalPolicy: "on-request" as const,
+                approvalsReviewer: "user" as const,
+                sandbox: "workspace-write" as const,
+              }
+            : {
+                cwd: this.workspace,
+                approvalPolicy: "never" as const,
+              };
           const resumed = asRecord(
             await this.client.request<unknown>("thread/resume", {
               threadId: stored.threadId,
               model: options.model,
-              cwd: this.workspace,
-              approvalPolicy: "never",
+              ...threadOptions,
               developerInstructions: options.instructions,
             })
           );
@@ -549,11 +728,22 @@ export class CodexService {
       }
 
       if (!threadId) {
+        const threadOptions = options.workspace
+          ? {
+              cwd: options.workspace.cwd,
+              runtimeWorkspaceRoots: options.workspace.roots,
+              approvalPolicy: "on-request" as const,
+              approvalsReviewer: "user" as const,
+              sandbox: "workspace-write" as const,
+            }
+          : {
+              cwd: this.workspace,
+              approvalPolicy: "never" as const,
+            };
         const started = asRecord(
           await this.client.request<unknown>("thread/start", {
             model: options.model,
-            cwd: this.workspace,
-            approvalPolicy: "never",
+            ...threadOptions,
             developerInstructions: options.instructions,
             ephemeral: false,
           })
@@ -565,6 +755,11 @@ export class CodexService {
 
       if (turnAccountEpoch !== this.accountEpoch) {
         throw new Error("The Codex account changed while starting this response.");
+      }
+      if (options.workspace) {
+        this.activeNativeTurns.set(threadId, {
+          onApproval: options.workspace.onApproval,
+        });
       }
 
       const prompt = bootstrap
@@ -719,6 +914,7 @@ export class CodexService {
       unsubscribeExit();
       this.activeTurnInterruptors.delete(options.chatId);
       this.activeChats.delete(options.chatId);
+      if (threadId) this.activeNativeTurns.delete(threadId);
     }
   }
 

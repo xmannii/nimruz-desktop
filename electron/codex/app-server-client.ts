@@ -39,6 +39,12 @@ export type CodexProcess = {
   on: ChildProcessWithoutNullStreams["on"];
 };
 
+export type CodexServerRequest = {
+  id: RpcId;
+  method: string;
+  params: unknown;
+};
+
 export class CodexRpcError extends Error {
   readonly code: number | undefined;
   readonly data: unknown;
@@ -63,7 +69,7 @@ include_apps_instructions = false
 include_collaboration_mode_instructions = false
 
 [permissions.${NIMRUZ_CODEX_PERMISSION_PROFILE}]
-description = "Read-only access to Nimruz's dedicated empty workspace."
+description = "Read-only access to Nimruz's dedicated empty chat workspace."
 
 [permissions.${NIMRUZ_CODEX_PERMISSION_PROFILE}.filesystem]
 ":minimal" = "read"
@@ -80,7 +86,7 @@ ignore_default_excludes = false
 experimental_use_profile = false
 
 [features]
-apply_patch_freeform = false
+apply_patch_freeform = true
 apps = false
 auth_elicitation = false
 browser_use = false
@@ -96,13 +102,13 @@ multi_agent = false
 multi_agent_v2 = false
 plugins = false
 remote_plugin = false
-request_permissions = false
-request_permissions_tool = false
+request_permissions = true
+request_permissions_tool = true
 search_tool = false
-shell_tool = false
+shell_tool = true
 tool_search = false
 tool_suggest = false
-unified_exec = false
+unified_exec = true
 web_search = false
 web_search_request = false
 `;
@@ -219,6 +225,20 @@ export class CodexAppServerClient {
     return () => this.events.off("exit", listener);
   }
 
+  onServerRequest(listener: (request: CodexServerRequest) => void) {
+    this.events.on("server-request", listener);
+    return () => this.events.off("server-request", listener);
+  }
+
+  respondToServerRequest(
+    id: RpcId,
+    response:
+      | { result: unknown }
+      | { error: { code: number; message: string; data?: unknown } }
+  ) {
+    this.send({ id, ...response });
+  }
+
   async request<T>(
     method: string,
     params?: unknown,
@@ -283,7 +303,12 @@ export class CodexAppServerClient {
             title: "Nimruz Desktop",
             version: this.clientVersion,
           },
-          capabilities: null,
+          capabilities: {
+            // runtimeWorkspaceRoots and native permission requests are part of
+            // the versioned experimental app-server surface in bundled Codex.
+            experimentalApi: true,
+            requestAttestation: false,
+          },
         },
         15_000
       );
@@ -339,13 +364,20 @@ export class CodexAppServerClient {
     }
 
     if (message.method && message.id !== undefined) {
-      this.send({
-        id: message.id,
-        error: {
-          code: -32601,
-          message: `Nimruz does not support server request ${message.method}.`,
-        },
-      });
+      if (this.events.listenerCount("server-request") === 0) {
+        this.respondToServerRequest(message.id, {
+          error: {
+            code: -32601,
+            message: `Nimruz does not support server request ${message.method}.`,
+          },
+        });
+      } else {
+        this.events.emit("server-request", {
+          id: message.id,
+          method: message.method,
+          params: message.params,
+        } satisfies CodexServerRequest);
+      }
       return;
     }
 

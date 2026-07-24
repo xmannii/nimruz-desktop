@@ -8,9 +8,9 @@ power turn-scoped file statistics, unified diffs, and guarded restore.
 
 - Git must be available on `PATH`.
 - The workspace must have a linked Git project as its primary folder.
-- Worktree mode is available to tool-capable workspace agents. Nimruz's current
-  Codex subscription runtime is deliberately isolated from project files, so
-  selecting Codex does not expose this control or grant Codex filesystem access.
+- Worktree mode is available to tool-capable workspace agents, including Codex
+  subscription models in Agent mode. Codex Chat mode remains isolated and
+  cannot access project files.
 - Non-Git workspaces retain their existing file tools but do not claim to have
   Git checkpoints or turn diffs.
 
@@ -30,6 +30,14 @@ isolation boundary.
 
 Nimruz reuses a saved worktree on later turns. It refuses to silently recreate
 or redirect a saved worktree when its on-disk path no longer matches Git.
+
+For Codex turns, the canonical worktree path becomes the native Codex working
+directory and runtime workspace root. Codex runs with its `workspace-write`
+sandbox and `on-request` approval policy. Native command, file-change, and
+permission requests are persisted in the run history and must be resolved from
+Nimruz before Codex can continue. Choosing “always allow” applies only to the
+current native Codex session; it is not silently converted into a durable
+workspace trust rule.
 
 ## Checkpoint implementation
 
@@ -82,6 +90,8 @@ The Git integration tests create real temporary repositories and verify:
 - tracked and untracked changes appear in a turn diff;
 - restore reproduces the exact pre-turn state; and
 - restore is blocked after newer changes.
+- Codex receives only canonical approved roots and native approval decisions
+  are translated back to its app-server protocol.
 
 Run:
 

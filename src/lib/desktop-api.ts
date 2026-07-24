@@ -365,6 +365,10 @@ export type DesktopAPI = {
       limit?: number;
     }) => Promise<AgentRun[]>;
     getAgentRun: (runId: string) => Promise<AgentRunSnapshot | null>;
+    resolveRunApproval: (
+      approvalId: string,
+      decision: { approved: boolean; forSession?: boolean }
+    ) => Promise<boolean>;
     loadOnboardingCompleted: () => Promise<boolean>;
     saveOnboardingCompleted: (completed: boolean) => Promise<void>;
     loadLastSeenVersion: () => Promise<string | null>;

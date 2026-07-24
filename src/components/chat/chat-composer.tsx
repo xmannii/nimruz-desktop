@@ -185,10 +185,8 @@ export function ChatComposer({
   const modelConfig = resolveModel(model);
   const isCodexProvider = model.providerId === CODEX_PROVIDER_ID;
   const canUseWorkspaceContext =
-    !isChatMode && Boolean(workspaceId) && !isCodexProvider;
-  const canAttach =
-    !isChatMode &&
-    !isCodexProvider && (modelConfig?.supportsImages ?? false);
+    !isChatMode && Boolean(workspaceId);
+  const canAttach = !isChatMode && Boolean(workspaceId);
   const showReasoningEffort = modelConfig?.supportsReasoningEffort ?? false;
   const reasoningEffortLevels =
     model.providerId === CODEX_PROVIDER_ID
@@ -237,39 +235,6 @@ export function ChatComposer({
   useEffect(() => {
     setHasStartedActivePlan(false);
   }, [activePlan?.id]);
-
-  useEffect(() => {
-    if (
-      !isCodexProvider ||
-      attachments.length === 0 ||
-      !onAttachmentsChange
-    ) {
-      return;
-    }
-    onAttachmentsChange([]);
-    toast.info(
-      "پیوست‌های فضای کاری پاک شدند؛ Codex فقط پیام متنی دریافت می‌کند."
-    );
-  }, [attachments.length, isCodexProvider, onAttachmentsChange]);
-
-  useEffect(() => {
-    if (
-      !isCodexProvider ||
-      workspaceMode !== "worktree" ||
-      messages.length > 0
-    ) {
-      return;
-    }
-    onWorkspaceModeChange("shared");
-    toast.info(
-      "Codex در اجرای فعلی به ابزارهای فایل پروژه دسترسی ندارد؛ محیط به پوشه مشترک برگشت."
-    );
-  }, [
-    isCodexProvider,
-    messages.length,
-    onWorkspaceModeChange,
-    workspaceMode,
-  ]);
 
   useEffect(() => {
     setHighlightIndex(0);
@@ -630,7 +595,7 @@ export function ChatComposer({
               disabled={isBusy}
             />
           </div>
-          {workspaceId && !isCodexProvider ? (
+          {workspaceId ? (
             <Button
               type="button"
               variant={workspaceMode === "worktree" ? "secondary" : "ghost"}
@@ -824,7 +789,7 @@ function ComposerFooter({
     >
       <span dir="rtl">
         {model?.providerId === CODEX_PROVIDER_ID
-          ? "Codex ایزوله است؛ فایل‌ها و ابزارهای فضای کاری در دسترس نیستند"
+          ? "Codex با محدودیت‌های فضای کاری نیمروز اجرا می‌شود"
           : "چت‌بات متن‌باز نیمروز"}
       </span>
       {showContext && model ? (
