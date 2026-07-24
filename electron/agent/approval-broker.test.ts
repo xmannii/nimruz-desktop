@@ -71,6 +71,7 @@ test("persists and resolves a native provider approval", async () => {
       risk: "shell",
       reason: "Run tests",
       input: { command: "pnpm test" },
+      externalCallId: "codex-item-1",
     });
 
     const [approval] = database.listApprovals("run-approval");
@@ -92,6 +93,17 @@ test("persists and resolves a native provider approval", async () => {
       "approved"
     );
     assert.equal(database.listToolCalls("run-approval")[0]?.status, "running");
+    assert.equal(
+      broker.completeExternalCall("run-approval", "codex-item-1", {
+        itemType: "commandExecution",
+      }),
+      true
+    );
+    assert.equal(database.listToolCalls("run-approval")[0]?.status, "completed");
+    assert.match(
+      database.listToolCalls("run-approval")[0]?.outputJson ?? "",
+      /commandExecution/
+    );
     assert.equal(database.getAgentRun("run-approval")?.status, "running");
     assert.equal(
       broker.resolve(approval.id, { approved: false, forSession: false }),

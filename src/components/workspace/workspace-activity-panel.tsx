@@ -14,7 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Spinner } from "@/components/ui/spinner";
 import type { AgentRun, AgentRunStatus } from "@/lib/workspace";
 import { hasEventType, useWorkspaceEvents } from "@/hooks/use-workspace-events";
-import { ActivityIcon, ChevronLeftIcon } from "lucide-react";
+import { ActivityIcon, ChevronLeftIcon, DownloadIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 type WorkspaceActivityPanelProps = {
@@ -58,6 +58,20 @@ function formatDate(timestamp: number): string {
   }).format(new Date(timestamp));
 }
 
+function formatDuration(startedAt: number, finishedAt: number | null) {
+  const milliseconds = Math.max(0, (finishedAt ?? Date.now()) - startedAt);
+  if (milliseconds < 1_000) return `${milliseconds} ms`;
+  const seconds = milliseconds / 1_000;
+  return seconds < 60
+    ? `${seconds.toFixed(seconds < 10 ? 1 : 0)} s`
+    : `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+}
+
+function formatCost(value: number | undefined) {
+  if (!value) return "$0.00";
+  return value < 0.01 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`;
+}
+
 function prettyJson(json: string | null): string | null {
   if (!json) return null;
   try {
@@ -87,6 +101,18 @@ function ToolCallDetail({
       </pre>
     </div>
   );
+}
+
+function downloadRunSnapshot(snapshot: AgentRunSnapshot) {
+  const blob = new Blob([JSON.stringify(snapshot, null, 2)], {
+    type: "application/json",
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `nimruz-run-${snapshot.run.id}.json`;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 
 export function WorkspaceActivityPanel({
@@ -158,6 +184,14 @@ export function WorkspaceActivityPanel({
           <p className="min-w-0 flex-1 truncate text-sm font-medium" dir="ltr">
             {selected.run.model}
           </p>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="خروجی JSON اجرای عامل"
+            onClick={() => downloadRunSnapshot(selected)}
+          >
+            <DownloadIcon />
+          </Button>
           <Badge variant={STATUS_VARIANTS[selected.run.status]}>
             {STATUS_LABELS[selected.run.status]}
           </Badge>
@@ -169,6 +203,36 @@ export function WorkspaceActivityPanel({
                 {selected.run.error}
               </p>
             ) : null}
+
+            <dl
+              dir="ltr"
+              className="grid grid-cols-2 gap-1 rounded-lg border border-border/40 bg-muted/15 p-2 text-[11px] sm:grid-cols-3"
+            >
+              <div>
+                <dt className="text-muted-foreground">Duration</dt>
+                <dd>{formatDuration(selected.run.startedAt, selected.run.finishedAt)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Tokens</dt>
+                <dd>{(selected.run.totalTokens ?? 0).toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Estimated cost</dt>
+                <dd>{formatCost(selected.run.estimatedCostUsd)}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Input</dt>
+                <dd>{(selected.run.inputTokens ?? 0).toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Cached input</dt>
+                <dd>{(selected.run.cachedInputTokens ?? 0).toLocaleString()}</dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Reasoning</dt>
+                <dd>{(selected.run.reasoningTokens ?? 0).toLocaleString()}</dd>
+              </div>
+            </dl>
 
             {selected.approvals.length > 0 ? (
               <div className="flex flex-col gap-1.5">
@@ -208,6 +272,11 @@ export function WorkspaceActivityPanel({
                     <span dir="ltr" className="truncate font-mono">
                       {toolCall.toolName}
                     </span>
+                    {toolCall.finishedAt ? (
+                      <span dir="ltr" className="text-[10px] text-muted-foreground">
+                        {formatDuration(toolCall.startedAt, toolCall.finishedAt)}
+                      </span>
+                    ) : null}
                     <Badge
                       variant={
                         toolCall.status === "failed" ||
@@ -289,7 +358,11 @@ export function WorkspaceActivityPanel({
                   {run.model}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {formatDate(run.startedAt)} · {run.stepCount} مرحله
+                  {formatDate(run.startedAt)} · {run.stepCount} مرحله ·{" "}
+                  {formatDuration(run.startedAt, run.finishedAt)}
+                  {(run.totalTokens ?? 0) > 0
+                    ? ` · ${(run.totalTokens ?? 0).toLocaleString("fa-IR")} توکن`
+                    : ""}
                 </span>
               </div>
               <Badge variant={STATUS_VARIANTS[run.status]}>

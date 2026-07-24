@@ -108,6 +108,16 @@ export type AgentRuntimeDeps = {
 
 const MAX_STEPS = 20;
 const MAX_WALL_MS = 5 * 60_000;
+const MAX_OBSERVABILITY_JSON = 120_000;
+
+function observabilityJson(value: unknown): string {
+  try {
+    const json = JSON.stringify(redactSecrets(value));
+    return (json ?? "null").slice(0, MAX_OBSERVABILITY_JSON);
+  } catch {
+    return JSON.stringify({ value: String(value) });
+  }
+}
 
 function resolveModelOrError(
   resolveModel: AgentRuntimeDeps["resolveModel"],
@@ -240,6 +250,43 @@ export async function handleAgentChatRequest(
   };
   deps.database.saveAgentRun(run);
 
+  const saveRunUsage = (usage: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    inputTokenDetails?: { cacheReadTokens?: number };
+    outputTokenDetails?: { reasoningTokens?: number };
+  }) => {
+    const current = deps.database.getAgentRun(runId);
+    if (!current) return;
+    const inputTokens = Math.max(0, usage.inputTokens ?? 0);
+    const outputTokens = Math.max(0, usage.outputTokens ?? 0);
+    const totalTokens = Math.max(
+      0,
+      usage.totalTokens ?? inputTokens + outputTokens
+    );
+    deps.database.saveAgentRun({
+      ...current,
+      inputTokens,
+      outputTokens,
+      cachedInputTokens: Math.max(
+        0,
+        usage.inputTokenDetails?.cacheReadTokens ?? 0
+      ),
+      reasoningTokens: Math.max(
+        0,
+        usage.outputTokenDetails?.reasoningTokens ?? 0
+      ),
+      totalTokens,
+      estimatedCostUsd:
+        (inputTokens * resolved.model.inputPricePerM +
+          outputTokens * resolved.model.outputPricePerM) /
+        1_000_000,
+      updatedAt: Date.now(),
+    });
+    emitRunChanged();
+  };
+
   const workspaceIdForEvents = run.workspaceId;
   const emitRunChanged = (status?: string) =>
     deps.events?.emit({
@@ -306,6 +353,13 @@ export async function handleAgentChatRequest(
       updatedAt: Date.now(),
       finishedAt: Date.now(),
     });
+    if (
+      status === "completed" ||
+      status === "failed" ||
+      status === "cancelled"
+    ) {
+      deps.approvals?.finishRun(runId, status, error);
+    }
     emitRunChanged(status);
   };
 
@@ -421,6 +475,7 @@ export async function handleAgentChatRequest(
               itemId: request.itemId,
               details: request.details,
             }),
+            externalCallId: request.itemId,
             signal: codexAbortSignal,
           });
         },
@@ -462,6 +517,11 @@ export async function handleAgentChatRequest(
         onFinish(status, error) {
           finishRun(status, error);
           void finalizeCheckpoint();
+        },
+        onUsage: saveRunUsage,
+        onItemCompleted(itemId, itemType) {
+          deps.approvals?.completeExternalCall(runId, itemId, { itemType });
+          emitRunChanged();
         },
       });
     } catch (error) {
@@ -804,10 +864,12 @@ export async function handleAgentChatRequest(
     .join("\n\n");
 
   try {
+    const observedToolCalls = new Map<string, string>();
     const agent = new ToolLoopAgent({
       model: languageModel,
       instructions,
-      onEnd: async () => {
+      onEnd: async ({ usage }) => {
+        saveRunUsage(usage);
         await closeMcpSession();
       },
       ...(selectedReasoningEffort
@@ -858,6 +920,7 @@ export async function handleAgentChatRequest(
                 startedAt: Date.now(),
                 finishedAt: decision.type === "denied" ? Date.now() : null,
               });
+              observedToolCalls.set(toolCall.toolCallId, toolCallId);
 
               if (decision.type === "user-approval") {
                 deps.database.saveApproval({
@@ -901,7 +964,44 @@ export async function handleAgentChatRequest(
                 reason: "Tool policy returned no executable decision.",
               };
             },
-            onStepEnd: ({ stepNumber }) => {
+            onToolExecutionStart: ({ toolCall }) => {
+              const id = observedToolCalls.get(toolCall.toolCallId);
+              if (!id) return;
+              const call = deps.database
+                .listToolCalls(runId)
+                .find((candidate) => candidate.id === id);
+              if (!call) return;
+              deps.database.saveToolCall({
+                ...call,
+                status: "running",
+              });
+              emitRunChanged("running");
+            },
+            onToolExecutionEnd: ({ toolCall, toolOutput }) => {
+              const id = observedToolCalls.get(toolCall.toolCallId);
+              if (!id) return;
+              observedToolCalls.delete(toolCall.toolCallId);
+              const call = deps.database
+                .listToolCalls(runId)
+                .find((candidate) => candidate.id === id);
+              if (!call) return;
+              const failed = toolOutput.type === "tool-error";
+              const value =
+                "output" in toolOutput
+                  ? toolOutput.output
+                  : "error" in toolOutput
+                    ? toolOutput.error
+                    : toolOutput;
+              deps.database.saveToolCall({
+                ...call,
+                outputJson: failed ? null : observabilityJson(value),
+                status: failed ? "failed" : "completed",
+                error: failed ? getChatErrorMessage(value) : null,
+                finishedAt: Date.now(),
+              });
+              emitRunChanged("running");
+            },
+            onStepEnd: ({ stepNumber, usage, finishReason }) => {
               const current = deps.database.getAgentRun(runId);
               if (!current) return;
               deps.database.saveAgentRun({
@@ -915,7 +1015,12 @@ export async function handleAgentChatRequest(
                 stepIndex: stepNumber,
                 kind: "model",
                 summary: `Step ${stepNumber + 1}`,
-                detailJson: null,
+                detailJson: observabilityJson({
+                  inputTokens: usage.inputTokens,
+                  outputTokens: usage.outputTokens,
+                  totalTokens: usage.totalTokens,
+                  finishReason,
+                }),
                 createdAt: Date.now(),
               });
               emitRunChanged("running");

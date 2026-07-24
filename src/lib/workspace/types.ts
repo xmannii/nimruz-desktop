@@ -105,6 +105,14 @@ export type AgentRun = {
   providerId: string;
   error: string | null;
   stepCount: number;
+  /** Provider-reported usage. Zero when the provider supplied no usage. */
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedInputTokens?: number;
+  reasoningTokens?: number;
+  totalTokens?: number;
+  /** Estimate from the selected model's configured per-million token prices. */
+  estimatedCostUsd?: number;
   startedAt: number;
   updatedAt: number;
   finishedAt: number | null;

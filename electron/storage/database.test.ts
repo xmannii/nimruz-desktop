@@ -522,6 +522,12 @@ test("recovers interrupted runs and their pending approvals after restart", asyn
       providerId: chat.providerId,
       error: null,
       stepCount: 1,
+      inputTokens: 120,
+      outputTokens: 30,
+      cachedInputTokens: 20,
+      reasoningTokens: 10,
+      totalTokens: 150,
+      estimatedCostUsd: 0.0042,
       startedAt: 10,
       updatedAt: 11,
       finishedAt: null,
@@ -553,6 +559,8 @@ test("recovers interrupted runs and their pending approvals after restart", asyn
     assert.equal(database.recoverInterruptedAgentRuns(20), 1);
     assert.equal(database.getAgentRun("run-restart")?.status, "failed");
     assert.equal(database.getAgentRun("run-restart")?.finishedAt, 20);
+    assert.equal(database.getAgentRun("run-restart")?.totalTokens, 150);
+    assert.equal(database.getAgentRun("run-restart")?.estimatedCostUsd, 0.0042);
     assert.equal(database.listApprovals("run-restart")[0]?.decision, "denied");
     assert.equal(database.listToolCalls("run-restart")[0]?.status, "failed");
     assert.equal(database.recoverInterruptedAgentRuns(30), 0);
@@ -581,7 +589,7 @@ test("migrates a version-2 database to the combined version-10 schema", async ()
     });
     assert.equal(mapping.threadId, "migrated-thread");
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 12);
+    assert.equal(version?.user_version, 13);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
@@ -614,7 +622,7 @@ test("migrates an official version-3 database to the combined version-10 schema"
       "official-v3-thread"
     );
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 12);
+    assert.equal(version?.user_version, 13);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
@@ -647,7 +655,7 @@ test("migrates a Codex version-3 database to the combined version-10 schema", as
     assert.equal(database.loadChats()[0]?.pinned, true);
     assert.equal(database.loadChats()[0]?.pinnedAt, 10);
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 12);
+    assert.equal(version?.user_version, 13);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });

@@ -60,6 +60,8 @@ export async function handleCodexChatRequest(options: {
     status: "completed" | "failed" | "cancelled",
     error?: string | null
   ) => void;
+  onUsage?: (usage: LanguageModelUsage) => void;
+  onItemCompleted?: (itemId: string, itemType: string) => void;
 }) {
   const {
     body,
@@ -70,6 +72,8 @@ export async function handleCodexChatRequest(options: {
     workspace,
     runId,
     onFinish,
+    onUsage,
+    onItemCompleted,
   } = options;
   const chatId = options.chatId ?? body.chatId ?? body.id;
   if (!codex) {
@@ -201,6 +205,7 @@ export async function handleCodexChatRequest(options: {
             if (event.type === "item-completed") {
               closeText(event.itemId);
               closeReasoning(event.itemId);
+              onItemCompleted?.(event.itemId, event.itemType);
               return;
             }
             if (event.type === "usage") lastUsage = event.usage;
@@ -211,10 +216,12 @@ export async function handleCodexChatRequest(options: {
         for (const id of [...openReasoning]) closeReasoning(id);
         lastUsage ??= result.usage;
         if (lastUsage) {
+          const normalizedUsage = toLanguageModelUsage(lastUsage);
+          onUsage?.(normalizedUsage);
           writer.write({
             type: "message-metadata",
             messageMetadata: {
-              totalUsage: toLanguageModelUsage(lastUsage),
+              totalUsage: normalizedUsage,
               ...(runId ? { runId } : {}),
             },
           });

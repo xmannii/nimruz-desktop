@@ -31,6 +31,7 @@ export class RunApprovalBroker {
   readonly #database: AppDatabase;
   readonly #events?: WorkspaceEventBus;
   readonly #pending = new Map<string, PendingApproval>();
+  readonly #externalCalls = new Map<string, string>();
 
   constructor(database: AppDatabase, events?: WorkspaceEventBus) {
     this.#database = database;
@@ -44,6 +45,7 @@ export class RunApprovalBroker {
     risk: ToolCallRisk;
     reason: string;
     input: unknown;
+    externalCallId?: string;
     signal?: AbortSignal;
   }): Promise<RunApprovalDecision> {
     const now = Date.now();
@@ -73,6 +75,12 @@ export class RunApprovalBroker {
     };
 
     this.#database.saveToolCall(toolCall);
+    if (options.externalCallId) {
+      this.#externalCalls.set(
+        `${options.runId}:${options.externalCallId}`,
+        toolCallId
+      );
+    }
     this.#database.saveApproval(approval);
     const run = this.#database.getAgentRun(options.runId);
     if (run) {
@@ -165,6 +173,62 @@ export class RunApprovalBroker {
       if (pending.approval.runId === runId) {
         this.resolve(id, { approved: false, forSession: false });
       }
+    }
+  }
+
+  /** Marks a provider-native command/file item complete from its item id. */
+  completeExternalCall(
+    runId: string,
+    externalCallId: string,
+    output?: unknown
+  ): boolean {
+    const key = `${runId}:${externalCallId}`;
+    const toolCallId = this.#externalCalls.get(key);
+    if (!toolCallId) return false;
+    this.#externalCalls.delete(key);
+    const call = this.#database
+      .listToolCalls(runId)
+      .find((candidate) => candidate.id === toolCallId);
+    if (!call || call.status === "denied" || call.status === "failed") {
+      return false;
+    }
+    this.#database.saveToolCall({
+      ...call,
+      status: "completed",
+      outputJson: output === undefined ? call.outputJson : JSON.stringify(output),
+      finishedAt: Date.now(),
+    });
+    return true;
+  }
+
+  /** Closes any lifecycle rows left open when a provider turn terminates. */
+  finishRun(
+    runId: string,
+    status: "completed" | "failed" | "cancelled",
+    error?: string | null
+  ) {
+    if (status !== "completed") this.cancelRun(runId);
+    const now = Date.now();
+    for (const call of this.#database.listToolCalls(runId)) {
+      if (
+        call.status !== "queued" &&
+        call.status !== "running" &&
+        call.status !== "awaiting_approval"
+      ) {
+        continue;
+      }
+      this.#database.saveToolCall({
+        ...call,
+        status: status === "completed" ? "completed" : "failed",
+        error:
+          status === "completed"
+            ? call.error
+            : (error ?? "Provider turn did not complete."),
+        finishedAt: now,
+      });
+    }
+    for (const key of [...this.#externalCalls.keys()]) {
+      if (key.startsWith(`${runId}:`)) this.#externalCalls.delete(key);
     }
   }
 

@@ -733,6 +733,26 @@ export class AppDatabase {
       });
     }
 
+    if (currentVersion < 13) {
+      this.transaction(() => {
+        for (const [column, definition] of [
+          ["input_tokens", "INTEGER NOT NULL DEFAULT 0"],
+          ["output_tokens", "INTEGER NOT NULL DEFAULT 0"],
+          ["cached_input_tokens", "INTEGER NOT NULL DEFAULT 0"],
+          ["reasoning_tokens", "INTEGER NOT NULL DEFAULT 0"],
+          ["total_tokens", "INTEGER NOT NULL DEFAULT 0"],
+          ["estimated_cost_usd", "REAL NOT NULL DEFAULT 0"],
+        ] as const) {
+          if (!hasTableColumn(this.database, "agent_runs", column)) {
+            this.database.exec(
+              `ALTER TABLE agent_runs ADD COLUMN ${column} ${definition}`
+            );
+          }
+        }
+        this.database.exec("PRAGMA user_version = 13");
+      });
+    }
+
     if (currentVersion >= 2) {
       this.ensureBuiltinCatalog();
     }
@@ -1406,8 +1426,10 @@ export class AppDatabase {
       .prepare(
         `INSERT INTO agent_runs (
            id, workspace_id, chat_id, status, model, provider_id, error,
-           step_count, started_at, updated_at, finished_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           step_count, input_tokens, output_tokens, cached_input_tokens,
+           reasoning_tokens, total_tokens, estimated_cost_usd,
+           started_at, updated_at, finished_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            workspace_id = excluded.workspace_id,
            chat_id = excluded.chat_id,
@@ -1416,6 +1438,12 @@ export class AppDatabase {
            provider_id = excluded.provider_id,
            error = excluded.error,
            step_count = excluded.step_count,
+           input_tokens = excluded.input_tokens,
+           output_tokens = excluded.output_tokens,
+           cached_input_tokens = excluded.cached_input_tokens,
+           reasoning_tokens = excluded.reasoning_tokens,
+           total_tokens = excluded.total_tokens,
+           estimated_cost_usd = excluded.estimated_cost_usd,
            started_at = excluded.started_at,
            updated_at = excluded.updated_at,
            finished_at = excluded.finished_at`
@@ -1429,6 +1457,12 @@ export class AppDatabase {
         String(run.providerId),
         run.error,
         Number(run.stepCount),
+        Number(run.inputTokens ?? 0),
+        Number(run.outputTokens ?? 0),
+        Number(run.cachedInputTokens ?? 0),
+        Number(run.reasoningTokens ?? 0),
+        Number(run.totalTokens ?? 0),
+        Number(run.estimatedCostUsd ?? 0),
         Number(run.startedAt),
         Number(run.updatedAt),
         run.finishedAt == null ? null : Number(run.finishedAt)
@@ -1440,7 +1474,9 @@ export class AppDatabase {
     const row = this.database
       .prepare(
         `SELECT id, workspace_id, chat_id, status, model, provider_id, error,
-                step_count, started_at, updated_at, finished_at
+                step_count, input_tokens, output_tokens, cached_input_tokens,
+                reasoning_tokens, total_tokens, estimated_cost_usd,
+                started_at, updated_at, finished_at
            FROM agent_runs
           WHERE id = ?`
       )
@@ -1456,6 +1492,12 @@ export class AppDatabase {
       providerId: String(row.provider_id),
       error: typeof row.error === "string" ? row.error : null,
       stepCount: asNumber(row.step_count),
+      inputTokens: asNumber(row.input_tokens),
+      outputTokens: asNumber(row.output_tokens),
+      cachedInputTokens: asNumber(row.cached_input_tokens),
+      reasoningTokens: asNumber(row.reasoning_tokens),
+      totalTokens: asNumber(row.total_tokens),
+      estimatedCostUsd: Number(row.estimated_cost_usd) || 0,
       startedAt: asNumber(row.started_at),
       updatedAt: asNumber(row.updated_at),
       finishedAt: row.finished_at == null ? null : asNumber(row.finished_at),
@@ -1469,7 +1511,9 @@ export class AppDatabase {
   }): AgentRun[] {
     const limit = Math.min(Math.max(options?.limit ?? 50, 1), 200);
     let sql = `SELECT id, workspace_id, chat_id, status, model, provider_id, error,
-                      step_count, started_at, updated_at, finished_at
+                      step_count, input_tokens, output_tokens, cached_input_tokens,
+                      reasoning_tokens, total_tokens, estimated_cost_usd,
+                      started_at, updated_at, finished_at
                  FROM agent_runs`;
     const params: Array<string | number> = [];
     const clauses: string[] = [];
@@ -1502,6 +1546,12 @@ export class AppDatabase {
         providerId: String(row.provider_id),
         error: typeof row.error === "string" ? row.error : null,
         stepCount: asNumber(row.step_count),
+        inputTokens: asNumber(row.input_tokens),
+        outputTokens: asNumber(row.output_tokens),
+        cachedInputTokens: asNumber(row.cached_input_tokens),
+        reasoningTokens: asNumber(row.reasoning_tokens),
+        totalTokens: asNumber(row.total_tokens),
+        estimatedCostUsd: Number(row.estimated_cost_usd) || 0,
         startedAt: asNumber(row.started_at),
         updatedAt: asNumber(row.updated_at),
         finishedAt:
