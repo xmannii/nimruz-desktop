@@ -5,6 +5,7 @@ import {
   DEFAULT_APPEARANCE_SETTINGS,
   loadAppearanceSettings,
   saveAppearanceSettings,
+  sanitizeAppearanceSettings,
   type AppearanceSettings,
 } from "@/lib/settings/appearance";
 import {
@@ -18,6 +19,18 @@ import {
 } from "react";
 
 const SAVE_DEBOUNCE_MS = 300;
+const APPEARANCE_SYNC_KEY = "nimruz-appearance-sync";
+
+function publishAppearance(settings: AppearanceSettings) {
+  try {
+    window.localStorage.setItem(
+      APPEARANCE_SYNC_KEY,
+      JSON.stringify(settings)
+    );
+  } catch {
+    // Durable settings remain available through SQLite.
+  }
+}
 
 type AppearanceContextValue = {
   appearance: AppearanceSettings;
@@ -60,6 +73,22 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== APPEARANCE_SYNC_KEY || !event.newValue) return;
+      try {
+        const next = sanitizeAppearanceSettings(JSON.parse(event.newValue));
+        setAppearance(next);
+        applyAppearanceSettings(next);
+      } catch {
+        // Ignore malformed cross-window state.
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (saveTimerRef.current !== null) {
         window.clearTimeout(saveTimerRef.current);
@@ -78,6 +107,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   const updateAppearance = useCallback((settings: AppearanceSettings) => {
     setAppearance(settings);
     applyAppearanceSettings(settings);
+    publishAppearance(settings);
     pendingRef.current = settings;
 
     if (saveTimerRef.current !== null) {

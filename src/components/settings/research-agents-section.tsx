@@ -94,7 +94,7 @@ export function ResearchAgentsSettingsSection() {
     <div className="flex flex-col gap-8">
       <SettingsSection
         title="دستیارهای پژوهشی"
-        description="مدل‌هایی را انتخاب کنید که عامل اصلی برای بررسی عمیق سایت‌ها، مخزن‌ها و کدبیس‌های بزرگ به‌کار می‌گیرد. عامل اصلی بر اساس توضیح هر مدل، مناسب‌ترین دستیار را برای کار انتخاب می‌کند."
+        description="مدل‌هایی را انتخاب کنید که ایجنت اصلی برای بررسی عمیق سایت‌ها، مخزن‌ها و کدبیس‌های بزرگ به‌کار می‌گیرد. ایجنت اصلی بر اساس توضیح هر مدل، مناسب‌ترین دستیار را برای کار انتخاب می‌کند."
         icon={BotIcon}
       >
         <div className="flex flex-wrap items-center gap-2">
@@ -118,7 +118,7 @@ export function ResearchAgentsSettingsSection() {
         </div>
 
         <p className="mt-3 text-xs leading-5 text-muted-foreground">
-          اگر هیچ مدلی فعال نباشد، عامل اصلی پژوهش را خودش انجام می‌دهد. فقط
+          اگر هیچ مدلی فعال نباشد، ایجنت اصلی پژوهش را خودش انجام می‌دهد. فقط
           مدل‌های فعالِ دارای پشتیبانی ابزار نمایش داده می‌شوند.
         </p>
 

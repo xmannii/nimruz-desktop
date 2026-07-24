@@ -8,7 +8,10 @@ import {
   sanitizeAgentMode,
   type AgentMode,
 } from "@/lib/chat/agent-mode";
-import type { LocalChat } from "@/lib/chat/storage";
+import {
+  sanitizeMcpServerIds,
+  type LocalChat,
+} from "@/lib/chat/storage";
 import type { CodexChatThread, CodexModelDescriptor } from "@/lib/codex";
 import {
   CODEX_PROVIDER_ID,
@@ -32,10 +35,20 @@ import {
   type AppearanceSettings,
 } from "@/lib/settings/appearance";
 import {
+  DEFAULT_COMPANION_SHORTCUT_SETTINGS,
+  sanitizeCompanionShortcutSettings,
+  type CompanionShortcutSettings,
+} from "@/lib/settings/companion";
+import {
   DEFAULT_PERSONALIZATION_SETTINGS,
   sanitizePersonalizationSettings,
   type PersonalizationSettings,
 } from "@/lib/settings/personalization";
+import {
+  DEFAULT_NOTIFICATION_SETTINGS,
+  sanitizeNotificationSettings,
+  type NotificationSettings,
+} from "@/lib/settings/notifications";
 import {
   sanitizeMemories,
   type MemoryEntry,
@@ -56,6 +69,8 @@ import {
   DEFAULT_WORKSPACE_TRUST,
   HOME_WORKSPACE_ID,
   normalizeWorkspaceTrust,
+  MCP_SERVER_LIMITS,
+  sanitizeMcpServerConfig,
   sanitizeWorkspace,
   sanitizeWorkspaceRoot,
   type AgentRun,
@@ -63,6 +78,7 @@ import {
   type ApprovalRecord,
   type ArtifactRecord,
   type LocalWorkspace,
+  type McpServerConfig,
   type PlanRecord,
   type PlanStatus,
   type TaskRecord,
@@ -184,6 +200,15 @@ function parseMessages(value: unknown): LocalChat["messages"] {
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
+  }
+}
+
+function parseMcpServerIds(value: unknown): string[] | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    return sanitizeMcpServerIds(JSON.parse(value));
+  } catch {
+    return undefined;
   }
 }
 
@@ -600,6 +625,39 @@ export class AppDatabase {
       });
     }
 
+    if (currentVersion < 9) {
+      this.transaction(() => {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS mcp_servers (
+            id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            transport TEXT NOT NULL,
+            command TEXT,
+            args_json TEXT NOT NULL DEFAULT '[]',
+            url TEXT,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS mcp_servers_workspace_id_idx
+            ON mcp_servers(workspace_id, created_at ASC);
+          PRAGMA user_version = 9;
+        `);
+      });
+    }
+
+    if (currentVersion < 10) {
+      this.transaction(() => {
+        if (!hasTableColumn(this.database, "chats", "mcp_server_ids_json")) {
+          this.database.exec(
+            "ALTER TABLE chats ADD COLUMN mcp_server_ids_json TEXT"
+          );
+        }
+        this.database.exec("PRAGMA user_version = 10");
+      });
+    }
+
     if (currentVersion >= 2) {
       this.ensureBuiltinCatalog();
     }
@@ -721,7 +779,7 @@ export class AppDatabase {
     return this.database
       .prepare(
         `SELECT id, title, provider_id, model, messages_json, workspace_id, agent_mode,
-                created_at, updated_at, title_is_custom, pinned, pinned_at
+                mcp_server_ids_json, created_at, updated_at, title_is_custom, pinned, pinned_at
            FROM chats
           ORDER BY pinned DESC, COALESCE(pinned_at, updated_at) DESC, updated_at DESC`
       )
@@ -738,6 +796,7 @@ export class AppDatabase {
         messages: parseMessages(row.messages_json),
         workspaceId:
           typeof row.workspace_id === "string" ? row.workspace_id : null,
+        mcpServerIds: parseMcpServerIds(row.mcp_server_ids_json),
         agentMode: sanitizeAgentMode(row.agent_mode) as AgentMode,
         createdAt: asNumber(row.created_at),
         updatedAt: asNumber(row.updated_at),
@@ -752,8 +811,8 @@ export class AppDatabase {
     const statement = this.database.prepare(`
       INSERT INTO chats (
         id, title, provider_id, model, messages_json, workspace_id, agent_mode,
-        created_at, updated_at, title_is_custom, pinned, pinned_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        mcp_server_ids_json, created_at, updated_at, title_is_custom, pinned, pinned_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         provider_id = excluded.provider_id,
@@ -761,6 +820,7 @@ export class AppDatabase {
         messages_json = excluded.messages_json,
         workspace_id = excluded.workspace_id,
         agent_mode = excluded.agent_mode,
+        mcp_server_ids_json = excluded.mcp_server_ids_json,
         created_at = excluded.created_at,
         updated_at = excluded.updated_at,
         title_is_custom = excluded.title_is_custom,
@@ -779,6 +839,9 @@ export class AppDatabase {
           JSON.stringify(chat.messages),
           validateId(chat.workspaceId) ? chat.workspaceId : null,
           sanitizeAgentMode(chat.agentMode ?? DEFAULT_AGENT_MODE),
+          chat.mcpServerIds === undefined
+            ? null
+            : JSON.stringify(sanitizeMcpServerIds(chat.mcpServerIds) ?? []),
           Number(chat.createdAt),
           Number(chat.updatedAt),
           chat.titleIsCustom ? 1 : 0,
@@ -979,6 +1042,112 @@ export class AppDatabase {
   deleteWorkspaceRoot(id: string): void {
     if (!validateId(id)) throw new Error("Invalid workspace root id.");
     this.database.prepare("DELETE FROM workspace_roots WHERE id = ?").run(id);
+  }
+
+  /** Return the MCP servers configured for one workspace in display order. */
+  listMcpServers(workspaceId: string): McpServerConfig[] {
+    if (!validateId(workspaceId)) throw new Error("Invalid workspace id.");
+    const rows = this.database
+      .prepare(
+        `SELECT id, workspace_id, name, transport, command, args_json, url,
+                enabled, created_at, updated_at
+           FROM mcp_servers
+          WHERE workspace_id = ?
+          ORDER BY created_at ASC`
+      )
+      .all(workspaceId);
+
+    return rows.flatMap((row) => {
+      let args: unknown = [];
+      try {
+        args = JSON.parse(String(row.args_json ?? "[]"));
+      } catch {
+        // Invalid legacy/manual rows are omitted by the shared sanitizer.
+      }
+      try {
+        return [
+          sanitizeMcpServerConfig({
+            id: row.id,
+            workspaceId: row.workspace_id,
+            name: row.name,
+            transport: row.transport,
+            command: row.command,
+            args,
+            url: row.url,
+            enabled: asBoolean(row.enabled),
+            createdAt: asNumber(row.created_at),
+            updatedAt: asNumber(row.updated_at),
+          }),
+        ];
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  /** Insert or update a validated MCP server owned by one workspace. */
+  saveMcpServer(value: unknown): McpServerConfig {
+    const server = sanitizeMcpServerConfig(value);
+    if (!this.getWorkspace(server.workspaceId)) {
+      throw new Error("Workspace not found.");
+    }
+
+    const existing = this.database
+      .prepare("SELECT workspace_id FROM mcp_servers WHERE id = ?")
+      .get(server.id);
+    if (
+      existing &&
+      String(existing.workspace_id) !== server.workspaceId
+    ) {
+      throw new Error("MCP server belongs to another workspace.");
+    }
+    if (
+      !existing &&
+      this.listMcpServers(server.workspaceId).length >=
+        MCP_SERVER_LIMITS.maxServersPerWorkspace
+    ) {
+      throw new Error("Workspace MCP server limit reached.");
+    }
+
+    this.database
+      .prepare(
+        `INSERT INTO mcp_servers (
+           id, workspace_id, name, transport, command, args_json, url,
+           enabled, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           name = excluded.name,
+           transport = excluded.transport,
+           command = excluded.command,
+           args_json = excluded.args_json,
+           url = excluded.url,
+           enabled = excluded.enabled,
+           created_at = excluded.created_at,
+           updated_at = excluded.updated_at`
+      )
+      .run(
+        server.id,
+        server.workspaceId,
+        server.name,
+        server.transport,
+        server.command ?? null,
+        JSON.stringify(server.args ?? []),
+        server.url ?? null,
+        server.enabled ? 1 : 0,
+        server.createdAt,
+        server.updatedAt
+      );
+    return server;
+  }
+
+  deleteMcpServer(id: string, workspaceId: string): void {
+    if (!validateId(id) || !validateId(workspaceId)) {
+      throw new Error("Invalid MCP server id.");
+    }
+    this.database
+      .prepare("DELETE FROM mcp_servers WHERE id = ? AND workspace_id = ?")
+      .run(id, workspaceId);
   }
 
   saveAgentRun(run: AgentRun): void {
@@ -1633,6 +1802,62 @@ export class AppDatabase {
       .prepare(
         `INSERT INTO settings (key, value_json, updated_at)
          VALUES ('appearance', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(settings), Date.now());
+    return settings;
+  }
+
+  loadNotificationSettings(): NotificationSettings {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("notifications");
+    if (typeof row?.value_json !== "string") {
+      return DEFAULT_NOTIFICATION_SETTINGS;
+    }
+    try {
+      return sanitizeNotificationSettings(JSON.parse(row.value_json));
+    } catch {
+      return DEFAULT_NOTIFICATION_SETTINGS;
+    }
+  }
+
+  saveNotificationSettings(value: unknown): NotificationSettings {
+    const settings = sanitizeNotificationSettings(value);
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('notifications', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(settings), Date.now());
+    return settings;
+  }
+
+  loadCompanionShortcut(): CompanionShortcutSettings {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("companion-shortcut");
+    if (typeof row?.value_json !== "string") {
+      return DEFAULT_COMPANION_SHORTCUT_SETTINGS;
+    }
+    try {
+      return sanitizeCompanionShortcutSettings(JSON.parse(row.value_json));
+    } catch {
+      return DEFAULT_COMPANION_SHORTCUT_SETTINGS;
+    }
+  }
+
+  saveCompanionShortcut(value: unknown): CompanionShortcutSettings {
+    const settings = sanitizeCompanionShortcutSettings(value);
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('companion-shortcut', ?, ?)
          ON CONFLICT(key) DO UPDATE SET
            value_json = excluded.value_json,
            updated_at = excluded.updated_at`

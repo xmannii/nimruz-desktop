@@ -22,7 +22,7 @@ Pre-built **Windows** and **macOS** installers are published on every [release](
 | **Windows** | `.exe` (NSIS) | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Linux** | AppImage | Build locally with `pnpm dist` |
 
-See [CHANGELOG.md](CHANGELOG.md) for **v1.2.0** release notes (local Persian speech-to-text, voice input, and a focused chat mode).
+See [CHANGELOG.md](CHANGELOG.md) for **v1.3.0** release notes (desktop Companion, composer + menu, per-chat MCP, and MCP settings).
 
 ### macOS install
 
@@ -53,6 +53,7 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 
 - **Workspaces** — link project folders; chats live under a workspace (with a default home workspace)
 - **Agent tools** — read/list/search files, write and patch, shell commands, artifacts, and tasks
+- **Workspace MCP tools** — connect stdio, HTTP, or SSE MCP servers; discovered tools are namespaced and require per-call approval
 - **Approvals** — risky tools ask before running; optional “always allow” per workspace
 - **Side panel** — files, artifacts, tasks, activity, and workspace settings
 - **Composer context** — attach files/artifacts, workspace picker, and `@`-mentions
@@ -106,6 +107,11 @@ On first launch:
 1. Complete the short onboarding tour (or skip it).
 2. Open **Settings → Models** and connect ChatGPT for Codex, add an OpenRouter key, or configure another provider.
 3. Create or open a **workspace** and link a project folder when you want the agent to touch files.
+
+Workspace-specific MCP servers can be added under **Settings → MCP servers**.
+Select a workspace, then test the connection before enabling it for agent turns. See
+[Workspace MCP tools](docs/MCP.md) for supported transports, lifecycle, and the
+current authentication boundary.
 
 API keys are encrypted through macOS Keychain, Windows DPAPI, or a Linux libsecret/KWallet keyring. On Linux, storage is refused when only Electron's insecure `basic_text` backend is available.
 

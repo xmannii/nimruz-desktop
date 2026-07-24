@@ -1,6 +1,21 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type { CodexAccountStatus } from "@/lib/codex";
-import type { DesktopAPI, WindowState } from "@/lib/desktop-api";
+import type {
+  DesktopAPI,
+  NotificationOpenChatPayload,
+  WindowState,
+} from "@/lib/desktop-api";
+import type {
+  CompanionConversationSnapshot,
+  CompanionOpenChatRequest,
+  CompanionPromptRequest,
+  CompanionSubmissionStatus,
+} from "@/lib/companion";
+import type { CompanionShortcutStatus } from "@/lib/settings/companion";
+import {
+  NOTIFICATION_OPEN_CHAT_CHANNEL,
+  NOTIFICATION_PLAY_SOUND_CHANNEL,
+} from "./notifications/service";
 
 const desktopApi: DesktopAPI = {
   platform: process.platform,
@@ -20,6 +35,109 @@ const desktopApi: DesktopAPI = {
       return () => {
         ipcRenderer.removeListener("window:state-changed", handler);
       };
+    },
+  },
+  notifications: {
+    getSettings: () => ipcRenderer.invoke("notifications:get-settings"),
+    saveSettings: (settings) =>
+      ipcRenderer.invoke("notifications:save-settings", settings),
+    onPlayCompletionSound: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on(NOTIFICATION_PLAY_SOUND_CHANNEL, handler);
+      return () => {
+        ipcRenderer.removeListener(NOTIFICATION_PLAY_SOUND_CHANNEL, handler);
+      };
+    },
+    onOpenChat: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: NotificationOpenChatPayload
+      ) => callback(payload);
+      ipcRenderer.on(NOTIFICATION_OPEN_CHAT_CHANNEL, handler);
+      return () => {
+        ipcRenderer.removeListener(NOTIFICATION_OPEN_CHAT_CHANNEL, handler);
+      };
+    },
+  },
+  companion: {
+    hide: () => ipcRenderer.invoke("companion:hide"),
+    quit: () => ipcRenderer.invoke("companion:quit"),
+    openMain: (target) => ipcRenderer.invoke("companion:open-main", target),
+    captureScreen: () => ipcRenderer.invoke("companion:capture-screen"),
+    submit: (draft) => ipcRenderer.invoke("companion:submit", draft),
+    reportStatus: (status) =>
+      ipcRenderer.invoke("companion:report-status", status),
+    reportConversation: (snapshot) =>
+      ipcRenderer.invoke("companion:report-conversation", snapshot),
+    clearConversation: () =>
+      ipcRenderer.invoke("companion:clear-conversation"),
+    getScreenCapturePermission: () =>
+      ipcRenderer.invoke("companion:get-screen-capture-permission"),
+    openScreenCaptureSettings: () =>
+      ipcRenderer.invoke("companion:open-screen-capture-settings"),
+    getShortcutStatus: () =>
+      ipcRenderer.invoke("companion:get-shortcut-status"),
+    setShortcutSettings: (settings) =>
+      ipcRenderer.invoke("companion:set-shortcut-settings", settings),
+    onPrompt: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        request: CompanionPromptRequest
+      ) => callback(request);
+      ipcRenderer.on("companion:prompt", handler);
+      return () => ipcRenderer.removeListener("companion:prompt", handler);
+    },
+    onSubmissionStatus: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        status: CompanionSubmissionStatus
+      ) => callback(status);
+      ipcRenderer.on("companion:submission-status", handler);
+      return () =>
+        ipcRenderer.removeListener("companion:submission-status", handler);
+    },
+    onConversation: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        snapshot: CompanionConversationSnapshot
+      ) => callback(snapshot);
+      ipcRenderer.on("companion:conversation", handler);
+      return () => ipcRenderer.removeListener("companion:conversation", handler);
+    },
+    onClearConversation: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on("companion:clear-conversation", handler);
+      return () =>
+        ipcRenderer.removeListener("companion:clear-conversation", handler);
+    },
+    onOpenChat: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        target: CompanionOpenChatRequest
+      ) => callback(target);
+      ipcRenderer.on("companion:open-chat", handler);
+      return () => ipcRenderer.removeListener("companion:open-chat", handler);
+    },
+    onVisibilityChange: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, visible: boolean) =>
+        callback(visible);
+      ipcRenderer.on("companion:visibility", handler);
+      return () => ipcRenderer.removeListener("companion:visibility", handler);
+    },
+    onShortcutStatus: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        status: CompanionShortcutStatus
+      ) => callback(status);
+      ipcRenderer.on("companion:shortcut-status", handler);
+      return () =>
+        ipcRenderer.removeListener("companion:shortcut-status", handler);
+    },
+    onToggleMicrophone: (callback) => {
+      const handler = () => callback();
+      ipcRenderer.on("companion:toggle-microphone", handler);
+      return () =>
+        ipcRenderer.removeListener("companion:toggle-microphone", handler);
     },
   },
   credentials: {
@@ -134,6 +252,18 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("storage:remove-workspace-root", rootId),
     updateWorkspaceTrust: (workspaceId, trust) =>
       ipcRenderer.invoke("storage:update-workspace-trust", workspaceId, trust),
+    listMcpServers: (workspaceId) =>
+      ipcRenderer.invoke("storage:list-mcp-servers", workspaceId),
+    saveMcpServer: (server) =>
+      ipcRenderer.invoke("storage:save-mcp-server", server),
+    deleteMcpServer: (workspaceId, serverId) =>
+      ipcRenderer.invoke(
+        "storage:delete-mcp-server",
+        workspaceId,
+        serverId
+      ),
+    testMcpServer: (server) =>
+      ipcRenderer.invoke("storage:test-mcp-server", server),
     listWorkspaceFiles: (workspaceId, path) =>
       ipcRenderer.invoke("storage:list-workspace-files", workspaceId, path),
     readWorkspaceFile: (workspaceId, path) =>

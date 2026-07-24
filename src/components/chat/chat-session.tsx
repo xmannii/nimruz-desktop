@@ -237,12 +237,17 @@ export function ChatSession({
     workspaces,
     updateWorkspaceTrust,
     getChatRuntime,
+    companionRequest,
+    consumeCompanionRequest,
   } = useAppShell();
   const navigate = useNavigate();
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [selectedExpertSlug, setSelectedExpertSlug] = useState<string | null>(
     null
+  );
+  const [mcpServerIds, setMcpServerIds] = useState<string[] | undefined>(
+    chat.mcpServerIds
   );
   const [modelRef, setModelRef] = useState<ProviderModelRef>({
     providerId: chat.providerId || DEFAULT_PROVIDER_ID,
@@ -255,6 +260,7 @@ export function ChatSession({
   );
   const hasMounted = useRef(false);
   const handledWritePlanIds = useRef(new Set<string>());
+  const handledCompanionRequestIds = useRef(new Set<string>());
   const isSuppressingAutoSendRef = useRef(false);
   const [activePlan, setActivePlan] = useState<PlanRecord | null>(null);
   useEffect(() => {
@@ -266,8 +272,9 @@ export function ChatSession({
 
   useEffect(() => {
     setAgentMode(sanitizeAgentMode(chat.agentMode ?? DEFAULT_AGENT_MODE));
+    setMcpServerIds(chat.mcpServerIds);
     handledWritePlanIds.current = new Set();
-  }, [chat.id]);
+  }, [chat.id, chat.mcpServerIds]);
 
   const loadActivePlan = useCallback(async () => {
     if (!chat.workspaceId) {
@@ -347,6 +354,7 @@ export function ChatSession({
   runtime.persistence.model = modelRef.modelId as ModelId;
   runtime.persistence.providerId = modelRef.providerId;
   runtime.persistence.agentMode = agentMode;
+  runtime.persistence.mcpServerIds = mcpServerIds;
   runtime.callbacks.onError = handleChatError;
   runtime.callbacks.sendAutomaticallyWhen = (options) =>
     !isSuppressingAutoSendRef.current &&
@@ -481,6 +489,7 @@ export function ChatSession({
       experts,
       subagents,
       selectedExpertSlug: selectedExpertSlug ?? undefined,
+      mcpServerIds,
       agentMode,
       chatId: chat.id,
       workspaceId: chat.workspaceId ?? undefined,
@@ -492,6 +501,7 @@ export function ChatSession({
       experts,
       subagents,
       memories,
+      mcpServerIds,
       modelRef.modelId,
       modelRef.providerId,
       personalization,
@@ -753,13 +763,18 @@ export function ChatSession({
     });
   }, [addToolOutput, getRequestBody, messages, stop]);
 
-  async function handleSubmit() {
-    const trimmed = text.trim();
+  async function submitMessage(override?: {
+    text: string;
+    attachments: ComposerAttachment[];
+  }) {
+    const submissionText = override?.text ?? text;
+    const submissionAttachments = override?.attachments ?? attachments;
+    const trimmed = submissionText.trim();
     if (pendingQuestion) {
       toast.info("ابتدا سؤال بالای کادر پیام را پاسخ دهید.");
       return;
     }
-    if ((!trimmed && attachments.length === 0) || isBusy) return;
+    if ((!trimmed && submissionAttachments.length === 0) || isBusy) return;
 
     const pendingApprovalIds = findPendingToolApprovalIds(messages);
     if (pendingApprovalIds.length > 0) {
@@ -779,8 +794,14 @@ export function ChatSession({
     }
 
     const isCodexProvider = modelRef.providerId === CODEX_PROVIDER_ID;
-    const usableAttachments = isCodexProvider ? [] : attachments;
-    if (isCodexProvider && !trimmed && attachments.length > 0) {
+    const usableAttachments =
+      isCodexProvider && !override ? [] : submissionAttachments;
+    if (
+      isCodexProvider &&
+      !override &&
+      !trimmed &&
+      submissionAttachments.length > 0
+    ) {
       toast.error(
         "پیوست‌های فضای کاری در حالت Codex در دسترس نیستند؛ یک پیام متنی بنویسید."
       );
@@ -820,7 +841,8 @@ export function ChatSession({
 
     const isFirstMessage = messages.length === 0 && !chat.titleIsCustom;
     const chatId = chat.id;
-    const titleSeed = trimmed || attachments[0]?.name || "گفتگوی جدید";
+    const titleSeed =
+      trimmed || submissionAttachments[0]?.name || "گفتگوی جدید";
 
     if (isFirstMessage) {
       lockChatTitle(chatId);
@@ -865,10 +887,80 @@ export function ChatSession({
     setSelectedExpertSlug(null);
   }
 
+  function handleSubmit() {
+    void submitMessage();
+  }
+
+  useEffect(() => {
+    if (
+      !companionRequest ||
+      companionRequest.chatId !== chat.id ||
+      handledCompanionRequestIds.current.has(companionRequest.requestId)
+    ) {
+      return;
+    }
+
+    handledCompanionRequestIds.current.add(companionRequest.requestId);
+    const request = companionRequest;
+    void (async () => {
+      try {
+        const importedAttachments: ComposerAttachment[] = [];
+        if (request.screenshot) {
+          const [imported] = await window.desktop.storage.importWorkspaceFiles(
+            request.workspaceId,
+            [
+              {
+                name: request.screenshot.name,
+                base64: request.screenshot.base64,
+                mimeType: request.screenshot.mediaType,
+              },
+            ]
+          );
+          if (!imported) throw new Error("ذخیره تصویر صفحه ناموفق بود.");
+          importedAttachments.push({
+            id: imported.relativePath,
+            name: imported.name,
+            relativePath: imported.relativePath,
+            mimeType: imported.mimeType,
+            category: "image",
+            sizeBytes: imported.sizeBytes,
+            dataUrl: `data:${request.screenshot.mediaType};base64,${request.screenshot.base64}`,
+          });
+        }
+
+        const prompt =
+          request.text.trim() ||
+          "این تصویر صفحه را بررسی کن، نکات مهمش را توضیح بده و اقدام مناسب را انجام بده.";
+        await submitMessage({ text: prompt, attachments: importedAttachments });
+        await window.desktop.companion.reportStatus({
+          requestId: request.requestId,
+          state: "running",
+          chatId: request.chatId,
+          workspaceId: request.workspaceId,
+        });
+      } catch (submissionError) {
+        await window.desktop.companion.reportStatus({
+          requestId: request.requestId,
+          state: "failed",
+          chatId: request.chatId,
+          workspaceId: request.workspaceId,
+          message:
+            submissionError instanceof Error
+              ? submissionError.message
+              : "شروع درخواست ناموفق بود.",
+        });
+      } finally {
+        consumeCompanionRequest(request.requestId);
+      }
+    })();
+  }, [chat.id, companionRequest, consumeCompanionRequest]);
+
   const showCenteredComposer = messages.length === 0;
 
   function handleWorkspaceChange(nextWorkspaceId: string) {
     if (chat.workspaceId === nextWorkspaceId) return;
+    setMcpServerIds(undefined);
+    runtime.persistence.mcpServerIds = undefined;
     setChatWorkspaceId(chat.id, nextWorkspaceId);
     setActiveWorkspaceId(nextWorkspaceId);
     void navigate({
@@ -907,6 +999,18 @@ export function ChatSession({
       }
       attachments={attachments}
       onAttachmentsChange={setAttachments}
+      mcpServerIds={mcpServerIds}
+      onMcpServerIdsChange={(ids) => {
+        setMcpServerIds(ids);
+        runtime.persistence.mcpServerIds = ids;
+        onChatChange(chat.id, {
+          messages,
+          model: modelRef.modelId as ModelId,
+          providerId: modelRef.providerId,
+          agentMode,
+          mcpServerIds: ids,
+        });
+      }}
     />
   );
 

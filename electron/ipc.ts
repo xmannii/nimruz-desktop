@@ -9,6 +9,7 @@ import type { LegacyImportResult } from "@/lib/desktop-api";
 import type { MemoryEntry } from "@/lib/settings/memories";
 import type { AppearanceSettings } from "@/lib/settings/appearance";
 import type { PersonalizationSettings } from "@/lib/settings/personalization";
+import type { NotificationSettings } from "@/lib/settings/notifications";
 import type { SubagentModel } from "@/lib/settings/subagents";
 import type {
   SkillDocument,
@@ -22,7 +23,9 @@ import {
 } from "@/lib/models/catalog";
 import {
   normalizeWorkspaceTrust,
+  sanitizeMcpServerConfig,
   sanitizeWorkspace,
+  type McpServerConfig,
   type TaskRecord,
   type WorkspaceRoot,
 } from "@/lib/workspace";
@@ -47,6 +50,7 @@ import {
   getAppVersion,
   openExternalUrl,
 } from "./updates";
+import { testMcpServerConnection } from "./agent/mcp";
 
 const execFileAsync = promisify(execFile);
 const MAX_DIFF_CHARS = 120_000;
@@ -73,15 +77,20 @@ function assertTrustedSender(
   event: IpcMainInvokeEvent,
   options: {
     getMainWindow: () => import("electron").BrowserWindow | null;
+    getCompanionWindow: () => import("electron").BrowserWindow | null;
     getRendererUrl: () => string;
   }
 ) {
-  const window = options.getMainWindow();
+  const windows = [options.getMainWindow(), options.getCompanionWindow()].filter(
+    (window): window is import("electron").BrowserWindow =>
+      Boolean(window && !window.isDestroyed())
+  );
+  const window = windows.find(
+    (candidate) => candidate.webContents === event.sender
+  );
   const frame = event.senderFrame;
   if (
     !window ||
-    window.isDestroyed() ||
-    event.sender !== window.webContents ||
     !frame ||
     frame !== window.webContents.mainFrame ||
     !isTrustedRendererUrl(frame.url, options.getRendererUrl())
@@ -100,6 +109,7 @@ export function registerIpcHandlers(options: {
   shenava: ShenavaService;
   sessionToken: string;
   getMainWindow: () => import("electron").BrowserWindow | null;
+  getCompanionWindow: () => import("electron").BrowserWindow | null;
   getRendererUrl: () => string;
 }) {
   const {
@@ -112,6 +122,7 @@ export function registerIpcHandlers(options: {
     shenava,
     sessionToken,
     getMainWindow,
+    getCompanionWindow,
     getRendererUrl,
   } = options;
 
@@ -120,12 +131,24 @@ export function registerIpcHandlers(options: {
     callback: (...args: TArgs) => TResult | Promise<TResult>
   ) {
     ipcMain.handle(channel, (event, ...args: unknown[]) => {
-      assertTrustedSender(event, { getMainWindow, getRendererUrl });
+      assertTrustedSender(event, {
+        getMainWindow,
+        getCompanionWindow,
+        getRendererUrl,
+      });
       return callback(...(args as TArgs));
     });
   }
 
   handle("auth:get-session-token", () => sessionToken);
+
+  handle(
+    "notifications:get-settings",
+    (): NotificationSettings => database.loadNotificationSettings()
+  );
+  handle("notifications:save-settings", (value: unknown) =>
+    database.saveNotificationSettings(value)
+  );
 
   handle("speech:shenava:status", () => shenava.getStatus());
   handle("speech:shenava:download", (modelKey: ShenavaModelKey) =>
@@ -169,9 +192,10 @@ export function registerIpcHandlers(options: {
   });
 
   shenava.onStatus((status) => {
-    const window = getMainWindow();
-    if (window && !window.isDestroyed()) {
-      window.webContents.send("speech:shenava:status-changed", status);
+    for (const window of [getMainWindow(), getCompanionWindow()]) {
+      if (window && !window.isDestroyed()) {
+        window.webContents.send("speech:shenava:status-changed", status);
+      }
     }
   });
 
@@ -514,6 +538,41 @@ export function registerIpcHandlers(options: {
       return updated;
     }
   );
+
+  handle("storage:list-mcp-servers", (workspaceId: string) => {
+    if (!database.getWorkspace(workspaceId)) {
+      throw new Error("Workspace not found.");
+    }
+    return database.listMcpServers(workspaceId);
+  });
+  handle("storage:save-mcp-server", (value: unknown) => {
+    const server = database.saveMcpServer(value);
+    workspaceEvents.emit({
+      type: "mcp-changed",
+      workspaceId: server.workspaceId,
+      serverId: server.id,
+    });
+    return server;
+  });
+  handle(
+    "storage:delete-mcp-server",
+    (workspaceId: string, serverId: string) => {
+      database.deleteMcpServer(serverId, workspaceId);
+      workspaceEvents.emit({
+        type: "mcp-changed",
+        workspaceId,
+        serverId,
+      });
+    }
+  );
+  handle("storage:test-mcp-server", async (value: unknown) => {
+    const server: McpServerConfig = sanitizeMcpServerConfig(value);
+    if (!database.getWorkspace(server.workspaceId)) {
+      throw new Error("Workspace not found.");
+    }
+    const cwd = workspaceFiles.primaryRootPath(server.workspaceId);
+    return testMcpServerConnection({ server, cwd });
+  });
 
   handle(
     "storage:list-workspace-files",
@@ -903,6 +962,10 @@ export function registerIpcHandlers(options: {
   handle("updates:open-url", (url: string) => openExternalUrl(url));
 
   registerWindowControlHandlers(getMainWindow, (event) =>
-    assertTrustedSender(event, { getMainWindow, getRendererUrl })
+    assertTrustedSender(event, {
+      getMainWindow,
+      getCompanionWindow,
+      getRendererUrl,
+    })
   );
 }

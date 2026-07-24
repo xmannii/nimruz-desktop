@@ -1,7 +1,5 @@
-import { createHash } from "node:crypto";
 import {
   mkdir,
-  open,
   readFile,
   rename,
   rm,
@@ -23,6 +21,7 @@ import {
   type ShenavaStatus,
   type ShenavaTranscription,
 } from "@/lib/speech/shenava";
+import { downloadFileWithResume } from "./resumable-download";
 
 const MAX_AUDIO_SECONDS = 180;
 
@@ -221,7 +220,21 @@ export class ShenavaService {
       // Missing or incomplete model files are represented as not installed.
     }
 
-    return createInitialShenavaModelStatus(modelKey);
+    let downloadedBytes = 0;
+    const temporaryDirectory = this.#temporaryDirectory(modelKey);
+    for (const file of model.files) {
+      try {
+        const info = await stat(path.join(temporaryDirectory, file.name));
+        if (info.isFile()) downloadedBytes += Math.min(info.size, file.size);
+      } catch {
+        // A missing partial file contributes no resumable bytes.
+      }
+    }
+
+    return {
+      ...createInitialShenavaModelStatus(modelKey),
+      downloadedBytes,
+    };
   }
 
   async #performDownload(
@@ -232,7 +245,22 @@ export class ShenavaService {
     const controller = new AbortController();
     const temporaryDirectory = this.#temporaryDirectory(modelKey);
     this.#downloadController = controller;
-    let downloadedBytes = 0;
+    const fileProgress = new Map<string, number>();
+    for (const file of model.files) {
+      try {
+        const info = await stat(path.join(temporaryDirectory, file.name));
+        fileProgress.set(
+          file.name,
+          info.isFile() ? Math.min(info.size, file.size) : 0
+        );
+      } catch {
+        fileProgress.set(file.name, 0);
+      }
+    }
+    let downloadedBytes = [...fileProgress.values()].reduce(
+      (total, bytes) => total + bytes,
+      0
+    );
     let lastEmitAt = 0;
 
     const updateModelStatus = (modelStatus: ShenavaModelStatus) => {
@@ -243,8 +271,12 @@ export class ShenavaService {
       });
     };
 
-    const updateProgress = (increment: number) => {
-      downloadedBytes += increment;
+    const updateProgress = (fileName: string, fileBytes: number) => {
+      fileProgress.set(fileName, fileBytes);
+      downloadedBytes = [...fileProgress.values()].reduce(
+        (total, bytes) => total + bytes,
+        0
+      );
       const now = Date.now();
       if (now - lastEmitAt < 100 && downloadedBytes < model.totalBytes) return;
       lastEmitAt = now;
@@ -258,10 +290,10 @@ export class ShenavaService {
     updateModelStatus({
       ...createInitialShenavaModelStatus(modelKey),
       phase: "downloading",
+      downloadedBytes,
     });
 
     try {
-      await rm(temporaryDirectory, { recursive: true, force: true });
       await mkdir(temporaryDirectory, { recursive: true });
 
       for (const file of model.files) {
@@ -270,7 +302,7 @@ export class ShenavaService {
           file,
           temporaryDirectory,
           controller.signal,
-          updateProgress
+          (fileBytes) => updateProgress(file.name, fileBytes)
         );
       }
 
@@ -310,13 +342,16 @@ export class ShenavaService {
       this.#setAndEmit(ready);
       return ready;
     } catch (error) {
-      await rm(temporaryDirectory, { recursive: true, force: true });
       const current = this.#liveStatus ?? initialStatus;
       const modelStatus = isAbortError(error)
-        ? createInitialShenavaModelStatus(modelKey)
+        ? {
+            ...createInitialShenavaModelStatus(modelKey),
+            downloadedBytes,
+          }
         : {
             ...createInitialShenavaModelStatus(modelKey),
             phase: "error" as const,
+            downloadedBytes,
             error: error instanceof Error ? error.message : "Download failed.",
           };
       const next = {
@@ -336,54 +371,14 @@ export class ShenavaService {
     signal: AbortSignal,
     onChunk: (bytes: number) => void
   ) {
-    const url = `https://huggingface.co/${model.id}/resolve/${model.revision}/${file.name}`;
-    const response = await fetch(url, {
-      redirect: "follow",
+    await downloadFileWithResume({
+      url: `https://huggingface.co/${model.id}/resolve/${model.revision}/${file.name}`,
+      destination: path.join(temporaryDirectory, file.name),
+      expectedBytes: file.size,
+      expectedSha256: file.sha256,
       signal,
-      headers: { "User-Agent": "Nimruz-Desktop/Shenava" },
+      onProgress: onChunk,
     });
-    if (!response.ok || !response.body) {
-      throw new Error(`Failed to download ${file.name} (${response.status}).`);
-    }
-
-    const destination = path.join(temporaryDirectory, file.name);
-    const handle = await open(destination, "wx");
-    const reader = response.body.getReader();
-    const hash = createHash("sha256");
-    let fileBytes = 0;
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        let offset = 0;
-        while (offset < value.byteLength) {
-          const { bytesWritten } = await handle.write(
-            value,
-            offset,
-            value.byteLength - offset
-          );
-          if (bytesWritten === 0) {
-            throw new Error(`Could not write ${file.name}.`);
-          }
-          offset += bytesWritten;
-        }
-        hash.update(value);
-        fileBytes += value.byteLength;
-        onChunk(value.byteLength);
-      }
-      await handle.sync();
-    } finally {
-      reader.releaseLock();
-      await handle.close();
-    }
-
-    if (fileBytes !== file.size) {
-      throw new Error(`Incomplete ${file.name} download.`);
-    }
-    if (hash.digest("hex") !== file.sha256) {
-      throw new Error(`Integrity check failed for ${file.name}.`);
-    }
   }
 
   #runWorker(

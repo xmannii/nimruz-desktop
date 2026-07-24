@@ -1,7 +1,10 @@
 import { getModelById } from "@/lib/models";
 import type { LegacyDataSnapshot } from "@/lib/desktop-api";
 import { sanitizeAgentMode } from "@/lib/chat/agent-mode";
-import type { LocalChat } from "@/lib/chat/storage";
+import {
+  sanitizeMcpServerIds,
+  type LocalChat,
+} from "@/lib/chat/storage";
 import { sanitizeMemories } from "@/lib/settings/memories";
 import { sanitizePersonalizationSettings } from "@/lib/settings/personalization";
 import { DEFAULT_PROVIDER_ID } from "@/lib/models";
@@ -65,6 +68,7 @@ function parseChat(value: unknown): LocalChat | null {
     model,
     messages: chat.messages,
     workspaceId,
+    mcpServerIds: sanitizeMcpServerIds(chat.mcpServerIds),
     agentMode: sanitizeAgentMode(chat.agentMode),
     createdAt: Number(chat.createdAt),
     updatedAt: Number(chat.updatedAt),

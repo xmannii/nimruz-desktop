@@ -11,6 +11,8 @@ export type LocalChat = {
   model: ModelId;
   messages: UIMessage[];
   workspaceId: string | null;
+  /** Undefined means all workspace-enabled servers; an array is a chat override. */
+  mcpServerIds?: string[];
   agentMode?: AgentMode;
   createdAt: number;
   updatedAt: number;
@@ -18,6 +20,17 @@ export type LocalChat = {
   pinned?: boolean;
   pinnedAt?: number | null;
 };
+
+export function sanitizeMcpServerIds(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const ids = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string" || !/^[\w-]{1,128}$/.test(item)) continue;
+    ids.add(item);
+    if (ids.size >= 12) break;
+  }
+  return [...ids];
+}
 
 /** @deprecated Use LocalWorkspace */
 export type LocalProject = LocalWorkspace;

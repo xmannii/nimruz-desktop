@@ -146,6 +146,21 @@ test("unknown tools require approval", () => {
   assert.equal(decision.type, "user-approval");
 });
 
+test("MCP tools always require approval even in a trusted workspace", () => {
+  const decision = evaluateToolPolicy({
+    toolName: "mcp_server_external_action",
+    trust: {
+      level: "auto_shell",
+      autoApproveReads: true,
+      autoApproveWrites: true,
+      autoApproveShell: true,
+      autoApproveNetwork: true,
+    },
+  });
+  assert.equal(decision.type, "user-approval");
+  assert.match(decision.reason ?? "", /every call/);
+});
+
 test("redactSecrets masks sensitive keys and inline tokens", () => {
   const redacted = redactSecrets({
     apiKey: "sk-123456",

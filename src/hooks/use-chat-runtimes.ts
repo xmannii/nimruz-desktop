@@ -28,6 +28,7 @@ type RuntimePersistence = {
   model: ModelId;
   providerId: string;
   agentMode: AgentMode;
+  mcpServerIds?: string[];
 };
 
 type RuntimeCallbacks = {
@@ -65,6 +66,7 @@ export function createChatRuntime(
     model: localChat.model,
     providerId: localChat.providerId,
     agentMode: localChat.agentMode ?? "general",
+    mcpServerIds: localChat.mcpServerIds,
   };
 
   const chat = new Chat<ChatUIMessage>({

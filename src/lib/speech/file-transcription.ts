@@ -2,7 +2,7 @@ import { SHENAVA_SAMPLE_RATE } from "@/lib/speech/shenava";
 
 export const AUDIO_FILE_ACCEPT = "audio/*,.m4a,.mp4";
 export const MAX_AUDIO_FILE_BYTES = 250 * 1024 * 1024;
-export const MAX_AUDIO_DURATION_SECONDS = 60 * 60;
+export const MAX_AUDIO_DURATION_SECONDS = 2 * 60 * 60;
 export const TRANSCRIPTION_CHUNK_SECONDS = 150;
 
 const AUDIO_EXTENSIONS = new Set([

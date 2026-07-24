@@ -261,6 +261,7 @@ export type WorkspaceEvent =
       status?: string;
     }
   | { type: "approval-changed"; workspaceId: string | null; runId: string }
+  | { type: "mcp-changed"; workspaceId: string; serverId?: string }
   | { type: "root-changed"; workspaceId: string };
 
 export type WorkspaceEventType = WorkspaceEvent["type"];
@@ -277,7 +278,7 @@ export const AGENTIC_WORKSPACE_FEATURE = {
     writeTools: true,
     shellTools: true,
     artifactsTasks: true,
-    mcp: false,
+    mcp: true,
     browserAutomation: false,
     backgroundRuns: false,
   },

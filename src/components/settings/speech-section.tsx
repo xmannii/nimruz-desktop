@@ -2,6 +2,7 @@
 
 import { SettingsSection } from "@/components/settings/settings-section";
 import { ShenavaDownloadDialog } from "@/components/speech/shenava-download-dialog";
+import { useSpeech } from "@/components/speech/speech-provider";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -30,8 +31,19 @@ import {
   ProgressLabel,
   ProgressValue,
 } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Spinner } from "@/components/ui/spinner";
+import { useMicrophoneLevel } from "@/hooks/use-microphone-level";
 import { useShenavaModel } from "@/hooks/use-shenava-model";
+import { DEFAULT_MICROPHONE_ID } from "@/lib/speech/microphone";
 import {
   formatBytes,
   SHENAVA_MODEL_KEYS,
@@ -44,9 +56,12 @@ import {
   DownloadIcon,
   ExternalLinkIcon,
   FolderOpenIcon,
+  MicIcon,
   Mic2Icon,
   ShieldAlertIcon,
+  SquareIcon,
   Trash2Icon,
+  Volume2Icon,
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -69,6 +84,124 @@ function ModelStatusBadge({
     return <Badge variant="destructive">خطای دانلود</Badge>;
   }
   return <Badge variant="outline">دانلود نشده</Badge>;
+}
+
+function MicrophoneSettingsSection() {
+  const {
+    microphones,
+    selectedMicrophoneId,
+    setSelectedMicrophoneId,
+    isLiveRecording,
+  } = useSpeech();
+  const preview = useMicrophoneLevel();
+  const selectableMicrophones = microphones.filter(
+    (device) =>
+      device.deviceId &&
+      device.deviceId !== DEFAULT_MICROPHONE_ID
+  );
+  const selectedLabel =
+    selectableMicrophones.find(
+      (device) => device.deviceId === selectedMicrophoneId
+    )?.label || "میکروفن پیش‌فرض سیستم";
+
+  return (
+    <SettingsSection title="میکروفن" icon={MicIcon}>
+      <Card size="sm">
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <Select
+                value={selectedMicrophoneId}
+                onValueChange={(value) => {
+                  if (!value) return;
+                  preview.stop();
+                  setSelectedMicrophoneId(value);
+                }}
+              >
+                <SelectTrigger
+                  size="sm"
+                  className="w-full max-w-full border-border bg-background shadow-xs"
+                  aria-label="انتخاب میکروفن"
+                  disabled={isLiveRecording}
+                >
+                  <MicIcon aria-hidden />
+                  <SelectValue className="truncate">
+                    {selectedLabel}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent
+                  align="start"
+                  side="bottom"
+                  alignItemWithTrigger={false}
+                  className="max-w-(--anchor-width)"
+                >
+                  <SelectGroup>
+                    <SelectLabel>ورودی‌های صدا</SelectLabel>
+                    <SelectItem value={DEFAULT_MICROPHONE_ID}>
+                      میکروفن پیش‌فرض سیستم
+                    </SelectItem>
+                    {selectableMicrophones.map((device, index) => (
+                      <SelectItem key={device.deviceId} value={device.deviceId}>
+                        <span className="truncate">
+                          {device.label ||
+                            `میکروفن ${(index + 1).toLocaleString("fa-IR")}`}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              type="button"
+              variant={preview.isActive ? "outline" : "secondary"}
+              size="sm"
+              className="shrink-0"
+              disabled={isLiveRecording}
+              onClick={() =>
+                preview.isActive ? preview.stop() : void preview.start()
+              }
+            >
+              {preview.isActive ? (
+                <SquareIcon data-icon="inline-start" />
+              ) : (
+                <MicIcon data-icon="inline-start" />
+              )}
+              {preview.isActive ? "پایان" : "آزمایش"}
+            </Button>
+          </div>
+
+          {preview.isActive || preview.error ? (
+            <div className="flex flex-col gap-2">
+              {preview.isActive ? (
+                <div className="flex items-center gap-3">
+                  <Volume2Icon
+                    className="size-4 shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <Progress
+                    value={preview.level}
+                    className="flex-1"
+                    aria-label="سطح زنده ورودی میکروفن"
+                  />
+                  <span className="w-10 shrink-0 text-end text-xs tabular-nums text-muted-foreground">
+                    {`${preview.level.toLocaleString("fa-IR")}٪`}
+                  </span>
+                </div>
+              ) : null}
+              {preview.error ? (
+                <Alert variant="destructive">
+                  <ShieldAlertIcon />
+                  <AlertTitle>میکروفن آماده نیست</AlertTitle>
+                  <AlertDescription>{preview.error}</AlertDescription>
+                </Alert>
+              ) : null}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+    </SettingsSection>
+  );
 }
 
 export function SpeechSettingsSection() {
@@ -133,7 +266,9 @@ export function SpeechSettingsSection() {
     : null;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
+      <MicrophoneSettingsSection />
+
       <SettingsSection
         title="گفتار به متن"
         description="مدل دلخواه را دانلود کنید، بین مدل‌های نصب‌شده جابه‌جا شوید و پیام فارسی را روی دستگاه به متن تبدیل کنید."

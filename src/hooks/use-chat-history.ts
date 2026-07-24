@@ -34,7 +34,8 @@ function createEmptyChat(
   model: ModelId = DEFAULT_MODEL,
   id: string = nanoid(),
   workspaceId: string | null = HOME_WORKSPACE_ID,
-  providerId: string = DEFAULT_PROVIDER_ID
+  providerId: string = DEFAULT_PROVIDER_ID,
+  agentMode: AgentMode = DEFAULT_AGENT_MODE
 ): LocalChat {
   const now = Date.now();
 
@@ -45,7 +46,7 @@ function createEmptyChat(
     model,
     messages: [],
     workspaceId,
-    agentMode: DEFAULT_AGENT_MODE,
+    agentMode,
     createdAt: now,
     updatedAt: now,
   };
@@ -113,6 +114,12 @@ export type ChatUpdate = {
   messages: UIMessage[];
   model: ModelId;
   providerId?: string;
+  agentMode?: AgentMode;
+  mcpServerIds?: string[];
+};
+
+export type ChatCreationOptions = {
+  model?: ProviderModelRef;
   agentMode?: AgentMode;
 };
 
@@ -265,15 +272,24 @@ export function useChatHistory(
     [chats]
   );
 
-  const createChat = useCallback((workspaceId: string | null = HOME_WORKSPACE_ID) => {
+  const createChat = useCallback((
+    workspaceId: string | null = HOME_WORKSPACE_ID,
+    options: ChatCreationOptions = {}
+  ) => {
     const currentChat = chats.find((chat) => chat.id === activeChatId);
+    const requestedModel = options.model;
     const chat = createEmptyChat(
-      defaultModelRef?.modelId ?? currentChat?.model ?? DEFAULT_MODEL,
+      (requestedModel?.modelId ??
+        defaultModelRef?.modelId ??
+        currentChat?.model ??
+        DEFAULT_MODEL) as ModelId,
       nanoid(),
       workspaceId ?? HOME_WORKSPACE_ID,
-      defaultModelRef?.providerId ??
+      requestedModel?.providerId ??
+        defaultModelRef?.providerId ??
         currentChat?.providerId ??
-        DEFAULT_PROVIDER_ID
+        DEFAULT_PROVIDER_ID,
+      sanitizeAgentMode(options.agentMode)
     );
     const emptyChats = chats.filter((item) => item.messages.length === 0);
 
@@ -296,7 +312,12 @@ export function useChatHistory(
     setChats((current) =>
       current.map((chat) =>
         chat.workspaceId === workspaceId
-          ? { ...chat, workspaceId: HOME_WORKSPACE_ID, updatedAt: Date.now() }
+          ? {
+              ...chat,
+              workspaceId: HOME_WORKSPACE_ID,
+              mcpServerIds: undefined,
+              updatedAt: Date.now(),
+            }
           : chat
       )
     );
@@ -307,7 +328,12 @@ export function useChatHistory(
       setChats((current) =>
         current.map((chat) =>
           chat.id === chatId
-            ? { ...chat, workspaceId, updatedAt: Date.now() }
+            ? {
+                ...chat,
+                workspaceId,
+                mcpServerIds: undefined,
+                updatedAt: Date.now(),
+              }
             : chat
         )
       );
@@ -344,11 +370,15 @@ export function useChatHistory(
       const nextAgentMode = sanitizeAgentMode(
         update.agentMode ?? chat.agentMode
       );
+      const nextMcpServerIds =
+        "mcpServerIds" in update ? update.mcpServerIds : chat.mcpServerIds;
 
       if (
         chat.model === update.model &&
         chat.providerId === nextProviderId &&
         sanitizeAgentMode(chat.agentMode) === nextAgentMode &&
+        JSON.stringify(chat.mcpServerIds) ===
+          JSON.stringify(nextMcpServerIds) &&
         areMessagesEqual(chat.messages, update.messages)
       ) {
         return current;
@@ -359,6 +389,7 @@ export function useChatHistory(
         ...update,
         providerId: nextProviderId,
         agentMode: nextAgentMode,
+        mcpServerIds: nextMcpServerIds,
         title: chat.titleIsCustom ? chat.title : getChatTitle(update.messages),
         updatedAt: Date.now(),
       };

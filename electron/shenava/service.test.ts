@@ -78,3 +78,26 @@ test("tracks, selects, and removes the two pinned Shenava models independently",
     await rm(userDataPath, { recursive: true, force: true });
   }
 });
+
+test("discovers resumable Shenava bytes left by an earlier app session", async () => {
+  const userDataPath = await mkdtemp(path.join(tmpdir(), "nimruz-shenava-"));
+  const service = new ShenavaService({
+    userDataPath,
+    workerScript: path.join(userDataPath, "unused-worker.cjs"),
+  });
+  const partialDirectory = `${service.getModelDirectory("rizeh")}.download`;
+
+  try {
+    await mkdir(partialDirectory, { recursive: true });
+    await writeFile(path.join(partialDirectory, "model.onnx"), "partial");
+
+    const status = await service.getStatus();
+    assert.equal(status.models.rizeh.phase, "not-installed");
+    assert.equal(status.models.rizeh.downloadedBytes, 7);
+
+    await service.remove("rizeh");
+    assert.equal((await service.getStatus()).models.rizeh.downloadedBytes, 0);
+  } finally {
+    await rm(userDataPath, { recursive: true, force: true });
+  }
+});

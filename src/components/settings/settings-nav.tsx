@@ -12,17 +12,20 @@ import {
 } from "@/components/ui/sidebar";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  BellRingIcon,
   BrainIcon,
   BotIcon,
   CircleHelpIcon,
   CpuIcon,
   InfoIcon,
   Mic2Icon,
+  PanelTopOpenIcon,
   PaletteIcon,
   SearchIcon,
   ScrollTextIcon,
   SparklesIcon,
   UserRoundIcon,
+  WaypointsIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -31,9 +34,12 @@ type SettingsPath =
   | "/settings/memories"
   | "/settings/experts"
   | "/settings/models"
+  | "/settings/notifications"
   | "/settings/speech"
+  | "/settings/companion"
   | "/settings/research-agents"
   | "/settings/skills"
+  | "/settings/mcp"
   | "/settings/appearance"
   | "/settings/changelog"
   | "/settings/help"
@@ -70,12 +76,24 @@ export const SETTINGS_NAV_GROUPS: Array<{
         icon: PaletteIcon,
         match: (pathname) => pathname.startsWith("/settings/appearance"),
       },
+      {
+        to: "/settings/notifications",
+        label: "اعلان‌ها و صدا",
+        icon: BellRingIcon,
+        match: (pathname) => pathname.startsWith("/settings/notifications"),
+      },
     ],
   },
   {
     id: "assistant",
     label: "دستیار و مدل‌ها",
     items: [
+      {
+        to: "/settings/companion",
+        label: "دستیار سریع",
+        icon: PanelTopOpenIcon,
+        match: (pathname) => pathname.startsWith("/settings/companion"),
+      },
       {
         to: "/settings/models",
         label: "مدل‌ها",
@@ -106,6 +124,12 @@ export const SETTINGS_NAV_GROUPS: Array<{
         icon: BrainIcon,
         match: (pathname) => pathname.startsWith("/settings/memories"),
         badgeKey: "memories",
+      },
+      {
+        to: "/settings/mcp",
+        label: "سرورهای MCP",
+        icon: WaypointsIcon,
+        match: (pathname) => pathname.startsWith("/settings/mcp"),
       },
       {
         to: "/settings/skills",

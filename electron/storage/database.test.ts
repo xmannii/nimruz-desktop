@@ -9,8 +9,10 @@ import {
   DEFAULT_WORKSPACE_TRUST,
   HOME_WORKSPACE_ID,
   HOME_WORKSPACE_TITLE,
+  type McpServerConfig,
 } from "@/lib/workspace";
 import { DEFAULT_PERSONALIZATION_SETTINGS } from "@/lib/settings/personalization";
+import { DEFAULT_NOTIFICATION_SETTINGS } from "@/lib/settings/notifications";
 import {
   CODEX_BASE_URL,
   CODEX_PROVIDER_ID,
@@ -58,6 +60,7 @@ const chat: LocalChat = {
     },
   ],
   workspaceId: project.id,
+  mcpServerIds: ["server-one", "server-two"],
   createdAt: 3,
   updatedAt: 4,
   titleIsCustom: true,
@@ -70,6 +73,11 @@ test("persists chats, projects, settings, memories, and credentials", async () =
     database.savePersonalization({
       ...DEFAULT_PERSONALIZATION_SETTINGS,
       nickname: "مانی",
+    });
+    database.saveNotificationSettings({
+      ...DEFAULT_NOTIFICATION_SETTINGS,
+      agentCompleted: false,
+      completionSound: true,
     });
     database.saveMemories([
       {
@@ -89,6 +97,12 @@ test("persists chats, projects, settings, memories, and credentials", async () =
         enabled: true,
       },
     ]);
+    database.saveCompanionShortcut({
+      enabled: true,
+      accelerator: "Command+Shift+K",
+      microphoneEnabled: true,
+      microphoneAccelerator: "Command+Shift+M",
+    });
     database.setCredential("openrouter", Buffer.from("encrypted"), "••••1234");
 
     assert.ok(
@@ -100,9 +114,21 @@ test("persists chats, projects, settings, memories, and credentials", async () =
         .some((workspace) => workspace.id === HOME_WORKSPACE_ID)
     );
     assert.equal(database.loadChats()[0]?.messages[0]?.role, "user");
+    assert.deepEqual(database.loadChats()[0]?.mcpServerIds, [
+      "server-one",
+      "server-two",
+    ]);
     assert.equal(database.loadPersonalization().nickname, "مانی");
+    assert.equal(database.loadNotificationSettings().agentCompleted, false);
+    assert.equal(database.loadNotificationSettings().completionSound, true);
     assert.equal(database.loadMemories()[0]?.id, "memory-1");
     assert.equal(database.loadSubagents()[0]?.id, "research-model");
+    assert.deepEqual(database.loadCompanionShortcut(), {
+      enabled: true,
+      accelerator: "Command+Shift+K",
+      microphoneEnabled: true,
+      microphoneAccelerator: "Command+Shift+M",
+    });
     assert.equal(database.getCredential("openrouter")?.hint, "••••1234");
 
     database.deleteWorkspace(project.id);
@@ -129,6 +155,37 @@ test("persists onboarding completion and the active workspace", async () => {
 
     database.deleteWorkspace(project.id);
     assert.equal(database.loadActiveWorkspaceId(), null);
+  });
+});
+
+test("persists workspace MCP servers and cascades them on workspace deletion", async () => {
+  await withDatabase((database) => {
+    database.saveWorkspace(project);
+    const server: McpServerConfig = {
+      id: "mcp-local",
+      workspaceId: project.id,
+      name: "Local tools",
+      transport: "stdio",
+      command: "node",
+      args: ["server.mjs"],
+      enabled: true,
+      createdAt: 10,
+      updatedAt: 11,
+    };
+
+    assert.deepEqual(database.saveMcpServer(server), server);
+    assert.deepEqual(database.listMcpServers(project.id), [server]);
+
+    const disabled = database.saveMcpServer({
+      ...server,
+      enabled: false,
+      updatedAt: 12,
+    });
+    assert.equal(disabled.enabled, false);
+    assert.equal(database.listMcpServers(project.id)[0]?.updatedAt, 12);
+
+    database.deleteWorkspace(project.id);
+    assert.deepEqual(database.listMcpServers(project.id), []);
   });
 });
 
@@ -418,7 +475,7 @@ test("deleting all chats also clears Codex thread mappings", async () => {
   });
 });
 
-test("migrates a version-2 database to the combined version-8 schema", async () => {
+test("migrates a version-2 database to the combined version-10 schema", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nimruz-db-v2-"));
   const databasePath = path.join(directory, "test.sqlite3");
   let database = new AppDatabase(databasePath);
@@ -440,14 +497,14 @@ test("migrates a version-2 database to the combined version-8 schema", async () 
     });
     assert.equal(mapping.threadId, "migrated-thread");
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 8);
+    assert.equal(version?.user_version, 10);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test("migrates an official version-3 database to the combined version-8 schema", async () => {
+test("migrates an official version-3 database to the combined version-10 schema", async () => {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "nimruz-db-official-v3-")
   );
@@ -473,14 +530,14 @@ test("migrates an official version-3 database to the combined version-8 schema",
       "official-v3-thread"
     );
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 8);
+    assert.equal(version?.user_version, 10);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test("migrates a Codex version-3 database to the combined version-8 schema", async () => {
+test("migrates a Codex version-3 database to the combined version-10 schema", async () => {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "nimruz-db-codex-v3-")
   );
@@ -506,7 +563,7 @@ test("migrates a Codex version-3 database to the combined version-8 schema", asy
     assert.equal(database.loadChats()[0]?.pinned, true);
     assert.equal(database.loadChats()[0]?.pinnedAt, 10);
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 8);
+    assert.equal(version?.user_version, 10);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });

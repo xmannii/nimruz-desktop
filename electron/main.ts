@@ -1,4 +1,10 @@
-import { app, BrowserWindow, nativeImage, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  nativeImage,
+  Notification,
+  shell,
+} from "electron";
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import type http from "node:http";
@@ -8,6 +14,7 @@ import { WorkspaceFilesStore } from "./agent/workspace-files";
 import { WorkspaceEventBus } from "./agent/events";
 import { CredentialService } from "./credentials";
 import { CodexService } from "./codex/service";
+import { CompanionController } from "./companion/controller";
 import { registerIpcHandlers } from "./ipc";
 import {
   isSafeExternalHttpUrl,
@@ -17,6 +24,10 @@ import { startServer } from "./server";
 import { SkillStore } from "./skills/store";
 import { AppDatabase } from "./storage/database";
 import { ShenavaService } from "./shenava/service";
+import {
+  DesktopNotificationService,
+  type NativeNotificationPayload,
+} from "./notifications/service";
 import { attachWindowStateEvents } from "./window-controls";
 import {
   APP_NAME,
@@ -26,6 +37,9 @@ import {
 import { HOME_WORKSPACE_ID } from "@/lib/workspace";
 
 app.setName(APP_NAME);
+if (process.platform === "win32") {
+  app.setAppUserModelId("dev.nimruz.desktop");
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -55,7 +69,24 @@ let localServer: http.Server | null = null;
 let database: AppDatabase | null = null;
 let codex: CodexService | null = null;
 let shenava: ShenavaService | null = null;
+let notificationService: DesktopNotificationService | null = null;
+let companion: CompanionController | null = null;
 let rendererUrl = "";
+const activeNotifications = new Set<Notification>();
+let isQuitting = false;
+
+function presentNativeNotification(
+  payload: NativeNotificationPayload,
+  onClick: () => void
+) {
+  const notification = new Notification(payload);
+  activeNotifications.add(notification);
+  const release = () => activeNotifications.delete(notification);
+  notification.on("click", onClick);
+  notification.on("close", release);
+  notification.on("failed", release);
+  notification.show();
+}
 
 function resolveShenavaWorkerPath() {
   const bundled = path.join(__dirname, "shenava-worker.cjs");
@@ -90,7 +121,8 @@ async function createWindow() {
   mainWindow.webContents.session.setPermissionRequestHandler(
     (webContents, permission, callback, details) => {
       const trusted =
-        webContents === mainWindow?.webContents &&
+        (webContents === mainWindow?.webContents ||
+          webContents === companion?.getWindow()?.webContents) &&
         isTrustedRendererUrl(details.requestingUrl, rendererUrl);
       const mediaTypes =
         permission === "media" && "mediaTypes" in details
@@ -106,7 +138,8 @@ async function createWindow() {
   mainWindow.webContents.session.setPermissionCheckHandler(
     (webContents, permission, requestingOrigin, details) => {
       const trusted =
-        webContents === mainWindow?.webContents &&
+        (webContents === mainWindow?.webContents ||
+          webContents === companion?.getWindow()?.webContents) &&
         isTrustedRendererUrl(requestingOrigin, rendererUrl);
       const audioOnly =
         permission === "media" &&
@@ -150,6 +183,12 @@ async function createWindow() {
     mainWindow.webContents.openDevTools({ mode: "detach" });
   }
 
+  mainWindow.on("close", (event) => {
+    if (isQuitting) return;
+    event.preventDefault();
+    mainWindow?.hide();
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -176,6 +215,18 @@ app.whenReady().then(async () => {
     userDataPath,
     workerScript: resolveShenavaWorkerPath(),
   });
+  notificationService = new DesktopNotificationService({
+    database,
+    getWindow: () => mainWindow,
+    nativeNotificationsSupported: () => Notification.isSupported(),
+    presentNativeNotification,
+  });
+  workspaceEvents.onEvent((event) =>
+    notificationService?.handleWorkspaceEvent(event)
+  );
+  shenava.onStatus((status) =>
+    notificationService?.handleShenavaStatus(status)
+  );
   database.ensureHomeWorkspace();
   workspaceFiles.ensureManagedRoot(HOME_WORKSPACE_ID);
   const sessionToken = randomBytes(32).toString("base64url");
@@ -190,6 +241,7 @@ app.whenReady().then(async () => {
     shenava,
     sessionToken,
     getMainWindow: () => mainWindow,
+    getCompanionWindow: () => companion?.getWindow() ?? null,
     getRendererUrl: () => rendererUrl,
   });
 
@@ -240,15 +292,34 @@ app.whenReady().then(async () => {
   }
 
   await createWindow();
+  companion = new CompanionController({
+    rendererUrl,
+    preloadPath: path.join(__dirname, "preload.cjs"),
+    icon: resolveAppIcon(),
+    getMainWindow: () => mainWindow,
+    loadShortcutSettings: () => database!.loadCompanionShortcut(),
+    saveShortcutSettings: (value) => database!.saveCompanionShortcut(value),
+    onQuit: () => {
+      isQuitting = true;
+      app.quit();
+    },
+  });
+  await companion.initialize();
 
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!mainWindow || mainWindow.isDestroyed()) {
       void createWindow();
+      return;
     }
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
   });
 });
 
 app.on("before-quit", () => {
+  isQuitting = true;
+  companion?.dispose();
   shenava?.cancelDownload();
   codex?.dispose();
   localServer?.close();
@@ -257,10 +328,9 @@ app.on("before-quit", () => {
   database = null;
   codex = null;
   shenava = null;
+  notificationService = null;
+  activeNotifications.clear();
+  companion = null;
 });
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
-});
+// A tray app deliberately stays alive when its main window is hidden.

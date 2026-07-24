@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as CompanionRouteImport } from './routes/companion'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppTranscribeRouteImport } from './routes/_app.transcribe'
@@ -18,10 +19,13 @@ import { Route as AppWorkspaceWorkspaceIdRouteImport } from './routes/_app.works
 import { Route as AppSettingsSpeechRouteImport } from './routes/_app.settings.speech'
 import { Route as AppSettingsSkillsRouteImport } from './routes/_app.settings.skills'
 import { Route as AppSettingsResearchAgentsRouteImport } from './routes/_app.settings.research-agents'
+import { Route as AppSettingsNotificationsRouteImport } from './routes/_app.settings.notifications'
 import { Route as AppSettingsModelsRouteImport } from './routes/_app.settings.models'
 import { Route as AppSettingsMemoriesRouteImport } from './routes/_app.settings.memories'
+import { Route as AppSettingsMcpRouteImport } from './routes/_app.settings.mcp'
 import { Route as AppSettingsHelpRouteImport } from './routes/_app.settings.help'
 import { Route as AppSettingsExpertsRouteImport } from './routes/_app.settings.experts'
+import { Route as AppSettingsCompanionRouteImport } from './routes/_app.settings.companion'
 import { Route as AppSettingsChangelogRouteImport } from './routes/_app.settings.changelog'
 import { Route as AppSettingsAppearanceRouteImport } from './routes/_app.settings.appearance'
 import { Route as AppSettingsAboutRouteImport } from './routes/_app.settings.about'
@@ -29,6 +33,11 @@ import { Route as AppChatChatIdRouteImport } from './routes/_app.chat.$chatId'
 import { Route as AppWorkspaceWorkspaceIdIndexRouteImport } from './routes/_app.workspace.$workspaceId.index'
 import { Route as AppWorkspaceWorkspaceIdChatChatIdRouteImport } from './routes/_app.workspace.$workspaceId.chat.$chatId'
 
+const CompanionRoute = CompanionRouteImport.update({
+  id: '/companion',
+  path: '/companion',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
@@ -74,6 +83,12 @@ const AppSettingsResearchAgentsRoute =
     path: '/research-agents',
     getParentRoute: () => AppSettingsRoute,
   } as any)
+const AppSettingsNotificationsRoute =
+  AppSettingsNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => AppSettingsRoute,
+  } as any)
 const AppSettingsModelsRoute = AppSettingsModelsRouteImport.update({
   id: '/models',
   path: '/models',
@@ -84,6 +99,11 @@ const AppSettingsMemoriesRoute = AppSettingsMemoriesRouteImport.update({
   path: '/memories',
   getParentRoute: () => AppSettingsRoute,
 } as any)
+const AppSettingsMcpRoute = AppSettingsMcpRouteImport.update({
+  id: '/mcp',
+  path: '/mcp',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
 const AppSettingsHelpRoute = AppSettingsHelpRouteImport.update({
   id: '/help',
   path: '/help',
@@ -92,6 +112,11 @@ const AppSettingsHelpRoute = AppSettingsHelpRouteImport.update({
 const AppSettingsExpertsRoute = AppSettingsExpertsRouteImport.update({
   id: '/experts',
   path: '/experts',
+  getParentRoute: () => AppSettingsRoute,
+} as any)
+const AppSettingsCompanionRoute = AppSettingsCompanionRouteImport.update({
+  id: '/companion',
+  path: '/companion',
   getParentRoute: () => AppSettingsRoute,
 } as any)
 const AppSettingsChangelogRoute = AppSettingsChangelogRouteImport.update({
@@ -129,16 +154,20 @@ const AppWorkspaceWorkspaceIdChatChatIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/companion': typeof CompanionRoute
   '/settings': typeof AppSettingsRouteWithChildren
   '/transcribe': typeof AppTranscribeRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/about': typeof AppSettingsAboutRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/changelog': typeof AppSettingsChangelogRoute
+  '/settings/companion': typeof AppSettingsCompanionRoute
   '/settings/experts': typeof AppSettingsExpertsRoute
   '/settings/help': typeof AppSettingsHelpRoute
+  '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
+  '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings/speech': typeof AppSettingsSpeechRoute
@@ -148,16 +177,20 @@ export interface FileRoutesByFullPath {
   '/workspace/$workspaceId/chat/$chatId': typeof AppWorkspaceWorkspaceIdChatChatIdRoute
 }
 export interface FileRoutesByTo {
+  '/companion': typeof CompanionRoute
   '/transcribe': typeof AppTranscribeRoute
   '/': typeof AppIndexRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/about': typeof AppSettingsAboutRoute
   '/settings/appearance': typeof AppSettingsAppearanceRoute
   '/settings/changelog': typeof AppSettingsChangelogRoute
+  '/settings/companion': typeof AppSettingsCompanionRoute
   '/settings/experts': typeof AppSettingsExpertsRoute
   '/settings/help': typeof AppSettingsHelpRoute
+  '/settings/mcp': typeof AppSettingsMcpRoute
   '/settings/memories': typeof AppSettingsMemoriesRoute
   '/settings/models': typeof AppSettingsModelsRoute
+  '/settings/notifications': typeof AppSettingsNotificationsRoute
   '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings/speech': typeof AppSettingsSpeechRoute
@@ -168,6 +201,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/companion': typeof CompanionRoute
   '/_app/settings': typeof AppSettingsRouteWithChildren
   '/_app/transcribe': typeof AppTranscribeRoute
   '/_app/': typeof AppIndexRoute
@@ -175,10 +209,13 @@ export interface FileRoutesById {
   '/_app/settings/about': typeof AppSettingsAboutRoute
   '/_app/settings/appearance': typeof AppSettingsAppearanceRoute
   '/_app/settings/changelog': typeof AppSettingsChangelogRoute
+  '/_app/settings/companion': typeof AppSettingsCompanionRoute
   '/_app/settings/experts': typeof AppSettingsExpertsRoute
   '/_app/settings/help': typeof AppSettingsHelpRoute
+  '/_app/settings/mcp': typeof AppSettingsMcpRoute
   '/_app/settings/memories': typeof AppSettingsMemoriesRoute
   '/_app/settings/models': typeof AppSettingsModelsRoute
+  '/_app/settings/notifications': typeof AppSettingsNotificationsRoute
   '/_app/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/_app/settings/skills': typeof AppSettingsSkillsRoute
   '/_app/settings/speech': typeof AppSettingsSpeechRoute
@@ -191,16 +228,20 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/companion'
     | '/settings'
     | '/transcribe'
     | '/chat/$chatId'
     | '/settings/about'
     | '/settings/appearance'
     | '/settings/changelog'
+    | '/settings/companion'
     | '/settings/experts'
     | '/settings/help'
+    | '/settings/mcp'
     | '/settings/memories'
     | '/settings/models'
+    | '/settings/notifications'
     | '/settings/research-agents'
     | '/settings/skills'
     | '/settings/speech'
@@ -210,16 +251,20 @@ export interface FileRouteTypes {
     | '/workspace/$workspaceId/chat/$chatId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/companion'
     | '/transcribe'
     | '/'
     | '/chat/$chatId'
     | '/settings/about'
     | '/settings/appearance'
     | '/settings/changelog'
+    | '/settings/companion'
     | '/settings/experts'
     | '/settings/help'
+    | '/settings/mcp'
     | '/settings/memories'
     | '/settings/models'
+    | '/settings/notifications'
     | '/settings/research-agents'
     | '/settings/skills'
     | '/settings/speech'
@@ -229,6 +274,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/companion'
     | '/_app/settings'
     | '/_app/transcribe'
     | '/_app/'
@@ -236,10 +282,13 @@ export interface FileRouteTypes {
     | '/_app/settings/about'
     | '/_app/settings/appearance'
     | '/_app/settings/changelog'
+    | '/_app/settings/companion'
     | '/_app/settings/experts'
     | '/_app/settings/help'
+    | '/_app/settings/mcp'
     | '/_app/settings/memories'
     | '/_app/settings/models'
+    | '/_app/settings/notifications'
     | '/_app/settings/research-agents'
     | '/_app/settings/skills'
     | '/_app/settings/speech'
@@ -251,10 +300,18 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  CompanionRoute: typeof CompanionRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/companion': {
+      id: '/companion'
+      path: '/companion'
+      fullPath: '/companion'
+      preLoaderRoute: typeof CompanionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_app': {
       id: '/_app'
       path: ''
@@ -318,6 +375,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsResearchAgentsRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/notifications': {
+      id: '/_app/settings/notifications'
+      path: '/notifications'
+      fullPath: '/settings/notifications'
+      preLoaderRoute: typeof AppSettingsNotificationsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/settings/models': {
       id: '/_app/settings/models'
       path: '/models'
@@ -332,6 +396,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSettingsMemoriesRouteImport
       parentRoute: typeof AppSettingsRoute
     }
+    '/_app/settings/mcp': {
+      id: '/_app/settings/mcp'
+      path: '/mcp'
+      fullPath: '/settings/mcp'
+      preLoaderRoute: typeof AppSettingsMcpRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
     '/_app/settings/help': {
       id: '/_app/settings/help'
       path: '/help'
@@ -344,6 +415,13 @@ declare module '@tanstack/react-router' {
       path: '/experts'
       fullPath: '/settings/experts'
       preLoaderRoute: typeof AppSettingsExpertsRouteImport
+      parentRoute: typeof AppSettingsRoute
+    }
+    '/_app/settings/companion': {
+      id: '/_app/settings/companion'
+      path: '/companion'
+      fullPath: '/settings/companion'
+      preLoaderRoute: typeof AppSettingsCompanionRouteImport
       parentRoute: typeof AppSettingsRoute
     }
     '/_app/settings/changelog': {
@@ -395,10 +473,13 @@ interface AppSettingsRouteChildren {
   AppSettingsAboutRoute: typeof AppSettingsAboutRoute
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
   AppSettingsChangelogRoute: typeof AppSettingsChangelogRoute
+  AppSettingsCompanionRoute: typeof AppSettingsCompanionRoute
   AppSettingsExpertsRoute: typeof AppSettingsExpertsRoute
   AppSettingsHelpRoute: typeof AppSettingsHelpRoute
+  AppSettingsMcpRoute: typeof AppSettingsMcpRoute
   AppSettingsMemoriesRoute: typeof AppSettingsMemoriesRoute
   AppSettingsModelsRoute: typeof AppSettingsModelsRoute
+  AppSettingsNotificationsRoute: typeof AppSettingsNotificationsRoute
   AppSettingsResearchAgentsRoute: typeof AppSettingsResearchAgentsRoute
   AppSettingsSkillsRoute: typeof AppSettingsSkillsRoute
   AppSettingsSpeechRoute: typeof AppSettingsSpeechRoute
@@ -409,10 +490,13 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsAboutRoute: AppSettingsAboutRoute,
   AppSettingsAppearanceRoute: AppSettingsAppearanceRoute,
   AppSettingsChangelogRoute: AppSettingsChangelogRoute,
+  AppSettingsCompanionRoute: AppSettingsCompanionRoute,
   AppSettingsExpertsRoute: AppSettingsExpertsRoute,
   AppSettingsHelpRoute: AppSettingsHelpRoute,
+  AppSettingsMcpRoute: AppSettingsMcpRoute,
   AppSettingsMemoriesRoute: AppSettingsMemoriesRoute,
   AppSettingsModelsRoute: AppSettingsModelsRoute,
+  AppSettingsNotificationsRoute: AppSettingsNotificationsRoute,
   AppSettingsResearchAgentsRoute: AppSettingsResearchAgentsRoute,
   AppSettingsSkillsRoute: AppSettingsSkillsRoute,
   AppSettingsSpeechRoute: AppSettingsSpeechRoute,
@@ -460,6 +544,7 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  CompanionRoute: CompanionRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

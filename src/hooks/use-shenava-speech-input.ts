@@ -1,6 +1,11 @@
 "use client";
 
 import { useShenavaModel } from "@/hooks/use-shenava-model";
+import { useSpeech } from "@/components/speech/speech-provider";
+import {
+  DEFAULT_MICROPHONE_ID,
+  openMicrophoneStream,
+} from "@/lib/speech/microphone";
 import {
   resamplePcm,
   SHENAVA_MODELS,
@@ -47,10 +52,24 @@ function mergeChunks(chunks: Float32Array[]) {
   return merged;
 }
 
+type ShenavaSpeechInputOptions = {
+  showTranscriptionSuccessToast?: boolean;
+  enableSpaceShortcut?: boolean;
+};
+
 export function useShenavaSpeechInput(
-  onTranscript: (transcript: string) => void
+  onTranscript: (transcript: string) => void,
+  options: ShenavaSpeechInputOptions = {}
 ) {
+  const showTranscriptionSuccessToast =
+    options.showTranscriptionSuccessToast ?? true;
+  const enableSpaceShortcut = options.enableSpaceShortcut ?? false;
   const model = useShenavaModel();
+  const {
+    selectedMicrophoneId,
+    setSelectedMicrophoneId,
+    refreshMicrophones,
+  } = useSpeech();
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -92,13 +111,15 @@ export function useShenavaSpeechInput(
         return;
       }
       transcriptCallbackRef.current(result.text);
-      toast.success("گفتار به متن تبدیل شد.");
+      if (showTranscriptionSuccessToast) {
+        toast.success("گفتار به متن تبدیل شد.");
+      }
     } catch {
       toast.error("تبدیل گفتار به متن ناموفق بود.");
     } finally {
       setIsTranscribing(false);
     }
-  }, []);
+  }, [showTranscriptionSuccessToast]);
 
   const startRecording = useCallback(async () => {
     if (startPendingRef.current) return;
@@ -111,15 +132,8 @@ export function useShenavaSpeechInput(
     let context: AudioContext | null = null;
     startPendingRef.current = true;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          autoGainControl: true,
-          channelCount: 1,
-          echoCancellation: true,
-          noiseSuppression: true,
-        },
-        video: false,
-      });
+      stream = await openMicrophoneStream(selectedMicrophoneId);
+      void refreshMicrophones().catch(() => undefined);
       context = new AudioContext();
       await context.resume();
       const source = context.createMediaStreamSource(stream);
@@ -160,13 +174,25 @@ export function useShenavaSpeechInput(
       if (context) void context.close().catch(() => undefined);
       if (error instanceof DOMException && error.name === "NotAllowedError") {
         toast.error("دسترسی میکروفن رد شد. آن را در تنظیمات سیستم فعال کنید.");
+      } else if (
+        error instanceof DOMException &&
+        (error.name === "NotFoundError" ||
+          error.name === "OverconstrainedError")
+      ) {
+        setSelectedMicrophoneId(DEFAULT_MICROPHONE_ID);
+        toast.error("میکروفن انتخاب‌شده در دسترس نیست؛ میکروفن سیستم فعال شد.");
       } else {
         toast.error("شروع ضبط صدا ناموفق بود.");
       }
     } finally {
       startPendingRef.current = false;
     }
-  }, [finishRecording]);
+  }, [
+    finishRecording,
+    refreshMicrophones,
+    selectedMicrophoneId,
+    setSelectedMicrophoneId,
+  ]);
 
   const cancelRecording = useCallback(() => {
     const session = recordingRef.current;
@@ -178,7 +204,7 @@ export function useShenavaSpeechInput(
   }, []);
 
   useEffect(() => {
-    if (!isRecording) return;
+    if (!isRecording || enableSpaceShortcut) return;
 
     const handleRecordingShortcut = (event: globalThis.KeyboardEvent) => {
       if (
@@ -206,7 +232,7 @@ export function useShenavaSpeechInput(
 
     window.addEventListener("keydown", handleRecordingShortcut);
     return () => window.removeEventListener("keydown", handleRecordingShortcut);
-  }, [finishRecording, isRecording]);
+  }, [enableSpaceShortcut, finishRecording, isRecording]);
 
   const handleMicrophone = useCallback(async () => {
     if (isTranscribing) return;
@@ -226,6 +252,40 @@ export function useShenavaSpeechInput(
       setDownloadDialogOpen(true);
     }
   }, [finishRecording, isTranscribing, model, startRecording]);
+
+  useEffect(() => {
+    if (!enableSpaceShortcut) return;
+
+    const handleSpaceShortcut = (event: globalThis.KeyboardEvent) => {
+      if (
+        event.code !== "Space" ||
+        event.repeat ||
+        event.isComposing ||
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey
+      ) {
+        return;
+      }
+
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest(
+          "button, input, textarea, select, [contenteditable='true'], [role='button'], [role='combobox'], [role='option'], [data-space-shortcut-ignore]"
+        )
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      void handleMicrophone();
+    };
+
+    window.addEventListener("keydown", handleSpaceShortcut);
+    return () => window.removeEventListener("keydown", handleSpaceShortcut);
+  }, [enableSpaceShortcut, handleMicrophone]);
 
   const downloadModel = useCallback(async (modelKey: ShenavaModelKey) => {
     try {

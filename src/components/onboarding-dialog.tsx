@@ -23,6 +23,7 @@ import { APP_NAME_FA } from "@/lib/branding";
 import { markOnboardingCompleted } from "@/lib/onboarding";
 import { cn } from "@/lib/utils";
 import {
+  AppWindowIcon,
   FolderKanbanIcon,
   KeyRoundIcon,
   MessageSquareTextIcon,
@@ -30,6 +31,7 @@ import {
   PaletteIcon,
   SparklesIcon,
   UserRoundIcon,
+  WaypointsIcon,
   type LucideIcon,
 } from "lucide-react";
 import type { ComponentType, SVGProps } from "react";
@@ -136,14 +138,41 @@ const STEPS: OnboardingStep[] = [
     ],
   },
   {
+    id: "mcp",
+    icon: WaypointsIcon,
+    title: "ابزارهای MCP",
+    description:
+      "سرورهای Model Context Protocol را به هر فضای کاری وصل کنید تا ایجنت به ابزارهای محلی یا راه‌دور دسترسی داشته باشد.",
+    bullets: [
+      "از تنظیمات → سرورهای MCP یک سرور stdio، HTTP یا SSE اضافه کنید",
+      "قبل از فعال‌کردن، اتصال را آزمایش کنید تا ابزارها را ببینید",
+      "از منوی + کنار کادر پیام، برای هر گفتگو مشخص کنید کدام سرور MCP فعال باشد",
+      "هر فراخوانی ابزار MCP جداگانه نیاز به تأیید شما دارد",
+    ],
+  },
+  {
     id: "tools",
     icon: MessageSquareTextIcon,
     title: "امکانات چت",
     description: "چند میانبر مفید تا سریع‌تر کار کنید:",
     bullets: [
+      "از منوی + فایل، MCP، مهارت یا متخصص را به پیام اضافه کنید",
       "با / در چت متخصص‌ها را فراخوانی کنید",
       "حافظه و مهارت‌ها را از تنظیمات مدیریت کنید",
       "دستیار می‌تواند صفحات وب را بخواند و در فضای کاری فایل بسازد",
+    ],
+  },
+  {
+    id: "companion",
+    icon: AppWindowIcon,
+    title: "دستیار سریع (Companion)",
+    description:
+      "یک پنجرهٔ شناور کوچک برای پیام سریع، بدون باز کردن کل برنامه. از هر جای دسکتاپ با میانبر سراسری در دسترس است.",
+    bullets: [
+      "با میانبر پیش‌فرض ⌘⇧Space (یا Ctrl+Shift+Space) پنجره را باز یا پنهان کنید",
+      "پیام بفرستید، اسکرین‌شات بگیرید و همان گفتگو را در پنجرهٔ کوچک دنبال کنید",
+      "میانبر باز کردن و میکروفن را از تنظیمات → Companion عوض کنید",
+      "وقتی ایجنت کارش تمام شد یا به تأیید نیاز داشت، اعلان دسکتاپ هم می‌آید",
     ],
   },
 ];
