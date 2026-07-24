@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import { WorkspaceFilesStore } from "./agent/workspace-files";
 import { ChatWorktreeManager } from "./git/worktree-manager";
 import { TurnCheckpointManager } from "./git/checkpoint-manager";
+import { WorkspaceGitService } from "./git/workspace-git-service";
 import { WorkspaceEventBus } from "./agent/events";
 import { RunApprovalBroker } from "./agent/approval-broker";
 import { CredentialService } from "./credentials";
@@ -221,6 +222,7 @@ app.whenReady().then(async () => {
   );
   const worktrees = new ChatWorktreeManager(database, userDataPath);
   const checkpoints = new TurnCheckpointManager(database);
+  const git = new WorkspaceGitService(workspaceFiles);
   shenava = new ShenavaService({
     userDataPath,
     workerScript: resolveShenavaWorkerPath(),
@@ -249,6 +251,7 @@ app.whenReady().then(async () => {
     workspaceFiles,
     checkpoints,
     approvals: approvalBroker,
+    git,
     workspaceEvents,
     shenava,
     sessionToken,

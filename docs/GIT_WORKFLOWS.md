@@ -72,6 +72,28 @@ Restore is deliberately conservative:
 This protects later work from an old restore button. Restore never runs merely
 from opening a diff; it requires the explicit confirmation action in the UI.
 
+## Interactive Git operations
+
+The changed-files shelf is also a scoped Git control surface:
+
+- stage or unstage one file or all visible workspace changes;
+- discard one tracked or untracked file after explicit confirmation;
+- commit staged files with a bounded commit message;
+- fetch and fast-forward the current branch from its configured upstream;
+- merge a selected local branch into the current branch; and
+- inspect conflicts and explicitly abort an in-progress merge.
+
+All commands use argument arrays rather than a shell. Renderer-supplied paths
+must resolve inside the approved primary workspace folder. Commits are rejected
+if the repository index contains staged paths outside that folder. Update and
+merge are available only when the workspace primary folder is the repository
+root, because those operations can change any path in the repository.
+
+**Update** deliberately uses `fetch --prune` followed by `merge --ff-only`.
+When histories diverge, Nimruz stops and asks the user to use the explicit merge
+workflow. It never rebases, autostashes, force-resets, or pushes. A conflicting
+merge remains visible until the user resolves it or selects **Abort merge**.
+
 ## Local data and cleanup
 
 Branches, worktrees, checkpoint refs, and metadata are local. They are never
@@ -92,11 +114,14 @@ The Git integration tests create real temporary repositories and verify:
 - restore is blocked after newer changes.
 - Codex receives only canonical approved roots and native approval decisions
   are translated back to its app-server protocol.
+- stage/unstage/commit/discard are scoped to approved paths;
+- a local bare remote fast-forwards through Update; and
+- merge conflicts remain recoverable through `merge --abort`.
 
 Run:
 
 ```bash
-pnpm exec tsx --test electron/git/workspace-git.test.ts electron/agent/workspace-files.test.ts
+pnpm exec tsx --test electron/git/workspace-git.test.ts electron/git/workspace-git-service.test.ts electron/agent/workspace-files.test.ts
 pnpm typecheck
 pnpm test
 pnpm build

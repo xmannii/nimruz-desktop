@@ -23,6 +23,24 @@ const desktopApi: DesktopAPI = {
   auth: {
     getSessionToken: () => ipcRenderer.invoke("auth:get-session-token"),
   },
+  git: {
+    status: (workspaceId, chatId) =>
+      ipcRenderer.invoke("git:status", workspaceId, chatId),
+    stage: (workspaceId, paths, chatId) =>
+      ipcRenderer.invoke("git:stage", workspaceId, paths, chatId),
+    unstage: (workspaceId, paths, chatId) =>
+      ipcRenderer.invoke("git:unstage", workspaceId, paths, chatId),
+    discard: (workspaceId, relativePath, chatId) =>
+      ipcRenderer.invoke("git:discard", workspaceId, relativePath, chatId),
+    commit: (workspaceId, message, chatId) =>
+      ipcRenderer.invoke("git:commit", workspaceId, message, chatId),
+    update: (workspaceId, chatId) =>
+      ipcRenderer.invoke("git:update", workspaceId, chatId),
+    merge: (workspaceId, branch, chatId) =>
+      ipcRenderer.invoke("git:merge", workspaceId, branch, chatId),
+    abortMerge: (workspaceId, chatId) =>
+      ipcRenderer.invoke("git:abort-merge", workspaceId, chatId),
+  },
   window: {
     minimize: () => ipcRenderer.invoke("window:minimize"),
     toggleMaximize: () => ipcRenderer.invoke("window:toggle-maximize"),

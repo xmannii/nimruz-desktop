@@ -240,6 +240,28 @@ export type WorkspaceFileChange = {
   /** Set when a recorded workspace-agent write touched this path. */
   agentTouched: boolean;
   agentRunId: string | null;
+  /** True when the repository index contains a change for this path. */
+  staged: boolean;
+  /** Raw porcelain status columns, retained for precise Git actions. */
+  indexStatus: string;
+  worktreeStatus: string;
+};
+
+export type WorkspaceGitStatus = {
+  repositoryRoot: string;
+  workingRoot: string;
+  branch: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  merging: boolean;
+  branches: string[];
+};
+
+export type WorkspaceGitOperationResult = {
+  ok: boolean;
+  message: string;
+  conflicts: string[];
 };
 
 /** Where project tools for a chat execute. */
@@ -326,6 +348,7 @@ export type WorkspaceEvent =
   | { type: "file-updated"; workspaceId: string; path: string }
   | { type: "file-deleted"; workspaceId: string; path: string }
   | { type: "file-moved"; workspaceId: string; from: string; to: string }
+  | { type: "git-changed"; workspaceId: string; chatId: string | null }
   | { type: "artifact-changed"; workspaceId: string; artifactId?: string }
   | { type: "task-changed"; workspaceId: string; taskId?: string }
   | { type: "plan-changed"; workspaceId: string; planId?: string }

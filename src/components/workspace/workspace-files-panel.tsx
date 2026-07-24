@@ -48,6 +48,7 @@ import type {
   ChatWorktree,
   WorkspaceFileChange,
   WorkspaceFileEntry,
+  WorkspaceGitStatus,
   WorkspaceRoot,
 } from "@/lib/workspace";
 import {
@@ -60,12 +61,17 @@ import {
   FilePlusIcon,
   FolderIcon,
   FolderPlusIcon,
+  GitCommitHorizontalIcon,
+  GitMergeIcon,
   HardDriveIcon,
+  MinusIcon,
   MoreVerticalIcon,
   PencilIcon,
+  PlusIcon,
   RefreshCwIcon,
   SearchIcon,
   Trash2Icon,
+  Undo2Icon,
 } from "lucide-react";
 import {
   useCallback,
@@ -315,13 +321,23 @@ function changeHasLineStats(change: WorkspaceFileChange): boolean {
 }
 
 function ChangedFilesShelf({
+  workspaceId,
+  chatId,
   changes,
   onOpenFile,
+  onRefresh,
 }: {
+  workspaceId: string;
+  chatId?: string;
   changes: WorkspaceFileChange[];
   onOpenFile: (change: WorkspaceFileChange) => void;
+  onRefresh: () => void;
 }) {
   const [open, setOpen] = useState(true);
+  const [gitStatus, setGitStatus] = useState<WorkspaceGitStatus | null>(null);
+  const [commitMessage, setCommitMessage] = useState("");
+  const [mergeBranch, setMergeBranch] = useState("");
+  const [busy, setBusy] = useState(false);
   const totalAdditions = changes.reduce(
     (total, change) => total + change.additions,
     0
@@ -331,7 +347,46 @@ function ChangedFilesShelf({
     0
   );
 
-  if (changes.length === 0) return null;
+  const refreshGit = useCallback(async () => {
+    try {
+      const status = await window.desktop.git.status(workspaceId, chatId);
+      setGitStatus(status);
+      setMergeBranch((current) =>
+        current && status.branches.includes(current)
+          ? current
+          : status.branches.find((branch) => branch !== status.branch) ?? ""
+      );
+    } catch {
+      setGitStatus(null);
+    }
+  }, [chatId, workspaceId]);
+
+  useEffect(() => {
+    void refreshGit();
+  }, [changes, refreshGit]);
+
+  async function perform(operation: () => Promise<unknown>, success?: string) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await operation();
+      if (success) toast.success(success);
+    } catch (operationError) {
+      toast.error(
+        operationError instanceof Error
+          ? operationError.message
+          : "عملیات Git ناموفق بود."
+      );
+    } finally {
+      onRefresh();
+      await refreshGit();
+      setBusy(false);
+    }
+  }
+
+  const staged = changes.filter((change) => change.staged);
+
+  if (changes.length === 0 && !gitStatus) return null;
 
   return (
     <div className="shrink-0 px-2 pb-2">
@@ -343,6 +398,7 @@ function ChangedFilesShelf({
         <CollapsibleTrigger className="flex h-9 w-full items-center gap-2 px-2.5 text-start outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring/50">
           <FileDiffIcon className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate text-xs font-medium">
+            {gitStatus?.branch ? `${gitStatus.branch} · ` : ""}
             {changes.length.toLocaleString("fa-IR")} فایل ویرایش‌شده
           </span>
           {totalAdditions > 0 ? (
@@ -375,46 +431,239 @@ function ChangedFilesShelf({
 
                 return (
                   <li key={change.path}>
-                    <button
-                      type="button"
-                      disabled={isDeleted}
-                      onClick={() => onOpenFile(change)}
-                      className="group flex w-full items-center gap-2 px-2.5 py-1.5 text-left outline-none hover:bg-muted/45 focus-visible:bg-muted/60 disabled:cursor-default disabled:opacity-60"
-                    >
-                      <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1">
-                        <span className="flex min-w-0 items-baseline gap-1.5">
-                          <span className="truncate font-mono text-[11px] text-foreground">
-                            {filename}
-                          </span>
-                          {directory !== change.relativePath ? (
-                            <span className="truncate font-mono text-[9px] text-muted-foreground">
-                              {directory}
+                    <div className="group flex w-full items-center gap-1 px-1.5 py-1 hover:bg-muted/45">
+                      <button
+                        type="button"
+                        disabled={isDeleted}
+                        onClick={() => onOpenFile(change)}
+                        className="flex min-w-0 flex-1 items-center gap-2 px-1 py-0.5 text-left outline-none focus-visible:bg-muted/60 disabled:cursor-default disabled:opacity-60"
+                      >
+                        <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex min-w-0 items-baseline gap-1.5">
+                            <span className="truncate font-mono text-[11px] text-foreground">
+                              {filename}
                             </span>
-                          ) : null}
+                            {directory !== change.relativePath ? (
+                              <span className="truncate font-mono text-[9px] text-muted-foreground">
+                                {directory}
+                              </span>
+                            ) : null}
+                          </span>
                         </span>
-                      </span>
-                      {change.agentTouched ? (
-                        <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
-                          ایجنت
-                        </Badge>
-                      ) : null}
-                      {lineStats ? (
-                        <span className="flex shrink-0 items-center gap-1.5 font-mono text-[10px]">
-                          <span className="text-primary">+{change.additions}</span>
-                          <span className="text-destructive">-{change.deletions}</span>
-                        </span>
-                      ) : (
-                        <Badge variant="outline" className="h-4 px-1.5 text-[9px]">
-                          {CHANGE_STATUS_LABELS[change.status]}
-                        </Badge>
-                      )}
-                    </button>
+                        {change.agentTouched ? (
+                          <Badge variant="secondary" className="h-4 px-1.5 text-[9px]">
+                            ایجنت
+                          </Badge>
+                        ) : null}
+                        {lineStats ? (
+                          <span className="flex shrink-0 items-center gap-1.5 font-mono text-[10px]">
+                            <span className="text-primary">+{change.additions}</span>
+                            <span className="text-destructive">-{change.deletions}</span>
+                          </span>
+                        ) : (
+                          <Badge variant="outline" className="h-4 px-1.5 text-[9px]">
+                            {CHANGE_STATUS_LABELS[change.status]}
+                          </Badge>
+                        )}
+                      </button>
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant={change.staged ? "secondary" : "ghost"}
+                        disabled={busy}
+                        title={change.staged ? "خارج کردن از استیج" : "استیج"}
+                        onClick={() =>
+                          void perform(
+                            () =>
+                              change.staged
+                                ? window.desktop.git.unstage(
+                                    workspaceId,
+                                    [change.relativePath],
+                                    chatId
+                                  )
+                                : window.desktop.git.stage(
+                                    workspaceId,
+                                    [change.relativePath],
+                                    chatId
+                                  )
+                          )
+                        }
+                      >
+                        {change.staged ? <MinusIcon /> : <PlusIcon />}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="icon-xs"
+                        variant="ghost"
+                        disabled={busy}
+                        title="دور انداختن تغییر"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              `تغییرهای «${change.relativePath}» برای همیشه دور انداخته شود؟`
+                            )
+                          ) {
+                            void perform(() =>
+                              window.desktop.git.discard(
+                                workspaceId,
+                                change.relativePath,
+                                chatId
+                              )
+                            );
+                          }
+                        }}
+                      >
+                        <Undo2Icon />
+                      </Button>
+                    </div>
                   </li>
                 );
               })}
             </ul>
           </ScrollArea>
+          <div className="flex flex-col gap-1.5 border-t border-border/60 p-2">
+            <div className="flex items-center gap-1.5">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || changes.length === 0}
+                onClick={() =>
+                  void perform(() =>
+                    window.desktop.git.stage(
+                      workspaceId,
+                      changes.map((change) => change.relativePath),
+                      chatId
+                    )
+                  )
+                }
+              >
+                استیج همه
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy || staged.length === 0}
+                onClick={() =>
+                  void perform(() =>
+                    window.desktop.git.unstage(
+                      workspaceId,
+                      staged.map((change) => change.relativePath),
+                      chatId
+                    )
+                  )
+                }
+              >
+                لغو استیج
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy || !gitStatus?.upstream}
+                onClick={() =>
+                  void perform(
+                    () => window.desktop.git.update(workspaceId, chatId),
+                    "شاخه با upstream همگام شد."
+                  )
+                }
+              >
+                <RefreshCwIcon data-icon="inline-start" />
+                به‌روزرسانی
+              </Button>
+            </div>
+            {staged.length > 0 ? (
+              <form
+                className="flex items-center gap-1.5"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void perform(async () => {
+                    await window.desktop.git.commit(
+                      workspaceId,
+                      commitMessage,
+                      chatId
+                    );
+                    setCommitMessage("");
+                  }, "کامیت ساخته شد.");
+                }}
+              >
+                <Input
+                  value={commitMessage}
+                  onChange={(event) => setCommitMessage(event.target.value)}
+                  placeholder="پیام کامیت…"
+                  className="h-8 text-xs"
+                  maxLength={2_000}
+                />
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={busy || !commitMessage.trim()}
+                >
+                  <GitCommitHorizontalIcon data-icon="inline-start" />
+                  کامیت
+                </Button>
+              </form>
+            ) : null}
+            {gitStatus?.merging ? (
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={busy}
+                onClick={() =>
+                  void perform(
+                    () => window.desktop.git.abortMerge(workspaceId, chatId),
+                    "ادغام لغو شد."
+                  )
+                }
+              >
+                لغو ادغام ناسازگار
+              </Button>
+            ) : gitStatus && gitStatus.branches.length > 1 ? (
+              <div className="flex items-center gap-1.5">
+                <select
+                  dir="ltr"
+                  value={mergeBranch}
+                  onChange={(event) => setMergeBranch(event.target.value)}
+                  className="h-8 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
+                >
+                  {gitStatus.branches
+                    .filter((branch) => branch !== gitStatus.branch)
+                    .map((branch) => (
+                      <option key={branch} value={branch}>
+                        {branch}
+                      </option>
+                    ))}
+                </select>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={busy || !mergeBranch || changes.length > 0}
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        `شاخه «${mergeBranch}» در ${gitStatus.branch ?? "HEAD"} ادغام شود؟`
+                      )
+                    ) {
+                      void perform(async () => {
+                        const result = await window.desktop.git.merge(
+                          workspaceId,
+                          mergeBranch,
+                          chatId
+                        );
+                        if (!result.ok) {
+                          throw new Error(
+                            `${result.message}\nفایل‌های ناسازگار: ${result.conflicts.join(", ")}`
+                          );
+                        }
+                      }, "ادغام انجام شد.");
+                    }
+                  }}
+                >
+                  <GitMergeIcon data-icon="inline-start" />
+                  ادغام
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </CollapsibleContent>
       </Collapsible>
     </div>
@@ -662,7 +911,8 @@ export function WorkspaceFilesPanel({
         "file-deleted",
         "file-moved",
         "root-changed",
-        "run-changed"
+        "run-changed",
+        "git-changed"
       )
     ) {
       return;
@@ -891,8 +1141,14 @@ export function WorkspaceFilesPanel({
           className="min-h-0 flex-1"
         />
         <ChangedFilesShelf
+          workspaceId={workspaceId}
+          chatId={chatId}
           changes={changes}
           onOpenFile={(change) => void openFileInPanel(change.path)}
+          onRefresh={() => {
+            refreshTree();
+            void loadChanges();
+          }}
         />
       </div>
     );
@@ -1036,8 +1292,14 @@ export function WorkspaceFilesPanel({
       )}
 
       <ChangedFilesShelf
+        workspaceId={workspaceId}
+        chatId={chatId}
         changes={changes}
         onOpenFile={(change) => void openFileInPanel(change.path)}
+        onRefresh={() => {
+          refreshTree();
+          void loadChanges();
+        }}
       />
 
       <Dialog

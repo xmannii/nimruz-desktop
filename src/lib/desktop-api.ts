@@ -58,6 +58,8 @@ import type {
   WorkspaceFileChange,
   WorkspaceFileEntry,
   WorkspaceEvent,
+  WorkspaceGitOperationResult,
+  WorkspaceGitStatus,
   WorkspaceRoot,
   WorkspaceTrustSettings,
 } from "@/lib/workspace";
@@ -111,6 +113,42 @@ export type DesktopAPI = {
   isDesktop: true;
   auth: {
     getSessionToken: () => Promise<string>;
+  };
+  git: {
+    status: (
+      workspaceId: string,
+      chatId?: string
+    ) => Promise<WorkspaceGitStatus>;
+    stage: (
+      workspaceId: string,
+      paths: string[],
+      chatId?: string
+    ) => Promise<void>;
+    unstage: (
+      workspaceId: string,
+      paths: string[],
+      chatId?: string
+    ) => Promise<void>;
+    discard: (
+      workspaceId: string,
+      relativePath: string,
+      chatId?: string
+    ) => Promise<void>;
+    commit: (
+      workspaceId: string,
+      message: string,
+      chatId?: string
+    ) => Promise<WorkspaceGitOperationResult>;
+    update: (
+      workspaceId: string,
+      chatId?: string
+    ) => Promise<WorkspaceGitOperationResult>;
+    merge: (
+      workspaceId: string,
+      branch: string,
+      chatId?: string
+    ) => Promise<WorkspaceGitOperationResult>;
+    abortMerge: (workspaceId: string, chatId?: string) => Promise<void>;
   };
   window: {
     minimize: () => Promise<void>;

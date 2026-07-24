@@ -53,6 +53,7 @@ import {
 import { testMcpServerConnection } from "./agent/mcp";
 import type { TurnCheckpointManager } from "./git/checkpoint-manager";
 import type { RunApprovalBroker } from "./agent/approval-broker";
+import type { WorkspaceGitService } from "./git/workspace-git-service";
 import {
   CHAT_QUEUE_TEXT_LIMIT,
   type ChatQueuedMessageKind,
@@ -113,6 +114,7 @@ export function registerIpcHandlers(options: {
   workspaceFiles: WorkspaceFilesStore;
   checkpoints: TurnCheckpointManager;
   approvals: RunApprovalBroker;
+  git: WorkspaceGitService;
   workspaceEvents: WorkspaceEventBus;
   shenava: ShenavaService;
   sessionToken: string;
@@ -128,6 +130,7 @@ export function registerIpcHandlers(options: {
     workspaceFiles,
     checkpoints,
     approvals,
+    git,
     workspaceEvents,
     shenava,
     sessionToken,
@@ -709,6 +712,9 @@ export function registerIpcHandlers(options: {
             diff,
             agentTouched: agentTouchedPaths.has(absolutePath),
             agentRunId: agentTouchedPaths.get(absolutePath) ?? null,
+            staged: false,
+            indexStatus: code[0] ?? " ",
+            worktreeStatus: code[1] ?? " ",
           };
         }
 
@@ -732,9 +738,67 @@ export function registerIpcHandlers(options: {
           diff: diffResult.stdout.slice(0, MAX_DIFF_CHARS) || null,
           agentTouched: agentTouchedPaths.has(absolutePath),
           agentRunId: agentTouchedPaths.get(absolutePath) ?? null,
+          staged: ![" ", "?", "!"].includes(code[0] ?? " "),
+          indexStatus: code[0] ?? " ",
+          worktreeStatus: code[1] ?? " ",
         };
       })
     );
+  });
+  const emitGitChanged = (workspaceId: string, chatId?: string) =>
+    workspaceEvents.emit({
+      type: "git-changed",
+      workspaceId,
+      chatId: chatId ?? null,
+    });
+  handle("git:status", (workspaceId: string, chatId?: string) =>
+    git.status(workspaceId, chatId)
+  );
+  handle(
+    "git:stage",
+    async (workspaceId: string, paths: string[], chatId?: string) => {
+      await git.stage(workspaceId, paths, chatId);
+      emitGitChanged(workspaceId, chatId);
+    }
+  );
+  handle(
+    "git:unstage",
+    async (workspaceId: string, paths: string[], chatId?: string) => {
+      await git.unstage(workspaceId, paths, chatId);
+      emitGitChanged(workspaceId, chatId);
+    }
+  );
+  handle(
+    "git:discard",
+    async (workspaceId: string, relativePath: string, chatId?: string) => {
+      await git.discard(workspaceId, relativePath, chatId);
+      emitGitChanged(workspaceId, chatId);
+    }
+  );
+  handle(
+    "git:commit",
+    async (workspaceId: string, message: string, chatId?: string) => {
+      const result = await git.commit(workspaceId, message, chatId);
+      emitGitChanged(workspaceId, chatId);
+      return result;
+    }
+  );
+  handle("git:update", async (workspaceId: string, chatId?: string) => {
+    const result = await git.update(workspaceId, chatId);
+    emitGitChanged(workspaceId, chatId);
+    return result;
+  });
+  handle(
+    "git:merge",
+    async (workspaceId: string, branch: string, chatId?: string) => {
+      const result = await git.merge(workspaceId, branch, chatId);
+      emitGitChanged(workspaceId, chatId);
+      return result;
+    }
+  );
+  handle("git:abort-merge", async (workspaceId: string, chatId?: string) => {
+    await git.abortMerge(workspaceId, chatId);
+    emitGitChanged(workspaceId, chatId);
   });
   handle(
     "storage:search-workspace-files",
