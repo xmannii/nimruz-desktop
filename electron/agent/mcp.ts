@@ -106,7 +106,8 @@ async function createClient(
         cwd,
         // Never inherit arbitrary app credentials into third-party servers.
         env: stdioEnvironment(cwd),
-        stderr: "pipe",
+        // Servers may be chatty; an unread pipe could deadlock the protocol.
+        stderr: "ignore",
       }),
     });
   }

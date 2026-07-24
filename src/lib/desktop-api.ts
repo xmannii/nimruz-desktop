@@ -43,6 +43,8 @@ import type {
   ApprovalRecord,
   ArtifactRecord,
   LocalWorkspace,
+  McpServerConfig,
+  McpServerState,
   PlanRecord,
   TaskRecord,
   ToolCallRecord,
@@ -236,6 +238,10 @@ export type DesktopAPI = {
       workspaceId: string,
       trust: WorkspaceTrustSettings
     ) => Promise<LocalWorkspace>;
+    listMcpServers: (workspaceId: string) => Promise<McpServerConfig[]>;
+    saveMcpServer: (server: McpServerConfig) => Promise<McpServerConfig>;
+    deleteMcpServer: (workspaceId: string, serverId: string) => Promise<void>;
+    testMcpServer: (server: McpServerConfig) => Promise<McpServerState>;
     listWorkspaceFiles: (
       workspaceId: string,
       path?: string

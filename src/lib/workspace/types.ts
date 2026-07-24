@@ -261,6 +261,7 @@ export type WorkspaceEvent =
       status?: string;
     }
   | { type: "approval-changed"; workspaceId: string | null; runId: string }
+  | { type: "mcp-changed"; workspaceId: string; serverId?: string }
   | { type: "root-changed"; workspaceId: string };
 
 export type WorkspaceEventType = WorkspaceEvent["type"];

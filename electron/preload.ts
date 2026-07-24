@@ -252,6 +252,18 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("storage:remove-workspace-root", rootId),
     updateWorkspaceTrust: (workspaceId, trust) =>
       ipcRenderer.invoke("storage:update-workspace-trust", workspaceId, trust),
+    listMcpServers: (workspaceId) =>
+      ipcRenderer.invoke("storage:list-mcp-servers", workspaceId),
+    saveMcpServer: (server) =>
+      ipcRenderer.invoke("storage:save-mcp-server", server),
+    deleteMcpServer: (workspaceId, serverId) =>
+      ipcRenderer.invoke(
+        "storage:delete-mcp-server",
+        workspaceId,
+        serverId
+      ),
+    testMcpServer: (server) =>
+      ipcRenderer.invoke("storage:test-mcp-server", server),
     listWorkspaceFiles: (workspaceId, path) =>
       ipcRenderer.invoke("storage:list-workspace-files", workspaceId, path),
     readWorkspaceFile: (workspaceId, path) =>
