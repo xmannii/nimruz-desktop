@@ -52,7 +52,9 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 ### Agentic workspace
 
 - **Workspaces** — link project folders; chats live under a workspace (with a default home workspace)
+- **Isolated chat worktrees** — optionally give a new chat its own Git worktree and branch, so concurrent agents do not edit the same checkout
 - **Agent tools** — read/list/search files, write and patch, shell commands, artifacts, and tasks
+- **Turn checkpoints and diffs** — review the exact file patch from each completed agent run and safely restore it while the checkout still matches
 - **Workspace MCP tools** — connect stdio, HTTP, or SSE MCP servers; discovered tools are namespaced and require per-call approval
 - **Approvals** — risky tools ask before running; optional “always allow” per workspace
 - **Side panel** — files, artifacts, tasks, activity, and workspace settings
@@ -112,6 +114,9 @@ Workspace-specific MCP servers can be added under **Settings → MCP servers**.
 Select a workspace, then test the connection before enabling it for agent turns. See
 [Workspace MCP tools](docs/MCP.md) for supported transports, lifecycle, and the
 current authentication boundary.
+
+For isolated Git worktrees, per-run checkpoints, diff limits, and restore safety,
+see [Git workflows](docs/GIT_WORKFLOWS.md).
 
 API keys are encrypted through macOS Keychain, Windows DPAPI, or a Linux libsecret/KWallet keyring. On Linux, storage is refused when only Electron's insecure `basic_text` backend is available.
 

@@ -73,6 +73,7 @@ type WorkspacePanelSettingsProps = {
 
 type WorkspacePanelProps = {
   workspaceId: string;
+  chatId?: string;
   title?: string;
   className?: string;
   defaultTab?: WorkspacePanelSection;
@@ -105,6 +106,7 @@ function activeSectionKey(workspaceId: string): string {
 
 export function WorkspacePanel({
   workspaceId,
+  chatId,
   title,
   className,
   defaultTab = "files",
@@ -293,8 +295,9 @@ export function WorkspacePanel({
       >
         {active === "files" ? (
           <WorkspaceFilesPanel
-            key={workspaceId}
+            key={`${workspaceId}:${chatId ?? "shared"}`}
             workspaceId={workspaceId}
+            chatId={chatId}
             revealPath={revealPath}
             onRevealHandled={() => setRevealPath(null)}
           />

@@ -23,6 +23,8 @@ import type { ProviderModelRef } from "@/lib/models/catalog";
 import {
   HOME_WORKSPACE_ID,
   loadStoredActiveWorkspaceId,
+  sanitizeChatWorkspaceMode,
+  type ChatWorkspaceMode,
 } from "@/lib/workspace";
 import type { UIMessage } from "ai";
 import { nanoid } from "nanoid";
@@ -46,6 +48,7 @@ function createEmptyChat(
     model,
     messages: [],
     workspaceId,
+    workspaceMode: "shared",
     agentMode,
     createdAt: now,
     updatedAt: now,
@@ -84,6 +87,7 @@ function normalizeChat(chat: LocalChat): LocalChat {
         : typeof legacy.projectId === "string"
           ? legacy.projectId
           : HOME_WORKSPACE_ID,
+    workspaceMode: sanitizeChatWorkspaceMode(chat.workspaceMode),
     agentMode: sanitizeAgentMode(chat.agentMode),
     titleIsCustom: Boolean(chat.titleIsCustom),
     pinned: Boolean(chat.pinned),
@@ -116,6 +120,7 @@ export type ChatUpdate = {
   providerId?: string;
   agentMode?: AgentMode;
   mcpServerIds?: string[];
+  workspaceMode?: ChatWorkspaceMode;
 };
 
 export type ChatCreationOptions = {
@@ -315,6 +320,7 @@ export function useChatHistory(
           ? {
               ...chat,
               workspaceId: HOME_WORKSPACE_ID,
+              workspaceMode: "shared",
               mcpServerIds: undefined,
               updatedAt: Date.now(),
             }
@@ -331,6 +337,7 @@ export function useChatHistory(
             ? {
                 ...chat,
                 workspaceId,
+                workspaceMode: "shared",
                 mcpServerIds: undefined,
                 updatedAt: Date.now(),
               }
@@ -372,6 +379,9 @@ export function useChatHistory(
       );
       const nextMcpServerIds =
         "mcpServerIds" in update ? update.mcpServerIds : chat.mcpServerIds;
+      const nextWorkspaceMode = sanitizeChatWorkspaceMode(
+        update.workspaceMode ?? chat.workspaceMode
+      );
 
       if (
         chat.model === update.model &&
@@ -379,6 +389,7 @@ export function useChatHistory(
         sanitizeAgentMode(chat.agentMode) === nextAgentMode &&
         JSON.stringify(chat.mcpServerIds) ===
           JSON.stringify(nextMcpServerIds) &&
+        sanitizeChatWorkspaceMode(chat.workspaceMode) === nextWorkspaceMode &&
         areMessagesEqual(chat.messages, update.messages)
       ) {
         return current;
@@ -390,6 +401,7 @@ export function useChatHistory(
         providerId: nextProviderId,
         agentMode: nextAgentMode,
         mcpServerIds: nextMcpServerIds,
+        workspaceMode: nextWorkspaceMode,
         title: chat.titleIsCustom ? chat.title : getChatTitle(update.messages),
         updatedAt: Date.now(),
       };

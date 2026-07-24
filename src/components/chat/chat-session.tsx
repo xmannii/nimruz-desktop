@@ -493,11 +493,13 @@ export function ChatSession({
       agentMode,
       chatId: chat.id,
       workspaceId: chat.workspaceId ?? undefined,
+      workspaceMode: chat.workspaceMode,
     }),
     [
       agentMode,
       chat.id,
       chat.workspaceId,
+      chat.workspaceMode,
       experts,
       subagents,
       memories,
@@ -991,7 +993,19 @@ export function ChatSession({
       onStop={handleStop}
       centered={showCenteredComposer}
       messages={contextMessages}
+      chatId={chat.id}
       workspaceId={chat.workspaceId}
+      workspaceMode={chat.workspaceMode ?? "shared"}
+      onWorkspaceModeChange={(workspaceMode) =>
+        onChatChange(chat.id, {
+          messages,
+          model: modelRef.modelId as ModelId,
+          providerId: modelRef.providerId,
+          agentMode,
+          mcpServerIds,
+          workspaceMode,
+        })
+      }
       onWorkspaceChange={
         showCenteredComposer && agentMode !== "chat"
           ? handleWorkspaceChange
@@ -1040,6 +1054,7 @@ export function ChatSession({
             onRegenerate={handleRegenerate}
             onToolApprovalResponse={handleToolApprovalResponse}
             workspaceId={chat.workspaceId}
+            chatId={chat.id}
           />
           <div className="mx-auto w-full max-w-3xl shrink-0 px-3 sm:px-6">
             {composer}

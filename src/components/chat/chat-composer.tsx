@@ -22,7 +22,10 @@ import {
   WORKSPACE_MENTION,
   type ComposerAttachment,
 } from "@/lib/chat/composer-context";
-import { classifyFile } from "@/lib/workspace";
+import {
+  classifyFile,
+  type ChatWorkspaceMode,
+} from "@/lib/workspace";
 import { AgentModePicker } from "@/components/chat/agent-mode-picker";
 import {
   AskUserQuestionBar,
@@ -64,7 +67,14 @@ import {
   type ReasoningEffort,
 } from "@/lib/models/reasoning";
 import type { ChatStatus } from "ai";
-import { ArrowUpIcon, ListTodoIcon, PlayIcon, SquareIcon } from "lucide-react";
+import {
+  ArrowUpIcon,
+  FolderIcon,
+  GitBranchIcon,
+  ListTodoIcon,
+  PlayIcon,
+  SquareIcon,
+} from "lucide-react";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -110,8 +120,11 @@ type ChatComposerProps = {
   onStop: () => void;
   centered?: boolean;
   messages?: ChatUIMessage[];
+  chatId: string;
   workspaceId?: string | null;
   onWorkspaceChange?: (workspaceId: string) => void;
+  workspaceMode: ChatWorkspaceMode;
+  onWorkspaceModeChange: (mode: ChatWorkspaceMode) => void;
   attachments?: ComposerAttachment[];
   onAttachmentsChange?: (attachments: ComposerAttachment[]) => void;
   mcpServerIds?: string[];
@@ -138,8 +151,11 @@ export function ChatComposer({
   onStop,
   centered = false,
   messages = [],
+  chatId,
   workspaceId = null,
   onWorkspaceChange,
+  workspaceMode,
+  onWorkspaceModeChange,
   attachments = [],
   onAttachmentsChange,
   mcpServerIds,
@@ -237,6 +253,25 @@ export function ChatComposer({
   }, [attachments.length, isCodexProvider, onAttachmentsChange]);
 
   useEffect(() => {
+    if (
+      !isCodexProvider ||
+      workspaceMode !== "worktree" ||
+      messages.length > 0
+    ) {
+      return;
+    }
+    onWorkspaceModeChange("shared");
+    toast.info(
+      "Codex در اجرای فعلی به ابزارهای فایل پروژه دسترسی ندارد؛ محیط به پوشه مشترک برگشت."
+    );
+  }, [
+    isCodexProvider,
+    messages.length,
+    onWorkspaceModeChange,
+    workspaceMode,
+  ]);
+
+  useEffect(() => {
     setHighlightIndex(0);
   }, [slashQuery, expertSuggestions.length]);
 
@@ -249,7 +284,7 @@ export function ChatComposer({
     let cancelled = false;
     const { dir, name } = splitMentionQuery(mentionQuery);
     void window.desktop.storage
-      .listWorkspaceFiles(workspaceId, dir)
+      .listWorkspaceFiles(workspaceId, dir, chatId)
       .then((entries) => {
         if (cancelled) return;
         const filtered = entries
@@ -283,7 +318,7 @@ export function ChatComposer({
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, mentionQuery]);
+  }, [workspaceId, chatId, mentionQuery]);
 
   function selectMention(suggestion: MentionSuggestion) {
     const keepOpen =
@@ -585,14 +620,42 @@ export function ChatComposer({
       ) : null}
 
       {centered && onWorkspaceChange && !isChatMode ? (
-        <div dir="rtl" className="mb-2 flex items-center justify-start gap-2">
-          <span className="text-xs text-muted-foreground">پروژه:</span>
-          <ComposerWorkspacePicker
-            workspaces={workspaces}
-            workspaceId={workspaceId}
-            onWorkspaceChange={onWorkspaceChange}
-            disabled={isBusy}
-          />
+        <div dir="rtl" className="mb-2 flex flex-wrap items-center justify-start gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">پروژه:</span>
+            <ComposerWorkspacePicker
+              workspaces={workspaces}
+              workspaceId={workspaceId}
+              onWorkspaceChange={onWorkspaceChange}
+              disabled={isBusy}
+            />
+          </div>
+          {workspaceId && !isCodexProvider ? (
+            <Button
+              type="button"
+              variant={workspaceMode === "worktree" ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8 gap-1.5 rounded-lg text-xs"
+              disabled={isBusy}
+              title={
+                workspaceMode === "worktree"
+                  ? "هر تغییر در شاخه و پوشه Git جداگانه انجام می‌شود"
+                  : "تغییرها مستقیماً در پوشه اصلی پروژه انجام می‌شوند"
+              }
+              onClick={() =>
+                onWorkspaceModeChange(
+                  workspaceMode === "worktree" ? "shared" : "worktree"
+                )
+              }
+            >
+              {workspaceMode === "worktree" ? (
+                <GitBranchIcon className="size-3.5" />
+              ) : (
+                <FolderIcon className="size-3.5" />
+              )}
+              {workspaceMode === "worktree" ? "ورک‌تری ایزوله" : "پوشه مشترک"}
+            </Button>
+          ) : null}
         </div>
       ) : null}
 

@@ -24,6 +24,7 @@ import {
 import { ChatFetchUrlToolPart } from "@/components/chat/chat-web-tool-part";
 import { ChatWorkspaceToolPart } from "@/components/chat/chat-workspace-tool-part";
 import { ChatSubagentToolPart } from "@/components/chat/chat-subagent-tool-part";
+import { ChatTurnCheckpoint } from "@/components/chat/chat-turn-checkpoint";
 import { ToolApprovalCard } from "@/components/workspace/tool-approval-card";
 import {
   Attachment,
@@ -72,6 +73,7 @@ type ChatMessagesProps = {
   onRegenerate?: (messageId: string) => void;
   onToolApprovalResponse?: ToolApprovalResponder;
   workspaceId?: string | null;
+  chatId?: string;
 };
 
 /**
@@ -166,6 +168,7 @@ export function ChatMessages({
   onRegenerate,
   onToolApprovalResponse,
   workspaceId = null,
+  chatId,
 }: ChatMessagesProps) {
   return (
     <>
@@ -186,6 +189,7 @@ export function ChatMessages({
                   onRegenerate={onRegenerate}
                   onToolApprovalResponse={onToolApprovalResponse}
                   workspaceId={workspaceId}
+                  chatId={chatId}
                 />
               ))}
 
@@ -227,6 +231,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   onRegenerate,
   onToolApprovalResponse,
   workspaceId,
+  chatId,
 }: {
   message: UIMessage;
   isStreaming: boolean;
@@ -234,6 +239,7 @@ const ChatMessageRow = memo(function ChatMessageRow({
   onRegenerate?: (messageId: string) => void;
   onToolApprovalResponse?: ToolApprovalResponder;
   workspaceId?: string | null;
+  chatId?: string;
 }) {
   const isUser = message.role === "user";
 
@@ -260,6 +266,15 @@ const ChatMessageRow = memo(function ChatMessageRow({
                   workspaceId={workspaceId}
                 />
               </BubbleGroup>
+              {!isStreaming &&
+              chatId &&
+              (message.metadata as ChatMessageMetadata | undefined)?.runId ? (
+                <ChatTurnCheckpoint
+                  runId={
+                    (message.metadata as ChatMessageMetadata).runId as string
+                  }
+                />
+              ) : null}
               {!isStreaming ? (
                 <ChatMessageActions
                   disabled={isBusy}

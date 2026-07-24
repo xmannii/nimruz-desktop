@@ -255,6 +255,7 @@ export function ChatView({ chatId, workspaceId }: ChatViewProps) {
               >
                 <WorkspacePanel
                   workspaceId={panelWorkspace.id}
+                  chatId={resolvedChat?.id}
                   title={panelWorkspace.title}
                   className="h-full"
                   onCollapse={collapsePanel}

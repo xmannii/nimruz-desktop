@@ -45,6 +45,7 @@ import { useWorkspaceRoots } from "@/hooks/use-workspace-roots";
 import { cn } from "@/lib/utils";
 import { classifyFile } from "@/lib/workspace";
 import type {
+  ChatWorktree,
   WorkspaceFileChange,
   WorkspaceFileEntry,
   WorkspaceRoot,
@@ -79,6 +80,7 @@ import { toast } from "sonner";
 
 type WorkspaceFilesPanelProps = {
   workspaceId: string;
+  chatId?: string;
   /** Optional absolute path a tool asked the panel to reveal. */
   revealPath?: string | null;
   onRevealHandled?: () => void;
@@ -421,10 +423,28 @@ function ChangedFilesShelf({
 
 export function WorkspaceFilesPanel({
   workspaceId,
+  chatId,
   revealPath,
   onRevealHandled,
 }: WorkspaceFilesPanelProps) {
-  const { roots, isLoading: rootsLoading } = useWorkspaceRoots(workspaceId);
+  const { roots: sharedRoots, isLoading: rootsLoading } =
+    useWorkspaceRoots(workspaceId);
+  const [worktree, setWorktree] = useState<ChatWorktree | null>(null);
+  const roots = useMemo<WorkspaceRoot[]>(() => {
+    if (!worktree || worktree.workspaceId !== workspaceId) return sharedRoots;
+    return [
+      ...sharedRoots.filter((item) => !item.isPrimary),
+      {
+        id: `worktree-${worktree.chatId}`,
+        workspaceId,
+        kind: "linked",
+        path: worktree.workingPath,
+        label: worktree.branchName,
+        isPrimary: true,
+        createdAt: worktree.createdAt,
+      },
+    ];
+  }, [sharedRoots, worktree, workspaceId]);
 
   const [root, setRoot] = useState<WorkspaceRoot | null>(null);
   const [pickingRoot, setPickingRoot] = useState(false);
@@ -449,6 +469,18 @@ export function WorkspaceFilesPanel({
 
   const loadGeneration = useRef(0);
 
+  const refreshWorktree = useCallback(async () => {
+    if (!chatId) {
+      setWorktree(null);
+      return;
+    }
+    setWorktree(await window.desktop.storage.getChatWorktree(chatId));
+  }, [chatId]);
+
+  useEffect(() => {
+    void refreshWorktree();
+  }, [refreshWorktree]);
+
   const entryByPath = useMemo(() => {
     const map = new Map<string, WorkspaceFileEntry>();
     for (const entries of childrenByPath.values()) {
@@ -464,12 +496,15 @@ export function WorkspaceFilesPanel({
 
   const loadChanges = useCallback(async () => {
     try {
-      const result = await window.desktop.storage.listWorkspaceChanges(workspaceId);
+      const result = await window.desktop.storage.listWorkspaceChanges(
+        workspaceId,
+        chatId
+      );
       setChanges(result);
     } catch (changeError) {
       console.error("Failed to load workspace changes:", changeError);
     }
-  }, [workspaceId]);
+  }, [workspaceId, chatId]);
 
   useEffect(() => {
     void loadChanges();
@@ -487,7 +522,8 @@ export function WorkspaceFilesPanel({
       try {
         const result = await window.desktop.storage.listWorkspaceFiles(
           workspaceId,
-          targetPath
+          targetPath,
+          chatId
         );
         if (generation !== loadGeneration.current) return;
         setChildrenByPath((prev) => {
@@ -515,7 +551,7 @@ export function WorkspaceFilesPanel({
         }
       }
     },
-    [workspaceId]
+    [workspaceId, chatId]
   );
 
   const openRoot = useCallback(
@@ -571,7 +607,7 @@ export function WorkspaceFilesPanel({
     setFilter("");
     setShowFilter(false);
     setError(null);
-  }, [workspaceId]);
+  }, [workspaceId, chatId]);
 
   // Auto-open the preferred root. New workspaces briefly only have an empty
   // managed root before the linked folder is attached — upgrade when it arrives.
@@ -634,6 +670,7 @@ export function WorkspaceFilesPanel({
     for (const path of childrenByPath.keys()) {
       void load(path);
     }
+    void refreshWorktree();
     void loadChanges();
   });
 
@@ -675,7 +712,11 @@ export function WorkspaceFilesPanel({
 
   async function handleReveal(path: string) {
     try {
-      await window.desktop.storage.revealWorkspacePath(workspaceId, path);
+      await window.desktop.storage.revealWorkspacePath(
+        workspaceId,
+        path,
+        chatId
+      );
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : "باز کردن در سیستم ناموفق بود."
@@ -687,7 +728,8 @@ export function WorkspaceFilesPanel({
     try {
       await window.desktop.storage.deleteWorkspaceEntry(
         workspaceId,
-        entry.path
+        entry.path,
+        chatId
       );
       toast.success(`«${entry.name}» حذف شد.`);
       if (previewFile === entry.path) setPreviewFile(null);
@@ -711,7 +753,8 @@ export function WorkspaceFilesPanel({
         if (!targetDirForCreate) return;
         await window.desktop.storage.createWorkspaceDirectory(
           workspaceId,
-          joinPath(targetDirForCreate, name)
+          joinPath(targetDirForCreate, name),
+          chatId
         );
         toast.success("پوشه ساخته شد.");
         setExpanded((prev) => new Set(prev).add(targetDirForCreate));
@@ -721,7 +764,8 @@ export function WorkspaceFilesPanel({
         await window.desktop.storage.createWorkspaceFile(
           workspaceId,
           joinPath(targetDirForCreate, name),
-          ""
+          "",
+          chatId
         );
         toast.success("فایل ساخته شد.");
         setExpanded((prev) => new Set(prev).add(targetDirForCreate));
@@ -730,7 +774,8 @@ export function WorkspaceFilesPanel({
         await window.desktop.storage.renameWorkspaceEntry(
           workspaceId,
           dialog.target,
-          joinPath(parentPath(dialog.target), name)
+          joinPath(parentPath(dialog.target), name),
+          chatId
         );
         toast.success("تغییر نام انجام شد.");
         void load(parentPath(dialog.target));
@@ -841,6 +886,7 @@ export function WorkspaceFilesPanel({
         </div>
         <FilePreview
           workspaceId={workspaceId}
+          chatId={chatId}
           path={previewFile}
           className="min-h-0 flex-1"
         />

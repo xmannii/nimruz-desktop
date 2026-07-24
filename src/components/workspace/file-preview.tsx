@@ -24,6 +24,7 @@ import { toast } from "sonner";
 
 type FilePreviewProps = {
   workspaceId: string;
+  chatId?: string;
   path: string;
   className?: string;
 };
@@ -56,12 +57,21 @@ function baseName(path: string): string {
  * extension to Markdown, code, CSV/TSV, JSON, image, plain text, or an explicit
  * unsupported/binary state with an "open externally" affordance.
  */
-export function FilePreview({ workspaceId, path, className }: FilePreviewProps) {
+export function FilePreview({
+  workspaceId,
+  chatId,
+  path,
+  className,
+}: FilePreviewProps) {
   const category = useMemo<FileCategory>(() => classifyFile(path), [path]);
 
   async function openExternally() {
     try {
-      await window.desktop.storage.revealWorkspacePath(workspaceId, path);
+      await window.desktop.storage.revealWorkspacePath(
+        workspaceId,
+        path,
+        chatId
+      );
     } catch {
       // ignore
     }
@@ -71,6 +81,7 @@ export function FilePreview({ workspaceId, path, className }: FilePreviewProps) 
     return (
       <ImagePreview
         workspaceId={workspaceId}
+        chatId={chatId}
         path={path}
         className={className}
         onOpenExternally={openExternally}
@@ -90,6 +101,7 @@ export function FilePreview({ workspaceId, path, className }: FilePreviewProps) 
   return (
     <TextualPreview
       workspaceId={workspaceId}
+      chatId={chatId}
       path={path}
       category={category}
       className={className}
@@ -100,6 +112,7 @@ export function FilePreview({ workspaceId, path, className }: FilePreviewProps) 
 
 function ImagePreview({
   workspaceId,
+  chatId,
   path,
   className,
   onOpenExternally,
@@ -112,7 +125,7 @@ function ImagePreview({
     setState({ status: "loading" });
     setZoom(1);
     window.desktop.storage
-      .readWorkspaceFileBinary(workspaceId, path)
+      .readWorkspaceFileBinary(workspaceId, path, chatId)
       .then((result) => {
         if (cancelled) return;
         setState({
@@ -132,7 +145,7 @@ function ImagePreview({
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, path]);
+  }, [workspaceId, chatId, path]);
 
   if (state.status === "loading") {
     return <CenteredSpinner className={className} />;
@@ -305,6 +318,7 @@ function SyntaxEditor({
 
 function TextualPreview({
   workspaceId,
+  chatId,
   path,
   category,
   className,
@@ -321,7 +335,7 @@ function TextualPreview({
     let cancelled = false;
     setState({ status: "loading" });
     window.desktop.storage
-      .readWorkspaceFile(workspaceId, path)
+      .readWorkspaceFile(workspaceId, path, chatId)
       .then((result) => {
         if (cancelled) return;
         setState({
@@ -342,7 +356,7 @@ function TextualPreview({
     return () => {
       cancelled = true;
     };
-  }, [workspaceId, path]);
+  }, [workspaceId, chatId, path]);
 
   if (state.status === "loading") {
     return <CenteredSpinner className={className} />;
@@ -364,7 +378,12 @@ function TextualPreview({
     if (!isDirty || isSaving || readyState.truncated) return;
     setIsSaving(true);
     try {
-      await window.desktop.storage.createWorkspaceFile(workspaceId, path, draft);
+      await window.desktop.storage.createWorkspaceFile(
+        workspaceId,
+        path,
+        draft,
+        chatId
+      );
       setState({ ...readyState, content: draft });
       toast.success("فایل ذخیره شد.");
     } catch (error) {
