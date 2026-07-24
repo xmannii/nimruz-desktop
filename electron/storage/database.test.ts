@@ -60,6 +60,7 @@ const chat: LocalChat = {
     },
   ],
   workspaceId: project.id,
+  workspaceMode: "worktree",
   mcpServerIds: ["server-one", "server-two"],
   createdAt: 3,
   updatedAt: 4,
@@ -118,6 +119,7 @@ test("persists chats, projects, settings, memories, and credentials", async () =
       "server-one",
       "server-two",
     ]);
+    assert.equal(database.loadChats()[0]?.workspaceMode, "worktree");
     assert.equal(database.loadPersonalization().nickname, "مانی");
     assert.equal(database.loadNotificationSettings().agentCompleted, false);
     assert.equal(database.loadNotificationSettings().completionSound, true);
@@ -497,7 +499,7 @@ test("migrates a version-2 database to the combined version-10 schema", async ()
     });
     assert.equal(mapping.threadId, "migrated-thread");
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 10);
+    assert.equal(version?.user_version, 11);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
@@ -530,7 +532,7 @@ test("migrates an official version-3 database to the combined version-10 schema"
       "official-v3-thread"
     );
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 10);
+    assert.equal(version?.user_version, 11);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
@@ -563,7 +565,7 @@ test("migrates a Codex version-3 database to the combined version-10 schema", as
     assert.equal(database.loadChats()[0]?.pinned, true);
     assert.equal(database.loadChats()[0]?.pinnedAt, 10);
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 10);
+    assert.equal(version?.user_version, 11);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });

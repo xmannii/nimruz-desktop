@@ -51,6 +51,7 @@ import {
   openExternalUrl,
 } from "./updates";
 import { testMcpServerConnection } from "./agent/mcp";
+import type { TurnCheckpointManager } from "./git/checkpoint-manager";
 
 const execFileAsync = promisify(execFile);
 const MAX_DIFF_CHARS = 120_000;
@@ -105,6 +106,7 @@ export function registerIpcHandlers(options: {
   codex: CodexService;
   skills: SkillStore;
   workspaceFiles: WorkspaceFilesStore;
+  checkpoints: TurnCheckpointManager;
   workspaceEvents: WorkspaceEventBus;
   shenava: ShenavaService;
   sessionToken: string;
@@ -118,6 +120,7 @@ export function registerIpcHandlers(options: {
     codex,
     skills,
     workspaceFiles,
+    checkpoints,
     workspaceEvents,
     shenava,
     sessionToken,
@@ -576,21 +579,35 @@ export function registerIpcHandlers(options: {
 
   handle(
     "storage:list-workspace-files",
-    (workspaceId: string, dirPath?: string) =>
-      workspaceFiles.listDirectory(workspaceId, dirPath ?? ".")
+    (workspaceId: string, dirPath?: string, chatId?: string) =>
+      workspaceFiles.listDirectory(workspaceId, dirPath ?? ".", chatId)
   );
-  handle("storage:read-workspace-file", (workspaceId: string, filePath: string) =>
-    workspaceFiles.readFileText(workspaceId, filePath)
+  handle(
+    "storage:read-workspace-file",
+    (workspaceId: string, filePath: string, chatId?: string) =>
+      workspaceFiles.readFileText(
+        workspaceId,
+        filePath,
+        undefined,
+        chatId
+      )
   );
   handle(
     "storage:read-workspace-file-binary",
-    (workspaceId: string, filePath: string) =>
-      workspaceFiles.readBinaryFile(workspaceId, filePath)
+    (workspaceId: string, filePath: string, chatId?: string) =>
+      workspaceFiles.readBinaryFile(workspaceId, filePath, chatId)
   );
-  handle("storage:list-workspace-changes", async (workspaceId: string) => {
-    const workingRoot = workspaceFiles.primaryRootPath(workspaceId);
+  handle("storage:list-workspace-changes", async (
+    workspaceId: string,
+    chatId?: string
+  ) => {
+    const workingRoot = workspaceFiles.primaryRootPath(workspaceId, chatId);
     const agentTouchedPaths = new Map<string, string>();
-    for (const run of database.listAgentRuns({ workspaceId, limit: 50 })) {
+    for (const run of database.listAgentRuns({
+      workspaceId,
+      ...(chatId ? { chatId } : {}),
+      limit: 50,
+    })) {
       for (const call of database.listToolCalls(run.id)) {
         if (
           !["write_file", "apply_patch", "move_file", "delete_file"].includes(
@@ -604,7 +621,11 @@ export function registerIpcHandlers(options: {
           for (const key of ["path", "from", "to"]) {
             const value = input[key];
             if (typeof value !== "string") continue;
-            const resolved = workspaceFiles.resolvePath(workspaceId, value);
+            const resolved = workspaceFiles.resolvePath(
+              workspaceId,
+              value,
+              run.chatId
+            );
             if (!agentTouchedPaths.has(resolved)) {
               agentTouchedPaths.set(resolved, run.id);
             }
@@ -716,8 +737,9 @@ export function registerIpcHandlers(options: {
         scope?: "all" | "filename" | "content";
         path?: string;
         caseSensitive?: boolean;
-      }
-    ) => workspaceFiles.searchFiles(workspaceId, query, options)
+      },
+      chatId?: string
+    ) => workspaceFiles.searchFiles(workspaceId, query, options, chatId)
   );
   handle(
     "storage:import-workspace-files",
@@ -728,33 +750,68 @@ export function registerIpcHandlers(options: {
   );
   handle(
     "storage:create-workspace-directory",
-    (workspaceId: string, dirPath: string) =>
-      workspaceFiles.createDirectory(workspaceId, dirPath)
+    (workspaceId: string, dirPath: string, chatId?: string) =>
+      workspaceFiles.createDirectory(workspaceId, dirPath, chatId)
   );
   handle(
     "storage:create-workspace-file",
-    (workspaceId: string, filePath: string, content?: string) =>
-      workspaceFiles.writeFile(workspaceId, filePath, content ?? "")
+    (
+      workspaceId: string,
+      filePath: string,
+      content?: string,
+      chatId?: string
+    ) => workspaceFiles.writeFile(workspaceId, filePath, content ?? "", chatId)
   );
   handle(
     "storage:rename-workspace-entry",
-    (workspaceId: string, fromPath: string, toPath: string) =>
-      workspaceFiles.moveFile(workspaceId, fromPath, toPath)
+    (
+      workspaceId: string,
+      fromPath: string,
+      toPath: string,
+      chatId?: string
+    ) => workspaceFiles.moveFile(workspaceId, fromPath, toPath, chatId)
   );
   handle(
     "storage:delete-workspace-entry",
-    (workspaceId: string, targetPath: string) =>
-      workspaceFiles.deleteFile(workspaceId, targetPath)
+    (workspaceId: string, targetPath: string, chatId?: string) =>
+      workspaceFiles.deleteFile(workspaceId, targetPath, chatId)
   );
   handle(
     "storage:reveal-workspace-path",
-    async (workspaceId: string, targetPath: string) => {
+    async (workspaceId: string, targetPath: string, chatId?: string) => {
       // Confirm the path is inside an approved root before revealing it.
-      const resolved = workspaceFiles.assertInsideRoots(workspaceId, targetPath);
+      const resolved = workspaceFiles.assertInsideRoots(
+        workspaceId,
+        targetPath,
+        chatId
+      );
       const { shell } = await import("electron");
       shell.showItemInFolder(resolved);
     }
   );
+  handle("storage:get-chat-worktree", (chatId: string) =>
+    database.getChatWorktree(chatId)
+  );
+  handle("storage:list-turn-checkpoints", (chatId: string) =>
+    database.listTurnCheckpoints(chatId)
+  );
+  handle("storage:get-turn-checkpoint-diff", (runId: string) =>
+    checkpoints.getDiff(runId)
+  );
+  handle("storage:restore-turn-checkpoint", async (runId: string) => {
+    const checkpoint = await checkpoints.restoreBefore(runId);
+    workspaceEvents.emit({
+      type: "checkpoint-changed",
+      workspaceId: checkpoint.workspaceId,
+      chatId: checkpoint.chatId,
+      runId,
+    });
+    workspaceEvents.emit({
+      type: "root-changed",
+      workspaceId: checkpoint.workspaceId,
+    });
+    return checkpoint;
+  });
 
   handle("storage:list-artifacts", (workspaceId: string) =>
     database.listArtifacts(workspaceId)

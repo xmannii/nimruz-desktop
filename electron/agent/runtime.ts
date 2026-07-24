@@ -39,6 +39,7 @@ import { isReasoningEffort } from "@/lib/models/reasoning";
 import { sanitizeSubagentModels } from "@/lib/settings/subagents";
 import {
   AGENTIC_WORKSPACE_FEATURE,
+  sanitizeChatWorkspaceMode,
   type AgentRun,
   type LocalWorkspace,
 } from "@/lib/workspace";
@@ -62,6 +63,8 @@ import {
 } from "./mcp";
 import { sanitizeMcpServerIds } from "@/lib/chat/storage";
 import type { CodexService } from "../codex/service";
+import type { ChatWorktreeManager } from "../git/worktree-manager";
+import type { TurnCheckpointManager } from "../git/checkpoint-manager";
 import { handleCodexChatRequest } from "../codex/chat-handler";
 import {
   isCodexProvider,
@@ -81,6 +84,7 @@ export type AgentRequestBody = {
   mcpServerIds?: string[];
   chatId?: string;
   workspaceId?: string | null;
+  workspaceMode?: "shared" | "worktree";
   agentMode?: AgentMode;
   runId?: string;
 };
@@ -90,6 +94,8 @@ export type AgentRuntimeDeps = {
   files: WorkspaceFilesStore;
   events?: WorkspaceEventBus;
   codex?: CodexService | null;
+  worktrees?: ChatWorktreeManager;
+  checkpoints?: TurnCheckpointManager;
   resolveModel: (
     providerId?: string,
     modelId?: string
@@ -157,6 +163,7 @@ export async function handleAgentChatRequest(
     chatId = "unknown",
     workspaceId = null,
   } = body;
+  const workspaceMode = sanitizeChatWorkspaceMode(body.workspaceMode);
   const mcpServerIds = sanitizeMcpServerIds(body.mcpServerIds);
   const agentMode = sanitizeAgentMode(body.agentMode ?? DEFAULT_AGENT_MODE);
   const isPlanMode = agentMode === "plan";
@@ -241,6 +248,21 @@ export async function handleAgentChatRequest(
     });
   emitRunChanged(run.status);
 
+  let checkpointFinalized = false;
+  const finalizeCheckpoint = async () => {
+    if (checkpointFinalized || !deps.checkpoints) return;
+    checkpointFinalized = true;
+    const checkpoint = await deps.checkpoints.complete(runId);
+    if (checkpoint) {
+      deps.events?.emit({
+        type: "checkpoint-changed",
+        workspaceId: checkpoint.workspaceId,
+        chatId: checkpoint.chatId,
+        runId,
+      });
+    }
+  };
+
   const wallAbortController = new AbortController();
   const wallTimer = setTimeout(() => {
     const current = deps.database.getAgentRun(runId);
@@ -256,6 +278,7 @@ export async function handleAgentChatRequest(
         finishedAt: Date.now(),
       });
       emitRunChanged("failed");
+      void finalizeCheckpoint();
       wallAbortController.abort(
         new Error("Run exceeded wall-clock time limit.")
       );
@@ -287,7 +310,10 @@ export async function handleAgentChatRequest(
   if (abortSignal) {
     abortSignal.addEventListener(
       "abort",
-      () => finishRun("cancelled", "Cancelled by user."),
+      () => {
+        finishRun("cancelled", "Cancelled by user.");
+        void finalizeCheckpoint();
+      },
       { once: true }
     );
   }
@@ -364,6 +390,61 @@ export async function handleAgentChatRequest(
     });
   }
 
+  if (workspace && !isChatMode && !isPlanMode) {
+    if (workspaceMode === "worktree") {
+      if (!deps.worktrees) {
+        finishRun("failed", "Worktree support is unavailable.");
+        return new Response(
+          JSON.stringify({ error: "Worktree support is unavailable." }),
+          { status: 503, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      try {
+        const worktree = await deps.worktrees.ensureWorktree(
+          workspace.id,
+          chatId
+        );
+        deps.events?.emit({
+          type: "worktree-changed",
+          workspaceId: workspace.id,
+          chatId,
+        });
+        void worktree;
+      } catch (error) {
+        const message = getChatErrorMessage(error);
+        finishRun("failed", message);
+        return new Response(JSON.stringify({ error: message }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    if (deps.checkpoints) {
+      const workingPath = deps.files.primaryRootPath(workspace.id, chatId);
+      try {
+        await deps.checkpoints.begin({
+          runId,
+          chatId,
+          workspaceId: workspace.id,
+          workingPath,
+        });
+      } catch (error) {
+        const message = getChatErrorMessage(error);
+        // Checkpoints are a Git feature; non-Git workspaces continue with their
+        // existing agent workflow. A Git-backed workspace must not silently
+        // lose checkpoint protection because of another capture failure.
+        if (!/not a git repository/i.test(message)) {
+          finishRun("failed", message);
+          return new Response(JSON.stringify({ error: message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
+  }
+
   let mcpSession: McpToolSession | null = null;
   if (
     workspace &&
@@ -372,7 +453,7 @@ export async function handleAgentChatRequest(
     resolved.model.supportsTools &&
     AGENTIC_WORKSPACE_FEATURE.slices.mcp
   ) {
-    const cwd = deps.files.primaryRootPath(workspace.id);
+    const cwd = deps.files.primaryRootPath(workspace.id, chatId);
     if (cwd) {
       mcpSession = await createMcpToolSession({
         servers: selectMcpServersForChat(
@@ -516,9 +597,13 @@ export async function handleAgentChatRequest(
       : undefined;
 
   const workspaceRoots =
-    !isChatMode && workspace ? deps.files.listRoots(workspace.id) : [];
+    !isChatMode && workspace
+      ? deps.files.listRoots(workspace.id, chatId)
+      : [];
   const primaryRootPath =
-    !isChatMode && workspace ? deps.files.primaryRootPath(workspace.id) : null;
+    !isChatMode && workspace
+      ? deps.files.primaryRootPath(workspace.id, chatId)
+      : null;
   const rootsListing =
     workspaceRoots.length > 0
       ? workspaceRoots
@@ -741,11 +826,13 @@ export async function handleAgentChatRequest(
       onError: (error) => {
         void closeMcpSession();
         finishRun("failed", getChatErrorMessage(error));
+        void finalizeCheckpoint();
         return getChatErrorMessage(error);
       },
-      onFinish: () => {
+      onFinish: async () => {
         void closeMcpSession();
         const current = deps.database.getAgentRun(runId);
+        await finalizeCheckpoint();
         if (current?.status === "awaiting_approval") return;
         finishRun("completed");
       },
@@ -760,6 +847,7 @@ export async function handleAgentChatRequest(
     });
   } catch (error) {
     await closeMcpSession();
+    await finalizeCheckpoint();
     finishRun("failed", getChatErrorMessage(error));
     return new Response(
       JSON.stringify({ error: getChatErrorMessage(error) }),

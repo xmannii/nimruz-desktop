@@ -282,14 +282,36 @@ export class WorkspaceFilesStore {
     return root;
   }
 
-  /** All approved roots for the workspace (managed root always included). */
-  listRoots(workspaceId: string): WorkspaceRoot[] {
+  /**
+   * All approved roots for the workspace (managed root always included).
+   * When a chat owns a worktree, that worktree replaces the shared primary
+   * root so relative and absolute tool access cannot escape into the original
+   * checkout by accident.
+   */
+  listRoots(workspaceId: string, chatId?: string): WorkspaceRoot[] {
     this.ensureManagedRoot(workspaceId);
-    return this.database.loadWorkspaceRoots(workspaceId);
+    const roots = this.database.loadWorkspaceRoots(workspaceId);
+    const worktree = chatId
+      ? this.database.getChatWorktree(chatId)
+      : null;
+    if (!worktree || worktree.workspaceId !== workspaceId) return roots;
+
+    return [
+      ...roots.filter((root) => !root.isPrimary),
+      {
+        id: `worktree-${chatId}`,
+        workspaceId,
+        kind: "linked",
+        path: worktree.workingPath,
+        label: worktree.branchName,
+        isPrimary: true,
+        createdAt: worktree.createdAt,
+      },
+    ];
   }
 
-  getApprovedRoots(workspaceId: string): string[] {
-    return this.listRoots(workspaceId).map((root) => root.path);
+  getApprovedRoots(workspaceId: string, chatId?: string): string[] {
+    return this.listRoots(workspaceId, chatId).map((root) => root.path);
   }
 
   /**
@@ -297,22 +319,26 @@ export class WorkspaceFilesStore {
    * otherwise the managed root. Relative paths and the default shell cwd
    * resolve against this directory.
    */
-  primaryRootPath(workspaceId: string): string {
-    const roots = this.listRoots(workspaceId);
+  primaryRootPath(workspaceId: string, chatId?: string): string {
+    const roots = this.listRoots(workspaceId, chatId);
     const primary = roots.find((root) => root.isPrimary);
     if (primary) return primary.path;
     const managed = roots.find((root) => root.kind === "managed");
     return managed?.path ?? this.managedRootPath(workspaceId);
   }
 
-  resolvePath(workspaceId: string, targetPath: string): string {
-    const roots = this.getApprovedRoots(workspaceId);
+  resolvePath(
+    workspaceId: string,
+    targetPath: string,
+    chatId?: string
+  ): string {
+    const roots = this.getApprovedRoots(workspaceId, chatId);
     // Relative paths resolve against the primary working root.
     const absolute =
       path.isAbsolute(targetPath) || /^[A-Za-z]:[\\/]/.test(targetPath)
         ? targetPath
         : path.join(
-            this.primaryRootPath(workspaceId),
+            this.primaryRootPath(workspaceId, chatId),
             assertSafeRelativePath(targetPath)
           );
     return resolveInsideRoots(absolute, roots).absolutePath;
@@ -320,9 +346,10 @@ export class WorkspaceFilesStore {
 
   listDirectory(
     workspaceId: string,
-    relativeOrAbsolute = "."
+    relativeOrAbsolute = ".",
+    chatId?: string
   ): WorkspaceFileEntry[] {
-    const dirPath = this.resolvePath(workspaceId, relativeOrAbsolute);
+    const dirPath = this.resolvePath(workspaceId, relativeOrAbsolute, chatId);
     const entries = readdirSync(dirPath, { withFileTypes: true }).slice(
       0,
       MAX_LIST_ENTRIES
@@ -351,9 +378,10 @@ export class WorkspaceFilesStore {
   readFile(
     workspaceId: string,
     targetPath: string,
-    options?: { offset?: number; limit?: number }
+    options?: { offset?: number; limit?: number },
+    chatId?: string
   ): { path: string; content: string; truncated: boolean; sizeBytes: number } {
-    const filePath = this.resolvePath(workspaceId, targetPath);
+    const filePath = this.resolvePath(workspaceId, targetPath, chatId);
     const stats = statSync(filePath);
     if (!stats.isFile()) {
       throw new Error("Path is not a file.");
@@ -390,11 +418,12 @@ export class WorkspaceFilesStore {
   async readFileText(
     workspaceId: string,
     targetPath: string,
-    options?: { offset?: number; limit?: number }
+    options?: { offset?: number; limit?: number },
+    chatId?: string
   ): Promise<{ path: string; content: string; truncated: boolean; sizeBytes: number }> {
-    const filePath = this.resolvePath(workspaceId, targetPath);
+    const filePath = this.resolvePath(workspaceId, targetPath, chatId);
     if (!isExtractableDocument(filePath)) {
-      return this.readFile(workspaceId, targetPath, options);
+      return this.readFile(workspaceId, targetPath, options, chatId);
     }
     const stats = statSync(filePath);
     if (!stats.isFile()) {
@@ -418,9 +447,10 @@ export class WorkspaceFilesStore {
 
   readBinaryFile(
     workspaceId: string,
-    targetPath: string
+    targetPath: string,
+    chatId?: string
   ): { path: string; base64: string; mimeType: string; sizeBytes: number } {
-    const filePath = this.resolvePath(workspaceId, targetPath);
+    const filePath = this.resolvePath(workspaceId, targetPath, chatId);
     const stats = statSync(filePath);
     if (!stats.isFile()) {
       throw new Error("Path is not a file.");
@@ -443,12 +473,13 @@ export class WorkspaceFilesStore {
   writeFile(
     workspaceId: string,
     targetPath: string,
-    content: string
+    content: string,
+    chatId?: string
   ): { path: string; sizeBytes: number } {
     if (Buffer.byteLength(content, "utf8") > MAX_WRITE_BYTES) {
       throw new Error("Write payload exceeds size limit.");
     }
-    const filePath = this.resolvePath(workspaceId, targetPath);
+    const filePath = this.resolvePath(workspaceId, targetPath, chatId);
     const existedBefore = existsSync(filePath);
     mkdirSync(path.dirname(filePath), { recursive: true });
     const tempPath = `${filePath}.${nanoid(8)}.tmp`;
@@ -466,21 +497,26 @@ export class WorkspaceFilesStore {
     workspaceId: string,
     targetPath: string,
     oldText: string,
-    newText: string
+    newText: string,
+    chatId?: string
   ): { path: string; replacements: number } {
-    const current = this.readFile(workspaceId, targetPath);
+    const current = this.readFile(workspaceId, targetPath, undefined, chatId);
     if (!current.content.includes(oldText)) {
       throw new Error("Patch context was not found in the file.");
     }
     const next = current.content.replace(oldText, newText);
     const replacements =
       current.content.split(oldText).length - 1;
-    this.writeFile(workspaceId, targetPath, next);
+    this.writeFile(workspaceId, targetPath, next, chatId);
     return { path: current.path, replacements };
   }
 
-  deleteFile(workspaceId: string, targetPath: string): { path: string } {
-    const filePath = this.resolvePath(workspaceId, targetPath);
+  deleteFile(
+    workspaceId: string,
+    targetPath: string,
+    chatId?: string
+  ): { path: string } {
+    const filePath = this.resolvePath(workspaceId, targetPath, chatId);
     const stats = statSync(filePath);
     if (stats.isDirectory()) {
       rmSync(filePath, { recursive: false });
@@ -560,8 +596,12 @@ export class WorkspaceFilesStore {
     return results;
   }
 
-  createDirectory(workspaceId: string, targetPath: string): { path: string } {
-    const dirPath = this.resolvePath(workspaceId, targetPath);
+  createDirectory(
+    workspaceId: string,
+    targetPath: string,
+    chatId?: string
+  ): { path: string } {
+    const dirPath = this.resolvePath(workspaceId, targetPath, chatId);
     mkdirSync(dirPath, { recursive: true });
     this.events?.emit({
       type: "file-created",
@@ -572,17 +612,22 @@ export class WorkspaceFilesStore {
   }
 
   /** Resolve a path and confirm it is inside an approved root (throws if not). */
-  assertInsideRoots(workspaceId: string, targetPath: string): string {
-    return this.resolvePath(workspaceId, targetPath);
+  assertInsideRoots(
+    workspaceId: string,
+    targetPath: string,
+    chatId?: string
+  ): string {
+    return this.resolvePath(workspaceId, targetPath, chatId);
   }
 
   moveFile(
     workspaceId: string,
     fromPath: string,
-    toPath: string
+    toPath: string,
+    chatId?: string
   ): { from: string; to: string } {
-    const from = this.resolvePath(workspaceId, fromPath);
-    const to = this.resolvePath(workspaceId, toPath);
+    const from = this.resolvePath(workspaceId, fromPath, chatId);
+    const to = this.resolvePath(workspaceId, toPath, chatId);
     mkdirSync(path.dirname(to), { recursive: true });
     renameSync(from, to);
     this.events?.emit({ type: "file-moved", workspaceId, from, to });
@@ -592,7 +637,8 @@ export class WorkspaceFilesStore {
   searchFiles(
     workspaceId: string,
     query: string,
-    options?: WorkspaceSearchOptions
+    options?: WorkspaceSearchOptions,
+    chatId?: string
   ): {
     query: string;
     filenameMatches: WorkspaceSearchMatch[];
@@ -711,9 +757,9 @@ export class WorkspaceFilesStore {
       }
     };
 
-    const roots = this.getApprovedRoots(workspaceId);
+    const roots = this.getApprovedRoots(workspaceId, chatId);
     if (options?.path?.trim()) {
-      const scoped = this.resolvePath(workspaceId, options.path.trim());
+      const scoped = this.resolvePath(workspaceId, options.path.trim(), chatId);
       if (existsSync(scoped)) walk(scoped);
     } else {
       for (const root of roots) {

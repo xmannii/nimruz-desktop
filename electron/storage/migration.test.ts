@@ -146,7 +146,7 @@ test("migrates a v3 database to the latest schema version", async () => {
     ).database
       .prepare("PRAGMA user_version")
       .get() as { user_version: number };
-    assert.equal(version.user_version, 10);
+    assert.equal(version.user_version, 11);
   });
 });
 
@@ -260,7 +260,7 @@ test("migrates the old combined Codex v4 lineage into agentic schema v10", async
     const version = database.database
       .prepare("PRAGMA user_version")
       .get() as { user_version: number };
-    assert.equal(version.user_version, 10);
+    assert.equal(version.user_version, 11);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
@@ -312,7 +312,7 @@ test("adds Codex thread storage to the official agentic v5 lineage", async () =>
     const version = migrated.database
       .prepare("PRAGMA user_version")
       .get() as { user_version: number };
-    assert.equal(version.user_version, 10);
+    assert.equal(version.user_version, 11);
   } finally {
     migrated.close();
     await rm(directory, { recursive: true, force: true });

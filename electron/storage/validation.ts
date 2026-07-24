@@ -16,6 +16,7 @@ import {
 } from "@/lib/models/sanitize";
 import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
 import {
+  sanitizeChatWorkspaceMode,
   sanitizeWorkspace,
   type LocalWorkspace,
   type PlanRecord,
@@ -68,6 +69,7 @@ function parseChat(value: unknown): LocalChat | null {
     model,
     messages: chat.messages,
     workspaceId,
+    workspaceMode: sanitizeChatWorkspaceMode(chat.workspaceMode),
     mcpServerIds: sanitizeMcpServerIds(chat.mcpServerIds),
     agentMode: sanitizeAgentMode(chat.agentMode),
     createdAt: Number(chat.createdAt),

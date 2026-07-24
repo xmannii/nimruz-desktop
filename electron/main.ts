@@ -11,6 +11,8 @@ import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WorkspaceFilesStore } from "./agent/workspace-files";
+import { ChatWorktreeManager } from "./git/worktree-manager";
+import { TurnCheckpointManager } from "./git/checkpoint-manager";
 import { WorkspaceEventBus } from "./agent/events";
 import { CredentialService } from "./credentials";
 import { CodexService } from "./codex/service";
@@ -211,6 +213,8 @@ app.whenReady().then(async () => {
     userDataPath,
     workspaceEvents
   );
+  const worktrees = new ChatWorktreeManager(database, userDataPath);
+  const checkpoints = new TurnCheckpointManager(database);
   shenava = new ShenavaService({
     userDataPath,
     workerScript: resolveShenavaWorkerPath(),
@@ -237,6 +241,7 @@ app.whenReady().then(async () => {
     codex,
     skills,
     workspaceFiles,
+    checkpoints,
     workspaceEvents,
     shenava,
     sessionToken,
@@ -248,6 +253,8 @@ app.whenReady().then(async () => {
   const agentDeps = {
     database,
     files: workspaceFiles,
+    worktrees,
+    checkpoints,
     events: workspaceEvents,
     resolveModel: (providerId?: string, modelId?: string) => {
       const resolved = database?.resolveChatModel(providerId, modelId);

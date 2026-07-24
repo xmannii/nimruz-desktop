@@ -242,6 +242,81 @@ export type WorkspaceFileChange = {
   agentRunId: string | null;
 };
 
+/** Where project tools for a chat execute. */
+export type ChatWorkspaceMode = "shared" | "worktree";
+
+export function sanitizeChatWorkspaceMode(
+  value: unknown
+): ChatWorkspaceMode {
+  return value === "worktree" ? "worktree" : "shared";
+}
+
+/**
+ * Durable mapping between one chat and its isolated Git worktree.
+ *
+ * `workingPath` preserves a workspace whose primary folder is a subdirectory
+ * of the repository: it points at the same relative subdirectory inside the
+ * worktree while `worktreePath` always points at the repository root.
+ */
+export type ChatWorktree = {
+  chatId: string;
+  workspaceId: string;
+  repositoryRoot: string;
+  worktreePath: string;
+  workingPath: string;
+  branchName: string;
+  baseCommit: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type TurnCheckpointStatus = "capturing" | "completed" | "failed";
+
+/** Immutable before/after Git snapshots associated with one agent run. */
+export type TurnCheckpoint = {
+  id: string;
+  runId: string;
+  chatId: string;
+  workspaceId: string;
+  repositoryRoot: string;
+  workingPath: string;
+  beforeRef: string;
+  beforeCommit: string;
+  afterRef: string | null;
+  afterCommit: string | null;
+  status: TurnCheckpointStatus;
+  filesChanged: number;
+  additions: number;
+  deletions: number;
+  error: string | null;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type CheckpointFileStatus =
+  | "added"
+  | "modified"
+  | "deleted"
+  | "renamed"
+  | "copied"
+  | "binary";
+
+export type CheckpointFileDiff = {
+  path: string;
+  previousPath: string | null;
+  status: CheckpointFileStatus;
+  additions: number;
+  deletions: number;
+  /** A bounded unified patch. Binary files intentionally have no patch body. */
+  patch: string | null;
+};
+
+export type TurnCheckpointDiff = {
+  checkpoint: TurnCheckpoint;
+  files: CheckpointFileDiff[];
+  truncated: boolean;
+};
+
 /**
  * Typed live workspace events emitted by the main process. Each event is
  * scoped by `workspaceId` and carries only safe identifiers/paths.
@@ -262,6 +337,13 @@ export type WorkspaceEvent =
     }
   | { type: "approval-changed"; workspaceId: string | null; runId: string }
   | { type: "mcp-changed"; workspaceId: string; serverId?: string }
+  | {
+      type: "checkpoint-changed";
+      workspaceId: string;
+      chatId: string;
+      runId: string;
+    }
+  | { type: "worktree-changed"; workspaceId: string; chatId: string }
   | { type: "root-changed"; workspaceId: string };
 
 export type WorkspaceEventType = WorkspaceEvent["type"];

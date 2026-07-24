@@ -264,24 +264,40 @@ const desktopApi: DesktopAPI = {
       ),
     testMcpServer: (server) =>
       ipcRenderer.invoke("storage:test-mcp-server", server),
-    listWorkspaceFiles: (workspaceId, path) =>
-      ipcRenderer.invoke("storage:list-workspace-files", workspaceId, path),
-    readWorkspaceFile: (workspaceId, path) =>
-      ipcRenderer.invoke("storage:read-workspace-file", workspaceId, path),
-    readWorkspaceFileBinary: (workspaceId, path) =>
+    listWorkspaceFiles: (workspaceId, path, chatId) =>
+      ipcRenderer.invoke(
+        "storage:list-workspace-files",
+        workspaceId,
+        path,
+        chatId
+      ),
+    readWorkspaceFile: (workspaceId, path, chatId) =>
+      ipcRenderer.invoke(
+        "storage:read-workspace-file",
+        workspaceId,
+        path,
+        chatId
+      ),
+    readWorkspaceFileBinary: (workspaceId, path, chatId) =>
       ipcRenderer.invoke(
         "storage:read-workspace-file-binary",
         workspaceId,
-        path
+        path,
+        chatId
       ),
-    listWorkspaceChanges: (workspaceId) =>
-      ipcRenderer.invoke("storage:list-workspace-changes", workspaceId),
-    searchWorkspaceFiles: (workspaceId, query, options) =>
+    listWorkspaceChanges: (workspaceId, chatId) =>
+      ipcRenderer.invoke(
+        "storage:list-workspace-changes",
+        workspaceId,
+        chatId
+      ),
+    searchWorkspaceFiles: (workspaceId, query, options, chatId) =>
       ipcRenderer.invoke(
         "storage:search-workspace-files",
         workspaceId,
         query,
-        options
+        options,
+        chatId
       ),
     importWorkspaceFiles: (workspaceId, files) =>
       ipcRenderer.invoke(
@@ -289,30 +305,51 @@ const desktopApi: DesktopAPI = {
         workspaceId,
         files
       ),
-    createWorkspaceDirectory: (workspaceId, path) =>
+    createWorkspaceDirectory: (workspaceId, path, chatId) =>
       ipcRenderer.invoke(
         "storage:create-workspace-directory",
         workspaceId,
-        path
+        path,
+        chatId
       ),
-    createWorkspaceFile: (workspaceId, path, content) =>
+    createWorkspaceFile: (workspaceId, path, content, chatId) =>
       ipcRenderer.invoke(
         "storage:create-workspace-file",
         workspaceId,
         path,
-        content
+        content,
+        chatId
       ),
-    renameWorkspaceEntry: (workspaceId, from, to) =>
+    renameWorkspaceEntry: (workspaceId, from, to, chatId) =>
       ipcRenderer.invoke(
         "storage:rename-workspace-entry",
         workspaceId,
         from,
-        to
+        to,
+        chatId
       ),
-    deleteWorkspaceEntry: (workspaceId, path) =>
-      ipcRenderer.invoke("storage:delete-workspace-entry", workspaceId, path),
-    revealWorkspacePath: (workspaceId, path) =>
-      ipcRenderer.invoke("storage:reveal-workspace-path", workspaceId, path),
+    deleteWorkspaceEntry: (workspaceId, path, chatId) =>
+      ipcRenderer.invoke(
+        "storage:delete-workspace-entry",
+        workspaceId,
+        path,
+        chatId
+      ),
+    revealWorkspacePath: (workspaceId, path, chatId) =>
+      ipcRenderer.invoke(
+        "storage:reveal-workspace-path",
+        workspaceId,
+        path,
+        chatId
+      ),
+    getChatWorktree: (chatId) =>
+      ipcRenderer.invoke("storage:get-chat-worktree", chatId),
+    listTurnCheckpoints: (chatId) =>
+      ipcRenderer.invoke("storage:list-turn-checkpoints", chatId),
+    getTurnCheckpointDiff: (runId) =>
+      ipcRenderer.invoke("storage:get-turn-checkpoint-diff", runId),
+    restoreTurnCheckpoint: (runId) =>
+      ipcRenderer.invoke("storage:restore-turn-checkpoint", runId),
     listArtifacts: (workspaceId) =>
       ipcRenderer.invoke("storage:list-artifacts", workspaceId),
     readArtifact: (workspaceId, artifactId) =>

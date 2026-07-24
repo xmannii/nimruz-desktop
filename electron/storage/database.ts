@@ -73,6 +73,7 @@ import {
   sanitizeMcpServerConfig,
   sanitizeWorkspace,
   sanitizeWorkspaceRoot,
+  sanitizeChatWorkspaceMode,
   type AgentRun,
   type AgentRunStep,
   type ApprovalRecord,
@@ -84,6 +85,8 @@ import {
   type TaskRecord,
   type ToolCallRecord,
   type WorkspaceRoot,
+  type ChatWorktree,
+  type TurnCheckpoint,
 } from "@/lib/workspace";
 
 const LEGACY_MIGRATION_KEY = "legacy-browser-storage-v1";
@@ -658,6 +661,56 @@ export class AppDatabase {
       });
     }
 
+    if (currentVersion < 11) {
+      this.transaction(() => {
+        if (!hasTableColumn(this.database, "chats", "workspace_mode")) {
+          this.database.exec(
+            "ALTER TABLE chats ADD COLUMN workspace_mode TEXT NOT NULL DEFAULT 'shared'"
+          );
+        }
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS chat_worktrees (
+            chat_id TEXT PRIMARY KEY,
+            workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            repository_root TEXT NOT NULL,
+            worktree_path TEXT NOT NULL UNIQUE,
+            working_path TEXT NOT NULL,
+            branch_name TEXT NOT NULL,
+            base_commit TEXT NOT NULL,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS chat_worktrees_workspace_id_idx
+            ON chat_worktrees(workspace_id);
+
+          CREATE TABLE IF NOT EXISTS turn_checkpoints (
+            id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL UNIQUE REFERENCES agent_runs(id) ON DELETE CASCADE,
+            chat_id TEXT NOT NULL,
+            workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+            repository_root TEXT NOT NULL,
+            working_path TEXT NOT NULL,
+            before_ref TEXT NOT NULL,
+            before_commit TEXT NOT NULL,
+            after_ref TEXT,
+            after_commit TEXT,
+            status TEXT NOT NULL,
+            files_changed INTEGER NOT NULL DEFAULT 0,
+            additions INTEGER NOT NULL DEFAULT 0,
+            deletions INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS turn_checkpoints_chat_id_idx
+            ON turn_checkpoints(chat_id, created_at DESC);
+          CREATE INDEX IF NOT EXISTS turn_checkpoints_workspace_id_idx
+            ON turn_checkpoints(workspace_id, created_at DESC);
+          PRAGMA user_version = 11;
+        `);
+      });
+    }
+
     if (currentVersion >= 2) {
       this.ensureBuiltinCatalog();
     }
@@ -778,7 +831,7 @@ export class AppDatabase {
   loadChats(): LocalChat[] {
     return this.database
       .prepare(
-        `SELECT id, title, provider_id, model, messages_json, workspace_id, agent_mode,
+        `SELECT id, title, provider_id, model, messages_json, workspace_id, workspace_mode, agent_mode,
                 mcp_server_ids_json, created_at, updated_at, title_is_custom, pinned, pinned_at
            FROM chats
           ORDER BY pinned DESC, COALESCE(pinned_at, updated_at) DESC, updated_at DESC`
@@ -796,6 +849,7 @@ export class AppDatabase {
         messages: parseMessages(row.messages_json),
         workspaceId:
           typeof row.workspace_id === "string" ? row.workspace_id : null,
+        workspaceMode: sanitizeChatWorkspaceMode(row.workspace_mode),
         mcpServerIds: parseMcpServerIds(row.mcp_server_ids_json),
         agentMode: sanitizeAgentMode(row.agent_mode) as AgentMode,
         createdAt: asNumber(row.created_at),
@@ -810,15 +864,16 @@ export class AppDatabase {
   saveChats(chats: LocalChat[]): void {
     const statement = this.database.prepare(`
       INSERT INTO chats (
-        id, title, provider_id, model, messages_json, workspace_id, agent_mode,
+        id, title, provider_id, model, messages_json, workspace_id, workspace_mode, agent_mode,
         mcp_server_ids_json, created_at, updated_at, title_is_custom, pinned, pinned_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         title = excluded.title,
         provider_id = excluded.provider_id,
         model = excluded.model,
         messages_json = excluded.messages_json,
         workspace_id = excluded.workspace_id,
+        workspace_mode = excluded.workspace_mode,
         agent_mode = excluded.agent_mode,
         mcp_server_ids_json = excluded.mcp_server_ids_json,
         created_at = excluded.created_at,
@@ -838,6 +893,7 @@ export class AppDatabase {
           String(chat.model),
           JSON.stringify(chat.messages),
           validateId(chat.workspaceId) ? chat.workspaceId : null,
+          sanitizeChatWorkspaceMode(chat.workspaceMode),
           sanitizeAgentMode(chat.agentMode ?? DEFAULT_AGENT_MODE),
           chat.mcpServerIds === undefined
             ? null
@@ -867,6 +923,178 @@ export class AppDatabase {
       this.database.prepare("DELETE FROM codex_chat_threads").run();
       this.database.prepare("DELETE FROM chats").run();
     });
+  }
+
+  saveChatWorktree(worktree: ChatWorktree): void {
+    if (
+      !validateId(worktree.chatId) ||
+      !validateId(worktree.workspaceId) ||
+      !this.getWorkspace(worktree.workspaceId)
+    ) {
+      throw new Error("Invalid chat worktree.");
+    }
+    this.database
+      .prepare(
+        `INSERT INTO chat_worktrees (
+           chat_id, workspace_id, repository_root, worktree_path, working_path,
+           branch_name, base_commit, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(chat_id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           repository_root = excluded.repository_root,
+           worktree_path = excluded.worktree_path,
+           working_path = excluded.working_path,
+           branch_name = excluded.branch_name,
+           base_commit = excluded.base_commit,
+           updated_at = excluded.updated_at`
+      )
+      .run(
+        worktree.chatId,
+        worktree.workspaceId,
+        worktree.repositoryRoot,
+        worktree.worktreePath,
+        worktree.workingPath,
+        worktree.branchName,
+        worktree.baseCommit,
+        worktree.createdAt,
+        worktree.updatedAt
+      );
+  }
+
+  getChatWorktree(chatId: string): ChatWorktree | null {
+    if (!validateId(chatId)) return null;
+    const row = this.database
+      .prepare(
+        `SELECT chat_id, workspace_id, repository_root, worktree_path,
+                working_path, branch_name, base_commit, created_at, updated_at
+           FROM chat_worktrees
+          WHERE chat_id = ?`
+      )
+      .get(chatId);
+    if (!row) return null;
+    return {
+      chatId: String(row.chat_id),
+      workspaceId: String(row.workspace_id),
+      repositoryRoot: String(row.repository_root),
+      worktreePath: String(row.worktree_path),
+      workingPath: String(row.working_path),
+      branchName: String(row.branch_name),
+      baseCommit: String(row.base_commit),
+      createdAt: asNumber(row.created_at),
+      updatedAt: asNumber(row.updated_at),
+    };
+  }
+
+  deleteChatWorktree(chatId: string): void {
+    if (!validateId(chatId)) throw new Error("Invalid chat id.");
+    this.database
+      .prepare("DELETE FROM chat_worktrees WHERE chat_id = ?")
+      .run(chatId);
+  }
+
+  saveTurnCheckpoint(checkpoint: TurnCheckpoint): void {
+    if (
+      !validateId(checkpoint.id) ||
+      !validateId(checkpoint.runId) ||
+      !validateId(checkpoint.chatId) ||
+      !validateId(checkpoint.workspaceId)
+    ) {
+      throw new Error("Invalid turn checkpoint.");
+    }
+    this.database
+      .prepare(
+        `INSERT INTO turn_checkpoints (
+           id, run_id, chat_id, workspace_id, repository_root, working_path,
+           before_ref, before_commit, after_ref, after_commit, status,
+           files_changed, additions, deletions, error, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           after_ref = excluded.after_ref,
+           after_commit = excluded.after_commit,
+           status = excluded.status,
+           files_changed = excluded.files_changed,
+           additions = excluded.additions,
+           deletions = excluded.deletions,
+           error = excluded.error,
+           updated_at = excluded.updated_at`
+      )
+      .run(
+        checkpoint.id,
+        checkpoint.runId,
+        checkpoint.chatId,
+        checkpoint.workspaceId,
+        checkpoint.repositoryRoot,
+        checkpoint.workingPath,
+        checkpoint.beforeRef,
+        checkpoint.beforeCommit,
+        checkpoint.afterRef,
+        checkpoint.afterCommit,
+        checkpoint.status,
+        checkpoint.filesChanged,
+        checkpoint.additions,
+        checkpoint.deletions,
+        checkpoint.error,
+        checkpoint.createdAt,
+        checkpoint.updatedAt
+      );
+  }
+
+  getTurnCheckpointByRunId(runId: string): TurnCheckpoint | null {
+    if (!validateId(runId)) return null;
+    const row = this.database
+      .prepare(
+        `SELECT id, run_id, chat_id, workspace_id, repository_root, working_path,
+                before_ref, before_commit, after_ref, after_commit, status,
+                files_changed, additions, deletions, error, created_at, updated_at
+           FROM turn_checkpoints
+          WHERE run_id = ?`
+      )
+      .get(runId);
+    return row ? this.mapTurnCheckpoint(row) : null;
+  }
+
+  listTurnCheckpoints(chatId: string): TurnCheckpoint[] {
+    if (!validateId(chatId)) return [];
+    return this.database
+      .prepare(
+        `SELECT id, run_id, chat_id, workspace_id, repository_root, working_path,
+                before_ref, before_commit, after_ref, after_commit, status,
+                files_changed, additions, deletions, error, created_at, updated_at
+           FROM turn_checkpoints
+          WHERE chat_id = ?
+          ORDER BY created_at DESC`
+      )
+      .all(chatId)
+      .map((row) => this.mapTurnCheckpoint(row));
+  }
+
+  private mapTurnCheckpoint(row: Record<string, unknown>): TurnCheckpoint {
+    const status =
+      row.status === "capturing" ||
+      row.status === "completed" ||
+      row.status === "failed"
+        ? row.status
+        : "failed";
+    return {
+      id: String(row.id),
+      runId: String(row.run_id),
+      chatId: String(row.chat_id),
+      workspaceId: String(row.workspace_id),
+      repositoryRoot: String(row.repository_root),
+      workingPath: String(row.working_path),
+      beforeRef: String(row.before_ref),
+      beforeCommit: String(row.before_commit),
+      afterRef: typeof row.after_ref === "string" ? row.after_ref : null,
+      afterCommit:
+        typeof row.after_commit === "string" ? row.after_commit : null,
+      status,
+      filesChanged: asNumber(row.files_changed),
+      additions: asNumber(row.additions),
+      deletions: asNumber(row.deletions),
+      error: typeof row.error === "string" ? row.error : null,
+      createdAt: asNumber(row.created_at),
+      updatedAt: asNumber(row.updated_at),
+    };
   }
 
   loadWorkspaces(): LocalWorkspace[] {

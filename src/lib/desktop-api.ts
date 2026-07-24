@@ -42,12 +42,15 @@ import type {
   AgentRunStep,
   ApprovalRecord,
   ArtifactRecord,
+  ChatWorktree,
   LocalWorkspace,
   McpServerConfig,
   McpServerState,
   PlanRecord,
   TaskRecord,
   ToolCallRecord,
+  TurnCheckpoint,
+  TurnCheckpointDiff,
   WorkspaceFileChange,
   WorkspaceFileEntry,
   WorkspaceEvent,
@@ -244,15 +247,18 @@ export type DesktopAPI = {
     testMcpServer: (server: McpServerConfig) => Promise<McpServerState>;
     listWorkspaceFiles: (
       workspaceId: string,
-      path?: string
+      path?: string,
+      chatId?: string
     ) => Promise<WorkspaceFileEntry[]>;
     readWorkspaceFile: (
       workspaceId: string,
-      path: string
+      path: string,
+      chatId?: string
     ) => Promise<{ path: string; content: string; truncated: boolean; sizeBytes: number }>;
     readWorkspaceFileBinary: (
       workspaceId: string,
-      path: string
+      path: string,
+      chatId?: string
     ) => Promise<{
       path: string;
       base64: string;
@@ -260,7 +266,8 @@ export type DesktopAPI = {
       sizeBytes: number;
     }>;
     listWorkspaceChanges: (
-      workspaceId: string
+      workspaceId: string,
+      chatId?: string
     ) => Promise<WorkspaceFileChange[]>;
     searchWorkspaceFiles: (
       workspaceId: string,
@@ -271,7 +278,8 @@ export type DesktopAPI = {
         scope?: "all" | "filename" | "content";
         path?: string;
         caseSensitive?: boolean;
-      }
+      },
+      chatId?: string
     ) => Promise<{
       query: string;
       filenameMatches: Array<{
@@ -311,23 +319,37 @@ export type DesktopAPI = {
     >;
     createWorkspaceDirectory: (
       workspaceId: string,
-      path: string
+      path: string,
+      chatId?: string
     ) => Promise<{ path: string }>;
     createWorkspaceFile: (
       workspaceId: string,
       path: string,
-      content?: string
+      content?: string,
+      chatId?: string
     ) => Promise<{ path: string; sizeBytes: number }>;
     renameWorkspaceEntry: (
       workspaceId: string,
       from: string,
-      to: string
+      to: string,
+      chatId?: string
     ) => Promise<{ from: string; to: string }>;
     deleteWorkspaceEntry: (
       workspaceId: string,
-      path: string
+      path: string,
+      chatId?: string
     ) => Promise<{ path: string }>;
-    revealWorkspacePath: (workspaceId: string, path: string) => Promise<void>;
+    revealWorkspacePath: (
+      workspaceId: string,
+      path: string,
+      chatId?: string
+    ) => Promise<void>;
+    getChatWorktree: (chatId: string) => Promise<ChatWorktree | null>;
+    listTurnCheckpoints: (chatId: string) => Promise<TurnCheckpoint[]>;
+    getTurnCheckpointDiff: (
+      runId: string
+    ) => Promise<TurnCheckpointDiff | null>;
+    restoreTurnCheckpoint: (runId: string) => Promise<TurnCheckpoint>;
     listArtifacts: (workspaceId: string) => Promise<ArtifactRecord[]>;
     readArtifact: (workspaceId: string, artifactId: string) => Promise<string>;
     deleteArtifact: (artifactId: string) => Promise<void>;

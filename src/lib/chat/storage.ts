@@ -1,7 +1,12 @@
 import type { AgentMode } from "@/lib/chat/agent-mode";
 import type { ModelId } from "@/lib/models";
 import { ensureLegacyMigration } from "@/lib/storage/migrate-legacy";
-import type { LocalWorkspace, WorkspaceRoot } from "@/lib/workspace";
+import {
+  sanitizeChatWorkspaceMode,
+  type ChatWorkspaceMode,
+  type LocalWorkspace,
+  type WorkspaceRoot,
+} from "@/lib/workspace";
 import type { UIMessage } from "ai";
 
 export type LocalChat = {
@@ -11,6 +16,8 @@ export type LocalChat = {
   model: ModelId;
   messages: UIMessage[];
   workspaceId: string | null;
+  /** Shared project folder or a chat-isolated Git worktree. */
+  workspaceMode?: ChatWorkspaceMode;
   /** Undefined means all workspace-enabled servers; an array is a chat override. */
   mcpServerIds?: string[];
   agentMode?: AgentMode;
@@ -20,6 +27,8 @@ export type LocalChat = {
   pinned?: boolean;
   pinnedAt?: number | null;
 };
+
+export { sanitizeChatWorkspaceMode };
 
 export function sanitizeMcpServerIds(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;

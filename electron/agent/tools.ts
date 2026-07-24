@@ -38,7 +38,11 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
       }),
       execute: async ({ path: dirPath }) => {
         const workspaceId = requireWorkspaceId(ctx);
-        const entries = ctx.files.listDirectory(workspaceId, dirPath);
+        const entries = ctx.files.listDirectory(
+          workspaceId,
+          dirPath,
+          ctx.chatId
+        );
         return {
           path: dirPath,
           entries: entries.map((entry) => ({
@@ -74,7 +78,12 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
       }),
       execute: async ({ path: filePath, offset, limit }) => {
         const workspaceId = requireWorkspaceId(ctx);
-        return ctx.files.readFileText(workspaceId, filePath, { offset, limit });
+        return ctx.files.readFileText(
+          workspaceId,
+          filePath,
+          { offset, limit },
+          ctx.chatId
+        );
       },
     }),
     search_files: tool({
@@ -119,7 +128,7 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
           glob,
           caseSensitive,
           maxMatches,
-        });
+        }, ctx.chatId);
       },
     }),
     write_file: tool({
@@ -135,7 +144,12 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
       }),
       execute: async ({ path: filePath, content }) => {
         const workspaceId = requireWorkspaceId(ctx);
-        return ctx.files.writeFile(workspaceId, filePath, content);
+        return ctx.files.writeFile(
+          workspaceId,
+          filePath,
+          content,
+          ctx.chatId
+        );
       },
     }),
     apply_patch: tool({
@@ -151,7 +165,13 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
       }),
       execute: async ({ path: filePath, oldText, newText }) => {
         const workspaceId = requireWorkspaceId(ctx);
-        return ctx.files.applyPatch(workspaceId, filePath, oldText, newText);
+        return ctx.files.applyPatch(
+          workspaceId,
+          filePath,
+          oldText,
+          newText,
+          ctx.chatId
+        );
       },
     }),
     move_file: tool({
@@ -163,7 +183,7 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
       }),
       execute: async ({ from, to }) => {
         const workspaceId = requireWorkspaceId(ctx);
-        return ctx.files.moveFile(workspaceId, from, to);
+        return ctx.files.moveFile(workspaceId, from, to, ctx.chatId);
       },
     }),
     delete_file: tool({
@@ -174,7 +194,7 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
       }),
       execute: async ({ path: filePath }) => {
         const workspaceId = requireWorkspaceId(ctx);
-        return ctx.files.deleteFile(workspaceId, filePath);
+        return ctx.files.deleteFile(workspaceId, filePath, ctx.chatId);
       },
     }),
     run_command: tool({
@@ -194,9 +214,11 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
       }),
       execute: async function* ({ command, cwd }) {
         const workspaceId = requireWorkspaceId(ctx);
-        const roots = ctx.files.getApprovedRoots(workspaceId);
+        const roots = ctx.files.getApprovedRoots(workspaceId, ctx.chatId);
         const workdir =
-          cwd ?? ctx.files.primaryRootPath(workspaceId) ?? defaultShellCwd(roots);
+          cwd ??
+          ctx.files.primaryRootPath(workspaceId, ctx.chatId) ??
+          defaultShellCwd(roots);
         yield* streamScopedCommand({
           command,
           cwd: workdir,

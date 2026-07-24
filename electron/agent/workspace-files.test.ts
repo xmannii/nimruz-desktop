@@ -286,6 +286,58 @@ test("relative paths resolve against the primary linked root", async () => {
   });
 });
 
+test("chat-scoped file access replaces the shared root with its worktree", async () => {
+  await withContext(({ store, database, directory }) => {
+    const sharedDir = path.join(directory, "shared-repository");
+    const worktreeDir = path.join(directory, "chat-worktree");
+    mkdirSync(sharedDir, { recursive: true });
+    mkdirSync(worktreeDir, { recursive: true });
+    const rootId = nanoid();
+    store.ensureManagedRoot(WORKSPACE_ID);
+    database.saveWorkspaceRoot({
+      id: rootId,
+      workspaceId: WORKSPACE_ID,
+      kind: "linked",
+      path: sharedDir,
+      label: "Shared",
+      isPrimary: true,
+      createdAt: 1,
+    });
+    database.saveChatWorktree({
+      chatId: "chat-scoped",
+      workspaceId: WORKSPACE_ID,
+      repositoryRoot: worktreeDir,
+      worktreePath: worktreeDir,
+      workingPath: worktreeDir,
+      branchName: "nimruz/chat-scoped",
+      baseCommit: "abc123",
+      createdAt: 2,
+      updatedAt: 2,
+    });
+
+    store.writeFile(WORKSPACE_ID, "feature.txt", "isolated", "chat-scoped");
+    assert.equal(
+      readFileSync(path.join(worktreeDir, "feature.txt"), "utf8"),
+      "isolated"
+    );
+    assert.equal(store.primaryRootPath(WORKSPACE_ID), sharedDir);
+    assert.equal(
+      store.primaryRootPath(WORKSPACE_ID, "chat-scoped"),
+      worktreeDir
+    );
+    assert.throws(
+      () =>
+        store.readFile(
+          WORKSPACE_ID,
+          path.join(sharedDir, "outside.txt"),
+          undefined,
+          "chat-scoped"
+        ),
+      PathPolicyError
+    );
+  });
+});
+
 test("importFiles writes uploads and returns durable references", async () => {
   await withStore((store) => {
     const [result] = store.importFiles(WORKSPACE_ID, [
