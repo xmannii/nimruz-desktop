@@ -22,7 +22,7 @@ Pre-built **Windows** and **macOS** installers are published on every [release](
 | **Windows** | `.exe` (NSIS) | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Linux** | AppImage | Build locally with `pnpm dist` |
 
-See [CHANGELOG.md](CHANGELOG.md) for **v1.3.0** release notes (composer + menu, per-chat MCP, and MCP settings).
+See [CHANGELOG.md](CHANGELOG.md) for **v1.3.0** release notes (desktop Companion, composer + menu, per-chat MCP, and MCP settings).
 
 ### macOS install
 

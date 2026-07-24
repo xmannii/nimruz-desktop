@@ -22,7 +22,7 @@
 | **Windows** | `.exe` (NSIS) | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Linux** | AppImage | ساخت محلی با `pnpm dist` |
 
-جزئیات نسخهٔ **۱٫۳٫۰** در [CHANGELOG.md](CHANGELOG.md) آمده است (منوی + کامپوزر، MCP برای هر گفتگو و تنظیمات MCP).
+جزئیات نسخهٔ **۱٫۳٫۰** در [CHANGELOG.md](CHANGELOG.md) آمده است (Companion دسکتاپ، منوی + کامپوزر، MCP برای هر گفتگو و تنظیمات MCP).
 
 ### نصب در macOS
 
