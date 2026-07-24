@@ -14,6 +14,10 @@ import { WorkspaceFilesStore } from "./agent/workspace-files";
 import { ChatWorktreeManager } from "./git/worktree-manager";
 import { TurnCheckpointManager } from "./git/checkpoint-manager";
 import { WorkspaceGitService } from "./git/workspace-git-service";
+import {
+  TERMINAL_EVENT_CHANNEL,
+  WorkspaceTerminalManager,
+} from "./terminal/manager";
 import { WorkspaceEventBus } from "./agent/events";
 import { RunApprovalBroker } from "./agent/approval-broker";
 import { CredentialService } from "./credentials";
@@ -76,6 +80,7 @@ let shenava: ShenavaService | null = null;
 let notificationService: DesktopNotificationService | null = null;
 let approvalBroker: RunApprovalBroker | null = null;
 let companion: CompanionController | null = null;
+let terminals: WorkspaceTerminalManager | null = null;
 let rendererUrl = "";
 const activeNotifications = new Set<Notification>();
 let isQuitting = false;
@@ -223,6 +228,13 @@ app.whenReady().then(async () => {
   const worktrees = new ChatWorktreeManager(database, userDataPath);
   const checkpoints = new TurnCheckpointManager(database);
   const git = new WorkspaceGitService(workspaceFiles);
+  terminals = new WorkspaceTerminalManager(workspaceFiles, (event) => {
+    for (const window of [mainWindow, companion?.getWindow()]) {
+      if (window && !window.isDestroyed()) {
+        window.webContents.send(TERMINAL_EVENT_CHANNEL, event);
+      }
+    }
+  });
   shenava = new ShenavaService({
     userDataPath,
     workerScript: resolveShenavaWorkerPath(),
@@ -252,6 +264,7 @@ app.whenReady().then(async () => {
     checkpoints,
     approvals: approvalBroker,
     git,
+    terminals,
     workspaceEvents,
     shenava,
     sessionToken,
@@ -341,6 +354,7 @@ app.on("before-quit", () => {
   shenava?.cancelDownload();
   codex?.dispose();
   approvalBroker?.dispose();
+  terminals?.dispose();
   localServer?.close();
   database?.close();
   localServer = null;
@@ -349,6 +363,7 @@ app.on("before-quit", () => {
   shenava = null;
   notificationService = null;
   approvalBroker = null;
+  terminals = null;
   activeNotifications.clear();
   companion = null;
 });

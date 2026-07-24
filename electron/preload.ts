@@ -16,6 +16,7 @@ import {
   NOTIFICATION_OPEN_CHAT_CHANNEL,
   NOTIFICATION_PLAY_SOUND_CHANNEL,
 } from "./notifications/service";
+import { TERMINAL_EVENT_CHANNEL } from "@/lib/terminal";
 
 const desktopApi: DesktopAPI = {
   platform: process.platform,
@@ -40,6 +41,37 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("git:merge", workspaceId, branch, chatId),
     abortMerge: (workspaceId, chatId) =>
       ipcRenderer.invoke("git:abort-merge", workspaceId, chatId),
+  },
+  terminal: {
+    list: (workspaceId, chatId) =>
+      ipcRenderer.invoke("terminal:list", workspaceId, chatId),
+    listTests: (workspaceId, chatId) =>
+      ipcRenderer.invoke("terminal:list-tests", workspaceId, chatId),
+    start: (workspaceId, chatId, size) =>
+      ipcRenderer.invoke("terminal:start", workspaceId, chatId, size),
+    startTest: (workspaceId, script, chatId, size) =>
+      ipcRenderer.invoke(
+        "terminal:start-test",
+        workspaceId,
+        script,
+        chatId,
+        size
+      ),
+    write: (sessionId, data) =>
+      ipcRenderer.invoke("terminal:write", sessionId, data),
+    resize: (sessionId, cols, rows) =>
+      ipcRenderer.invoke("terminal:resize", sessionId, cols, rows),
+    close: (sessionId) => ipcRenderer.invoke("terminal:close", sessionId),
+    onEvent: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: import("@/lib/terminal").TerminalEvent
+      ) => callback(payload);
+      ipcRenderer.on(TERMINAL_EVENT_CHANNEL, handler);
+      return () => {
+        ipcRenderer.removeListener(TERMINAL_EVENT_CHANNEL, handler);
+      };
+    },
   },
   window: {
     minimize: () => ipcRenderer.invoke("window:minimize"),

@@ -4,6 +4,7 @@ import { WorkspaceActivityPanel } from "@/components/workspace/workspace-activit
 import { WorkspaceArtifactsPanel } from "@/components/workspace/workspace-artifacts-panel";
 import { WorkspaceFilesPanel } from "@/components/workspace/workspace-files-panel";
 import { WorkspaceSettingsSection } from "@/components/workspace/workspace-settings-section";
+import { WorkspaceTerminalPanel } from "@/components/workspace/workspace-terminal-panel";
 import { WorkspacePlansPanel } from "@/components/workspace/workspace-plans-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ import {
   ListTodoIcon,
   PanelLeftCloseIcon,
   SettingsIcon,
+  SquareTerminalIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState, type ComponentType } from "react";
 
@@ -42,6 +44,7 @@ type WorkspacePanelSection =
   | "files"
   | "artifacts"
   | "plan"
+  | "terminal"
   | "activity"
   | "settings";
 
@@ -54,6 +57,7 @@ function normalizePanelSection(
     value === "files" ||
     value === "artifacts" ||
     value === "plan" ||
+    value === "terminal" ||
     value === "activity" ||
     value === "settings"
   ) {
@@ -91,6 +95,7 @@ const BASE_SECTIONS: SectionDef[] = [
   { id: "files", label: "فایل‌ها", icon: FolderIcon },
   { id: "artifacts", label: "آرتیفکت‌ها", icon: FileTextIcon },
   { id: "plan", label: "پلن", icon: ListTodoIcon },
+  { id: "terminal", label: "ترمینال", icon: SquareTerminalIcon },
   { id: "activity", label: "فعالیت", icon: ActivityIcon },
 ];
 
@@ -317,6 +322,10 @@ export function WorkspacePanel({
             revealPlanId={revealPlanId}
             onRevealHandled={() => setRevealPlanId(null)}
           />
+        ) : null}
+
+        {active === "terminal" ? (
+          <WorkspaceTerminalPanel workspaceId={workspaceId} chatId={chatId} />
         ) : null}
 
         {active === "activity" ? (

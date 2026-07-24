@@ -59,7 +59,8 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 - **Approvals** — risky tools ask before running; optional “always allow” per workspace
 - **Durable follow-ups** — queue text while an agent works, or steer by interrupting and continuing with the new instruction
 - **Git workflows** — review diffs, stage/unstage, discard, commit, fast-forward from upstream, and merge/abort without leaving the app
-- **Side panel** — files, artifacts, tasks, activity, and workspace settings
+- **Real terminal and test runner** — interactive workspace PTYs plus safe discovery and execution of package test/check/lint/build scripts
+- **Side panel** — files, artifacts, tasks, terminal, activity, and workspace settings
 - **Composer context** — attach files/artifacts, workspace picker, and `@`-mentions
 
 ### Chat & models
@@ -119,6 +120,9 @@ current authentication boundary.
 
 For isolated Git worktrees, per-run checkpoints, diff limits, and restore safety,
 see [Git workflows](docs/GIT_WORKFLOWS.md).
+
+For PTY lifecycle, environment boundaries, and package-script discovery, see
+[Workspace terminal and test runner](docs/TERMINAL.md).
 
 API keys are encrypted through macOS Keychain, Windows DPAPI, or a Linux libsecret/KWallet keyring. On Linux, storage is refused when only Electron's insecure `basic_text` backend is available.
 

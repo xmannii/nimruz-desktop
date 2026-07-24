@@ -63,6 +63,11 @@ import type {
   WorkspaceRoot,
   WorkspaceTrustSettings,
 } from "@/lib/workspace";
+import type {
+  TerminalEvent,
+  TerminalSession,
+  WorkspaceTestScript,
+} from "@/lib/terminal";
 
 export type CredentialStatus = {
   configured: boolean;
@@ -149,6 +154,35 @@ export type DesktopAPI = {
       chatId?: string
     ) => Promise<WorkspaceGitOperationResult>;
     abortMerge: (workspaceId: string, chatId?: string) => Promise<void>;
+  };
+  terminal: {
+    list: (
+      workspaceId: string,
+      chatId?: string
+    ) => Promise<TerminalSession[]>;
+    listTests: (
+      workspaceId: string,
+      chatId?: string
+    ) => Promise<WorkspaceTestScript[]>;
+    start: (
+      workspaceId: string,
+      chatId?: string,
+      size?: { cols?: number; rows?: number }
+    ) => Promise<TerminalSession>;
+    startTest: (
+      workspaceId: string,
+      script: string,
+      chatId?: string,
+      size?: { cols?: number; rows?: number }
+    ) => Promise<TerminalSession>;
+    write: (sessionId: string, data: string) => Promise<void>;
+    resize: (
+      sessionId: string,
+      cols: number,
+      rows: number
+    ) => Promise<void>;
+    close: (sessionId: string) => Promise<void>;
+    onEvent: (callback: (event: TerminalEvent) => void) => () => void;
   };
   window: {
     minimize: () => Promise<void>;

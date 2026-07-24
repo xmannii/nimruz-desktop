@@ -54,6 +54,7 @@ import { testMcpServerConnection } from "./agent/mcp";
 import type { TurnCheckpointManager } from "./git/checkpoint-manager";
 import type { RunApprovalBroker } from "./agent/approval-broker";
 import type { WorkspaceGitService } from "./git/workspace-git-service";
+import type { WorkspaceTerminalManager } from "./terminal/manager";
 import {
   CHAT_QUEUE_TEXT_LIMIT,
   type ChatQueuedMessageKind,
@@ -115,6 +116,7 @@ export function registerIpcHandlers(options: {
   checkpoints: TurnCheckpointManager;
   approvals: RunApprovalBroker;
   git: WorkspaceGitService;
+  terminals: WorkspaceTerminalManager;
   workspaceEvents: WorkspaceEventBus;
   shenava: ShenavaService;
   sessionToken: string;
@@ -131,6 +133,7 @@ export function registerIpcHandlers(options: {
     checkpoints,
     approvals,
     git,
+    terminals,
     workspaceEvents,
     shenava,
     sessionToken,
@@ -800,6 +803,53 @@ export function registerIpcHandlers(options: {
     await git.abortMerge(workspaceId, chatId);
     emitGitChanged(workspaceId, chatId);
   });
+  handle("terminal:list", (workspaceId: string, chatId?: string) =>
+    terminals.list(workspaceId, chatId)
+  );
+  handle("terminal:list-tests", (workspaceId: string, chatId?: string) =>
+    terminals.listTestScripts(workspaceId, chatId)
+  );
+  handle(
+    "terminal:start",
+    (
+      workspaceId: string,
+      chatId?: string,
+      size?: { cols?: number; rows?: number }
+    ) =>
+      terminals.startShell({
+        workspaceId,
+        chatId,
+        cols: size?.cols,
+        rows: size?.rows,
+      })
+  );
+  handle(
+    "terminal:start-test",
+    (
+      workspaceId: string,
+      script: string,
+      chatId?: string,
+      size?: { cols?: number; rows?: number }
+    ) =>
+      terminals.startTest({
+        workspaceId,
+        chatId,
+        script,
+        cols: size?.cols,
+        rows: size?.rows,
+      })
+  );
+  handle("terminal:write", (sessionId: string, data: string) =>
+    terminals.write(sessionId, data)
+  );
+  handle(
+    "terminal:resize",
+    (sessionId: string, cols: number, rows: number) =>
+      terminals.resize(sessionId, cols, rows)
+  );
+  handle("terminal:close", (sessionId: string) =>
+    terminals.close(sessionId)
+  );
   handle(
     "storage:search-workspace-files",
     (

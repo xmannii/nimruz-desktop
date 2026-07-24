@@ -17,7 +17,7 @@ const shared = {
   sourcemap: true,
   alias,
   // Electron and Node built-ins are provided at runtime.
-  external: ["electron", "node:sqlite", "sherpa-onnx"],
+  external: ["electron", "node:sqlite", "sherpa-onnx", "node-pty"],
   loader: {
     ".md": "text",
     ".ttf": "file",
