@@ -55,6 +55,7 @@ import { createSpawnSubagentTool } from "./subagent";
 import type { WorkspaceFilesStore } from "./workspace-files";
 import type { WorkspaceEventBus } from "./events";
 import { createLanguageModel } from "./model";
+import { createMcpToolSession, type McpToolSession } from "./mcp";
 import type { CodexService } from "../codex/service";
 import { handleCodexChatRequest } from "../codex/chat-handler";
 import {
@@ -356,6 +357,33 @@ export async function handleAgentChatRequest(
     });
   }
 
+  let mcpSession: McpToolSession | null = null;
+  if (
+    workspace &&
+    !isChatMode &&
+    !isPlanMode &&
+    resolved.model.supportsTools &&
+    AGENTIC_WORKSPACE_FEATURE.slices.mcp
+  ) {
+    const cwd = deps.files.primaryRootPath(workspace.id);
+    if (cwd) {
+      mcpSession = await createMcpToolSession({
+        servers: deps.database.listMcpServers(workspace.id),
+        cwd,
+      });
+    }
+  }
+  const closeMcpSession = async () => {
+    const activeSession = mcpSession;
+    mcpSession = null;
+    await activeSession?.close();
+  };
+  abortSignal?.addEventListener(
+    "abort",
+    () => void closeMcpSession(),
+    { once: true }
+  );
+
   const sanitizedExperts = isChatMode ? [] : sanitizeExperts(experts);
   const enabledExperts = sanitizedExperts.filter((expert) => expert.enabled);
   const lastUserText =
@@ -462,6 +490,7 @@ export async function handleAgentChatRequest(
       ? ({
           ...(isPlanMode ? planClientTools : baseTools),
           ...workspaceTools,
+          ...(mcpSession?.tools ?? {}),
           ...(!isPlanMode && enabledExperts.length > 0
             ? createExpertTools(sanitizedExperts, languageModel)
             : {}),
@@ -569,6 +598,9 @@ export async function handleAgentChatRequest(
     const agent = new ToolLoopAgent({
       model: languageModel,
       instructions,
+      onEnd: async () => {
+        await closeMcpSession();
+      },
       ...(selectedReasoningEffort
         ? { reasoning: selectedReasoningEffort }
         : {}),
@@ -697,10 +729,12 @@ export async function handleAgentChatRequest(
       }),
       sendReasoning: true,
       onError: (error) => {
+        void closeMcpSession();
         finishRun("failed", getChatErrorMessage(error));
         return getChatErrorMessage(error);
       },
       onFinish: () => {
+        void closeMcpSession();
         const current = deps.database.getAgentRun(runId);
         if (current?.status === "awaiting_approval") return;
         finishRun("completed");
@@ -715,6 +749,7 @@ export async function handleAgentChatRequest(
       },
     });
   } catch (error) {
+    await closeMcpSession();
     finishRun("failed", getChatErrorMessage(error));
     return new Response(
       JSON.stringify({ error: getChatErrorMessage(error) }),

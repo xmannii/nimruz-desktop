@@ -277,7 +277,7 @@ export const AGENTIC_WORKSPACE_FEATURE = {
     writeTools: true,
     shellTools: true,
     artifactsTasks: true,
-    mcp: false,
+    mcp: true,
     browserAutomation: false,
     backgroundRuns: false,
   },

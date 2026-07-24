@@ -1,6 +1,6 @@
 /**
  * Stubs for agent runtime extensibility points that are not enabled yet:
- * MCP tool servers, browser automation, and background (unattended) runs.
+ * browser automation and background (unattended) runs.
  *
  * Each capability is gated by `AGENTIC_WORKSPACE_FEATURE.slices` so it can
  * ship disabled and be turned on per-slice later without touching callers.
@@ -11,29 +11,12 @@
 
 import type { ToolSet } from "ai";
 import { AGENTIC_WORKSPACE_FEATURE } from "@/lib/workspace";
-import type { McpServerConfig } from "@/lib/workspace/mcp";
 
 export type ExtensibilityContext = {
   workspaceId: string | null;
   chatId: string;
   runId: string;
 };
-
-/**
- * Future: connect to configured MCP servers for this workspace and expose
- * their tools to the agent's tool set. Returns an empty tool set while
- * `slices.mcp` is disabled.
- */
-export async function buildMcpTools(
-  _ctx: ExtensibilityContext,
-  _servers: McpServerConfig[] = []
-): Promise<ToolSet> {
-  if (!AGENTIC_WORKSPACE_FEATURE.slices.mcp) {
-    return {};
-  }
-
-  throw new Error("MCP tool bridging is not implemented yet.");
-}
 
 /**
  * Future: expose a sandboxed/controlled browser to the agent (navigate,
