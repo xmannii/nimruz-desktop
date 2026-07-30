@@ -51,6 +51,7 @@ import {
   openExternalUrl,
 } from "./updates";
 import { testMcpServerConnection } from "./agent/mcp";
+import type { TelegramService } from "./telegram/service";
 
 const execFileAsync = promisify(execFile);
 const MAX_DIFF_CHARS = 120_000;
@@ -107,6 +108,7 @@ export function registerIpcHandlers(options: {
   workspaceFiles: WorkspaceFilesStore;
   workspaceEvents: WorkspaceEventBus;
   shenava: ShenavaService;
+  telegram: TelegramService;
   sessionToken: string;
   getMainWindow: () => import("electron").BrowserWindow | null;
   getCompanionWindow: () => import("electron").BrowserWindow | null;
@@ -120,6 +122,7 @@ export function registerIpcHandlers(options: {
     workspaceFiles,
     workspaceEvents,
     shenava,
+    telegram,
     sessionToken,
     getMainWindow,
     getCompanionWindow,
@@ -888,6 +891,24 @@ export function registerIpcHandlers(options: {
   handle("storage:save-subagents", (value: unknown) =>
     database.saveSubagents(value)
   );
+  handle("telegram:get-status", () => telegram.getStatus());
+  handle(
+    "telegram:configure",
+    (value: { token?: unknown; workspaceId?: unknown }) =>
+      telegram.configure(
+        value?.token,
+        typeof value?.workspaceId === "string" ? value.workspaceId : ""
+      )
+  );
+  handle("telegram:set-enabled", (enabled: boolean) =>
+    telegram.setEnabled(enabled === true)
+  );
+  handle("telegram:set-workspace", (workspaceId: string) =>
+    telegram.setWorkspace(workspaceId)
+  );
+  handle("telegram:begin-pairing", () => telegram.beginPairing());
+  handle("telegram:unpair", () => telegram.unpair());
+  handle("telegram:clear-token", () => telegram.clearToken());
   handle(
     "storage:import-legacy",
     (value: unknown): LegacyImportResult =>

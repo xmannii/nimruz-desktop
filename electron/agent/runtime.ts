@@ -42,6 +42,7 @@ import {
   AGENTIC_WORKSPACE_FEATURE,
   type AgentRun,
   type LocalWorkspace,
+  type WorkspaceTrustSettings,
 } from "@/lib/workspace";
 import type { AppDatabase } from "../storage/database";
 import type { ResolvedChatModel } from "../chat-handler";
@@ -84,6 +85,7 @@ export type AgentRequestBody = {
   workspaceId?: string | null;
   agentMode?: AgentMode;
   runId?: string;
+  remoteChannel?: "telegram";
 };
 
 export type AgentRuntimeDeps = {
@@ -102,6 +104,13 @@ export type AgentRuntimeDeps = {
 
 const MAX_STEPS = 20;
 const MAX_WALL_MS = 5 * 60_000;
+const TELEGRAM_REMOTE_TRUST: WorkspaceTrustSettings = {
+  level: "ask",
+  autoApproveReads: true,
+  autoApproveWrites: false,
+  autoApproveShell: false,
+  autoApproveNetwork: false,
+};
 
 function resolveModelOrError(
   resolveModel: AgentRuntimeDeps["resolveModel"],
@@ -163,6 +172,7 @@ export async function handleAgentChatRequest(
   const agentMode = sanitizeAgentMode(body.agentMode ?? DEFAULT_AGENT_MODE);
   const isPlanMode = agentMode === "plan";
   const isChatMode = agentMode === "chat";
+  const isTelegramRequest = body.remoteChannel === "telegram";
 
   const resolvedResult = resolveModelOrError(
     deps.resolveModel,
@@ -635,7 +645,11 @@ export async function handleAgentChatRequest(
               const decision = evaluateToolPolicy({
                 toolName: toolCall.toolName,
                 agentMode,
-                trust: workspace?.trust,
+                // Remote requests always use the conservative defaults even
+                // when the desktop workspace has broader auto-approval rules.
+                trust: isTelegramRequest
+                  ? TELEGRAM_REMOTE_TRUST
+                  : workspace?.trust,
                 slices: AGENTIC_WORKSPACE_FEATURE.slices,
               });
 

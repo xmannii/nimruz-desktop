@@ -16,6 +16,10 @@ import {
   NOTIFICATION_OPEN_CHAT_CHANNEL,
   NOTIFICATION_PLAY_SOUND_CHANNEL,
 } from "./notifications/service";
+import {
+  TELEGRAM_CHAT_CHANNEL,
+  TELEGRAM_STATUS_CHANNEL,
+} from "@/lib/telegram";
 
 const desktopApi: DesktopAPI = {
   platform: process.platform,
@@ -57,6 +61,34 @@ const desktopApi: DesktopAPI = {
       return () => {
         ipcRenderer.removeListener(NOTIFICATION_OPEN_CHAT_CHANNEL, handler);
       };
+    },
+  },
+  telegram: {
+    getStatus: () => ipcRenderer.invoke("telegram:get-status"),
+    configure: (options) =>
+      ipcRenderer.invoke("telegram:configure", options),
+    setEnabled: (enabled) =>
+      ipcRenderer.invoke("telegram:set-enabled", enabled),
+    setWorkspace: (workspaceId) =>
+      ipcRenderer.invoke("telegram:set-workspace", workspaceId),
+    beginPairing: () => ipcRenderer.invoke("telegram:begin-pairing"),
+    unpair: () => ipcRenderer.invoke("telegram:unpair"),
+    clearToken: () => ipcRenderer.invoke("telegram:clear-token"),
+    onStatusChange: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        status: import("@/lib/telegram").TelegramStatus
+      ) => callback(status);
+      ipcRenderer.on(TELEGRAM_STATUS_CHANNEL, handler);
+      return () => ipcRenderer.removeListener(TELEGRAM_STATUS_CHANNEL, handler);
+    },
+    onChatChange: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        chat: import("@/lib/chat/storage").LocalChat
+      ) => callback(chat);
+      ipcRenderer.on(TELEGRAM_CHAT_CHANNEL, handler);
+      return () => ipcRenderer.removeListener(TELEGRAM_CHAT_CHANNEL, handler);
     },
   },
   companion: {

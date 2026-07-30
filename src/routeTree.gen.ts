@@ -16,6 +16,7 @@ import { Route as AppTranscribeRouteImport } from './routes/_app.transcribe'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
 import { Route as AppWorkspaceWorkspaceIdRouteImport } from './routes/_app.workspace.$workspaceId'
+import { Route as AppSettingsTelegramRouteImport } from './routes/_app.settings.telegram'
 import { Route as AppSettingsSpeechRouteImport } from './routes/_app.settings.speech'
 import { Route as AppSettingsSkillsRouteImport } from './routes/_app.settings.skills'
 import { Route as AppSettingsResearchAgentsRouteImport } from './routes/_app.settings.research-agents'
@@ -70,6 +71,11 @@ const AppWorkspaceWorkspaceIdRoute = AppWorkspaceWorkspaceIdRouteImport.update({
   id: '/workspace/$workspaceId',
   path: '/workspace/$workspaceId',
   getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsTelegramRoute = AppSettingsTelegramRouteImport.update({
+  id: '/telegram',
+  path: '/telegram',
+  getParentRoute: () => AppSettingsRoute,
 } as any)
 const AppSettingsSpeechRoute = AppSettingsSpeechRouteImport.update({
   id: '/speech',
@@ -196,6 +202,7 @@ export interface FileRoutesByFullPath {
   '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings/speech': typeof AppSettingsSpeechRoute
+  '/settings/telegram': typeof AppSettingsTelegramRoute
   '/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
   '/settings/': typeof AppSettingsIndexRoute
   '/settings/models/active': typeof AppSettingsModelsActiveRoute
@@ -222,6 +229,7 @@ export interface FileRoutesByTo {
   '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings/speech': typeof AppSettingsSpeechRoute
+  '/settings/telegram': typeof AppSettingsTelegramRoute
   '/settings': typeof AppSettingsIndexRoute
   '/settings/models/active': typeof AppSettingsModelsActiveRoute
   '/settings/models/add': typeof AppSettingsModelsAddRoute
@@ -251,6 +259,7 @@ export interface FileRoutesById {
   '/_app/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/_app/settings/skills': typeof AppSettingsSkillsRoute
   '/_app/settings/speech': typeof AppSettingsSpeechRoute
+  '/_app/settings/telegram': typeof AppSettingsTelegramRoute
   '/_app/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/settings/models/active': typeof AppSettingsModelsActiveRoute
@@ -281,6 +290,7 @@ export interface FileRouteTypes {
     | '/settings/research-agents'
     | '/settings/skills'
     | '/settings/speech'
+    | '/settings/telegram'
     | '/workspace/$workspaceId'
     | '/settings/'
     | '/settings/models/active'
@@ -307,6 +317,7 @@ export interface FileRouteTypes {
     | '/settings/research-agents'
     | '/settings/skills'
     | '/settings/speech'
+    | '/settings/telegram'
     | '/settings'
     | '/settings/models/active'
     | '/settings/models/add'
@@ -335,6 +346,7 @@ export interface FileRouteTypes {
     | '/_app/settings/research-agents'
     | '/_app/settings/skills'
     | '/_app/settings/speech'
+    | '/_app/settings/telegram'
     | '/_app/workspace/$workspaceId'
     | '/_app/settings/'
     | '/_app/settings/models/active'
@@ -400,6 +412,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/workspace/$workspaceId'
       preLoaderRoute: typeof AppWorkspaceWorkspaceIdRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/_app/settings/telegram': {
+      id: '/_app/settings/telegram'
+      path: '/telegram'
+      fullPath: '/settings/telegram'
+      preLoaderRoute: typeof AppSettingsTelegramRouteImport
+      parentRoute: typeof AppSettingsRoute
     }
     '/_app/settings/speech': {
       id: '/_app/settings/speech'
@@ -575,6 +594,7 @@ interface AppSettingsRouteChildren {
   AppSettingsResearchAgentsRoute: typeof AppSettingsResearchAgentsRoute
   AppSettingsSkillsRoute: typeof AppSettingsSkillsRoute
   AppSettingsSpeechRoute: typeof AppSettingsSpeechRoute
+  AppSettingsTelegramRoute: typeof AppSettingsTelegramRoute
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
@@ -592,6 +612,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsResearchAgentsRoute: AppSettingsResearchAgentsRoute,
   AppSettingsSkillsRoute: AppSettingsSkillsRoute,
   AppSettingsSpeechRoute: AppSettingsSpeechRoute,
+  AppSettingsTelegramRoute: AppSettingsTelegramRoute,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 

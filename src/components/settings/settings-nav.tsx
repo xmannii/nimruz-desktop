@@ -36,6 +36,7 @@ import {
   PlusIcon,
   SearchIcon,
   ScrollTextIcon,
+  SendIcon,
   SparklesIcon,
   UserRoundIcon,
   WaypointsIcon,
@@ -54,6 +55,7 @@ type SettingsPath =
   | "/settings/notifications"
   | "/settings/speech"
   | "/settings/companion"
+  | "/settings/telegram"
   | "/settings/research-agents"
   | "/settings/skills"
   | "/settings/mcp"
@@ -111,6 +113,12 @@ export const SETTINGS_NAV_GROUPS: Array<{
         label: "دستیار سریع",
         icon: PanelTopOpenIcon,
         match: (pathname) => pathname.startsWith("/settings/companion"),
+      },
+      {
+        to: "/settings/telegram",
+        label: "تلگرام",
+        icon: SendIcon,
+        match: (pathname) => pathname.startsWith("/settings/telegram"),
       },
       {
         to: "/settings/models",
