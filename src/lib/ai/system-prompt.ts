@@ -100,7 +100,6 @@ export function buildSystemInstructions(
   }
 ) {
   const hasExperts = sanitizeExperts(experts).some((expert) => expert.enabled);
-  const hasSkills = (skills?.length ?? 0) > 0;
   const includeAgentTools = options?.includeAgentTools !== false;
 
   const sections = [
@@ -110,8 +109,8 @@ export function buildSystemInstructions(
     includeAgentTools ? getCreateExpertToolsPrompt() : "",
     includeAgentTools && hasExperts ? getExpertToolsPrompt() : "",
     includeAgentTools && hasExperts ? buildExpertsAppendix(experts) : "",
-    includeAgentTools && hasSkills ? getSkillToolsPrompt() : "",
-    includeAgentTools && hasSkills ? buildSkillsAppendix(skills) : "",
+    includeAgentTools ? getSkillToolsPrompt() : "",
+    includeAgentTools ? buildSkillsAppendix(skills) : "",
     includeAgentTools ? getWebToolsPrompt() : "",
     options?.includeSubagentTools ? getSpawnSubagentToolsPrompt() : "",
     buildPersonalizationAppendix(personalization),

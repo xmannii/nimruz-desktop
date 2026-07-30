@@ -57,3 +57,21 @@ test("only allows the enabled preference to change on an existing Codex provider
   assert.equal(provider.authRequired, true);
   assert.equal(provider.createdAt, 123);
 });
+
+test("preserves supported native provider adapter kinds", () => {
+  for (const [kind, baseUrl] of [
+    ["openai", "https://api.openai.com/v1"],
+    ["anthropic", "https://api.anthropic.com/v1"],
+    ["google", "https://generativelanguage.googleapis.com/v1beta"],
+  ] as const) {
+    const provider = sanitizeProviderConfig({
+      id: `native-${kind}`,
+      name: kind,
+      kind,
+      baseUrl,
+      authRequired: true,
+    });
+    assert.equal(provider.kind, kind);
+    assert.equal(provider.baseUrl, baseUrl);
+  }
+});

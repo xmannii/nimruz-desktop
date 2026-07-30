@@ -144,7 +144,7 @@ export function ProviderSetupAlert({
               className="border-amber-500/50 bg-background/80"
               onClick={() => {
                 void navigate({
-                  to: "/settings/models",
+                  to: "/settings/models/providers",
                   search: { provider: CODEX_PROVIDER_ID },
                 });
               }}
@@ -199,7 +199,7 @@ export function ProviderSetupAlert({
               className="border-amber-500/50 bg-background/80"
               onClick={() => {
                 void navigate({
-                  to: "/settings/models",
+                  to: "/settings/models/providers",
                   search: { provider: providerId },
                 });
               }}

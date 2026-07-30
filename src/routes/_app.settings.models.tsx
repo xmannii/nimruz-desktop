@@ -1,4 +1,4 @@
-import { ModelsSettingsSection } from "@/components/settings/models-section";
+import { ModelsSettingsLayout } from "@/components/settings/models-layout";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_app/settings/models")({
@@ -9,10 +9,5 @@ export const Route = createFileRoute("/_app/settings/models")({
         ? search.provider
         : undefined,
   }),
-  component: ModelsSettingsRoute,
+  component: ModelsSettingsLayout,
 });
-
-function ModelsSettingsRoute() {
-  const { provider } = Route.useSearch();
-  return <ModelsSettingsSection initialProviderId={provider} />;
-}

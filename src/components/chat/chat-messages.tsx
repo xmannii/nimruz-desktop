@@ -2,6 +2,7 @@
 
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { MessageResponse } from "@/components/ai-elements/message";
+import streamingTextStyles from "@/components/chat/StreamingText.module.css";
 import {
   ChatMessageActions,
   copyTextToClipboard,
@@ -21,7 +22,10 @@ import {
   ChatToolStepGroup,
   type ToolStepCollapsedSummary,
 } from "@/components/chat/chat-tool-invocation";
-import { ChatFetchUrlToolPart } from "@/components/chat/chat-web-tool-part";
+import {
+  ChatFetchUrlToolPart,
+  ChatWebSearchToolPart,
+} from "@/components/chat/chat-web-tool-part";
 import { ChatWorkspaceToolPart } from "@/components/chat/chat-workspace-tool-part";
 import { ChatSubagentToolPart } from "@/components/chat/chat-subagent-tool-part";
 import { ToolApprovalCard } from "@/components/workspace/tool-approval-card";
@@ -434,6 +438,17 @@ function isManualApprovalPart(part: UIMessage["parts"][number]): boolean {
   return !approval?.isAutomatic;
 }
 
+function isStructuralMessagePart(
+  part: UIMessage["parts"][number]
+): boolean {
+  return (
+    part.type === "step-start" ||
+    part.type === "source-url" ||
+    part.type === "source-document" ||
+    part.type === "file"
+  );
+}
+
 /** Tool parts that belong in the compact connected step timeline. */
 function isStackableToolPart(part: UIMessage["parts"][number]): boolean {
   if (part.type === "reasoning") return false;
@@ -515,15 +530,33 @@ function renderStackableToolPart(
     );
   }
 
-  if (part.type === "tool-load_skill") {
+  if (
+    part.type === "tool-load_skill" ||
+    part.type === "tool-create_skill"
+  ) {
     return (
       <ChatSkillToolPart
         key={key}
         part={
-          part as Extract<
-            UIMessage["parts"][number],
-            { type: "tool-load_skill" }
-          >
+          part as {
+            type: "tool-load_skill" | "tool-create_skill";
+            toolCallId: string;
+            state: string;
+            input?: {
+              name?: string;
+              description?: string;
+              instructions?: string;
+            };
+            output?: {
+              success?: boolean;
+              name?: string;
+              description?: string;
+              directory?: string;
+              content?: string;
+              error?: string;
+            };
+            errorText?: string;
+          }
         }
       />
     );
@@ -541,6 +574,10 @@ function renderStackableToolPart(
         }
       />
     );
+  }
+
+  if (part.type === "tool-web_search") {
+    return <ChatWebSearchToolPart key={key} part={part as never} />;
   }
 
   return (
@@ -680,6 +717,15 @@ function AssistantMessageParts({
   const lastPartIndex = message.parts.length - 1;
   const isReasoningStreaming =
     isStreaming && lastPart?.type === "reasoning";
+  let caretTextPartIndex = -1;
+  if (isStreaming) {
+    for (let index = lastPartIndex; index >= 0; index -= 1) {
+      const part = message.parts[index];
+      if (isStructuralMessagePart(part)) continue;
+      if (part.type === "text") caretTextPartIndex = index;
+      break;
+    }
+  }
 
   const [reasoningDurations, setReasoningDurations] = useState<
     Record<number, number>
@@ -855,18 +901,15 @@ function AssistantMessageParts({
     }
 
     // Structural / non-visual parts should not break a connected timeline.
-    if (
-      part.type === "step-start" ||
-      part.type === "source-url" ||
-      part.type === "source-document" ||
-      part.type === "file"
-    ) {
+    if (isStructuralMessagePart(part)) {
       return;
     }
 
     flushTimeline(true);
 
     if (part.type !== "text") return;
+
+    const showCaret = index === caretTextPartIndex;
 
     renderedParts.push(
       <Bubble
@@ -880,9 +923,11 @@ function AssistantMessageParts({
           className="w-full max-w-full text-base leading-7"
         >
           <MessageResponse
+            className={cn(showCaret && streamingTextStyles.caret)}
             isAnimating={isStreaming}
             mode={isStreaming ? "streaming" : "static"}
             animated={isStreaming ? STREAMING_TEXT_ANIMATION : false}
+            caret={showCaret ? "block" : undefined}
           >
             {part.text}
           </MessageResponse>

@@ -1,0 +1,11 @@
+.caret > :last-child::after {
+  content: "" !important;
+  display: inline-block !important;
+  width: 8px;
+  height: 1.05em;
+  margin-inline-start: 2px;
+  background: currentColor;
+  vertical-align: text-bottom !important;
+  animation: none;
+  opacity: 1;
+}

@@ -44,6 +44,7 @@ const TOOL_META: Record<string, { label: string; risk: RiskLevel }> = {
   run_command: { label: "اجرای دستور", risk: "shell" },
   fetch_url: { label: "دریافت وب", risk: "network" },
   web_search: { label: "جستجوی وب", risk: "network" },
+  create_skill: { label: "ساخت مهارت", risk: "write" },
 };
 
 const ALWAYS_APPROVE_TEXT: Partial<Record<RiskLevel, string>> = {
@@ -65,7 +66,12 @@ function getSubject(type: string, input: unknown): string | null {
   const raw =
     name === "run_command"
       ? record.command
-      : (record.path ?? record.from ?? record.query ?? record.url ?? record.title);
+      : (record.path ??
+        record.from ??
+        record.query ??
+        record.url ??
+        record.title ??
+        record.name);
   if (typeof raw !== "string" || !raw.trim()) return null;
   const value = raw.trim();
   return value.length > 72 ? `${value.slice(0, 72)}…` : value;

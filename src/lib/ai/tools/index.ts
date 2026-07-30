@@ -1,7 +1,7 @@
 import { memoryTools } from "./memory";
 import { expertManagementTools } from "./expert-management";
 import { askUserQuestionTools } from "./ask-user-question";
-import { skillTools } from "./skill";
+import { skillTools, type SkillsToolRuntime } from "./skill";
 import { webTools } from "./web";
 import type { ToolSet } from "ai";
 
@@ -24,14 +24,15 @@ export const planClientTools = {
 };
 
 type BuildChatToolsOptions = {
-  skillsRuntime?: {
-    loadSkillContent: (name: string) => Promise<string | null>;
-  };
+  skillsRuntime?: SkillsToolRuntime;
   includeSkills: boolean;
 };
 
-/** Base chat tools registered on every request; skills added only when installed. */
-export function buildChatTools({ skillsRuntime, includeSkills }: BuildChatToolsOptions): ToolSet {
+/** Base tools registered on every agent request. */
+export function buildChatTools({
+  skillsRuntime,
+  includeSkills,
+}: BuildChatToolsOptions): ToolSet {
   const tools = {
     ...clientSideTools,
     ...webTools,
@@ -61,6 +62,45 @@ export function buildChatTools({ skillsRuntime, includeSkills }: BuildChatToolsO
           name,
           content,
         };
+      },
+    };
+  }
+
+  const createSkill = skillsRuntime?.createSkill;
+  if (createSkill) {
+    tools.create_skill = {
+      ...skillTools.create_skill,
+      execute: async ({
+        name,
+        description,
+        instructions,
+      }: {
+        name: string;
+        description: string;
+        instructions: string;
+      }) => {
+        try {
+          const skill = await createSkill({
+            name,
+            description,
+            body: instructions,
+          });
+          return {
+            success: true,
+            name: skill.name,
+            description: skill.description,
+            directory: skill.directory,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            name,
+            error:
+              error instanceof Error
+                ? error.message
+                : "Creating the skill failed.",
+          };
+        }
       },
     };
   }

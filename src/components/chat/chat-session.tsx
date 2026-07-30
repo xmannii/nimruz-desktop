@@ -71,6 +71,7 @@ const TOOL_TRUST_KEY: Record<string, AutoApproveKey> = {
   search_files: "autoApproveReads",
   grep: "autoApproveReads",
   load_skill: "autoApproveReads",
+  create_skill: "autoApproveWrites",
   write_file: "autoApproveWrites",
   apply_patch: "autoApproveWrites",
   move_file: "autoApproveWrites",

@@ -35,6 +35,7 @@ import {
   DATABASE_FILE,
 } from "@/lib/branding";
 import { HOME_WORKSPACE_ID } from "@/lib/workspace";
+import type { SkillDocument } from "@/lib/skills";
 
 app.setName(APP_NAME);
 if (process.platform === "win32") {
@@ -266,6 +267,7 @@ app.whenReady().then(async () => {
       skills.getEnabledCatalog(database!.loadSkillsPreferences()),
     loadSkillContent: async (name: string) =>
       skills.loadSkillContent(name, database!.loadSkillsPreferences()),
+    createSkill: async (skill: SkillDocument) => skills.create(skill),
   };
 
   if (isDev && RENDERER_DEV_URL) {

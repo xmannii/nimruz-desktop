@@ -222,7 +222,7 @@ export function ModelPicker({
             className="w-full justify-start"
             render={
               <Link
-                to="/settings/models"
+                to="/settings/models/active"
                 search={{ provider: undefined }}
               />
             }

@@ -1,10 +1,14 @@
 "use client";
 
 import { useAppShell } from "@/components/app-shell-context";
-import { Outlet } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
+import { Outlet, useRouterState } from "@tanstack/react-router";
 
 export function SettingsLayout() {
   const { personalizationSaveState } = useAppShell();
+  const isModelsSection = useRouterState({
+    select: (state) => state.location.pathname.startsWith("/settings/models"),
+  });
 
   const saveLabel =
     personalizationSaveState === "saving"
@@ -44,7 +48,12 @@ export function SettingsLayout() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        <div className="mx-auto w-full max-w-2xl px-4 py-6 sm:px-8 sm:py-8">
+        <div
+          className={cn(
+            "mx-auto w-full px-4 py-6 sm:px-8 sm:py-8",
+            isModelsSection ? "max-w-5xl" : "max-w-2xl"
+          )}
+        >
           <Outlet />
         </div>
       </div>
