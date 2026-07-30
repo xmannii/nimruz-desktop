@@ -17,8 +17,10 @@ equivalent to their native protocols.
 
 ## Adding a provider
 
-Open **Settings → Models**, choose a preset or add a provider, and select the
-matching API type. The presets fill the official base URLs:
+Open **Settings → Models → Providers**, choose a cloud or local preset, and
+select the matching API type. The presets fill the official base URLs. After
+the connection succeeds, open **Settings → Models → Add model** to discover
+and enable its models:
 
 - OpenAI: `https://api.openai.com/v1`
 - Anthropic: `https://api.anthropic.com/v1`

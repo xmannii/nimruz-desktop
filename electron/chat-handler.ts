@@ -14,6 +14,7 @@ import {
   type AgentMode,
 } from "@/lib/chat/agent-mode";
 import type { SkillCatalogEntry } from "@/lib/skills/catalog";
+import type { SkillDocument, SkillSummary } from "@/lib/skills";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import { getChatErrorMessage } from "@/lib/chat/errors";
 import type { ModelConfig, ProviderConfig } from "@/lib/models/catalog";
@@ -60,6 +61,7 @@ export type ResolvedChatModel = {
 export type SkillsRuntime = {
   getSkillsCatalog: () => Promise<SkillCatalogEntry[]>;
   loadSkillContent: (name: string) => Promise<string | null>;
+  createSkill?: (skill: SkillDocument) => Promise<SkillSummary>;
 };
 
 export type ChatRuntimeOptions = {

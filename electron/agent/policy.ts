@@ -213,6 +213,14 @@ export const TOOL_REGISTRY: Record<string, ToolMeta> = {
     timeoutMs: 10_000,
     maxOutputBytes: 128_000,
   },
+  create_skill: {
+    name: "create_skill",
+    capability: "skills",
+    risk: "write",
+    description: "Create and install a personal skill",
+    timeoutMs: 10_000,
+    maxOutputBytes: 8_000,
+  },
   spawn_subagent: {
     name: "spawn_subagent",
     capability: "subagents",
@@ -293,13 +301,15 @@ export function evaluateToolPolicy(options: {
   }
 
   if (
-    (meta.capability === "filesystem_read" || meta.capability === "skills") &&
+    (meta.capability === "filesystem_read" ||
+      (meta.capability === "skills" && meta.risk === "read")) &&
     !slices.readTools
   ) {
     return { type: "denied", reason: "Read tools are disabled." };
   }
   if (
     (meta.capability === "filesystem_write" ||
+      (meta.capability === "skills" && meta.risk === "write") ||
       meta.capability === "artifacts" ||
       meta.capability === "tasks" ||
       meta.capability === "plans") &&
@@ -340,7 +350,7 @@ export function evaluateToolPolicy(options: {
     };
   }
 
-  if (meta.risk === "read" || meta.capability === "skills") {
+  if (meta.risk === "read") {
     if (trust.autoApproveReads || trust.level !== "ask") {
       return { type: "approved", reason: "Read operations auto-approved." };
     }

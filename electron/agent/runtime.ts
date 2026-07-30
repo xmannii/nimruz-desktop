@@ -34,6 +34,7 @@ import {
   sanitizeExperts,
 } from "@/lib/settings/experts";
 import type { SkillCatalogEntry } from "@/lib/skills/catalog";
+import type { SkillDocument, SkillSummary } from "@/lib/skills";
 import type { ReasoningEffort } from "@/lib/models/reasoning";
 import { isReasoningEffort } from "@/lib/models/reasoning";
 import { sanitizeSubagentModels } from "@/lib/settings/subagents";
@@ -96,6 +97,7 @@ export type AgentRuntimeDeps = {
   ) => ResolvedChatModel | null;
   getSkillsCatalog: () => Promise<SkillCatalogEntry[]>;
   loadSkillContent: (name: string) => Promise<string | null>;
+  createSkill?: (skill: SkillDocument) => Promise<SkillSummary>;
 };
 
 const MAX_STEPS = 20;
@@ -422,6 +424,7 @@ export async function handleAgentChatRequest(
     : buildChatTools({
         skillsRuntime: {
           loadSkillContent: deps.loadSkillContent,
+          createSkill: deps.createSkill,
         },
         includeSkills: hasSkills,
       });

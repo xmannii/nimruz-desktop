@@ -217,6 +217,10 @@ export function SkillsSettingsSection() {
               </code>
               .
             </p>
+            <p className="mt-2">
+              در حالت عامل هم می‌توانید از دستیار بخواهید یک مهارت جدید بسازد؛
+              مهارت ساخته‌شده به‌طور خودکار در همین فهرست ظاهر می‌شود.
+            </p>
           </div>
 
           <Button type="button" className="w-full" onClick={openCreate}>

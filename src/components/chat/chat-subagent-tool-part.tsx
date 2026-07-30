@@ -6,7 +6,10 @@ import {
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
 import { MessageResponse } from "@/components/ai-elements/message";
-import { ChatFetchUrlToolPart } from "@/components/chat/chat-web-tool-part";
+import {
+  ChatFetchUrlToolPart,
+  ChatWebSearchToolPart,
+} from "@/components/chat/chat-web-tool-part";
 import { ChatWorkspaceToolPart } from "@/components/chat/chat-workspace-tool-part";
 import {
   Dialog,
@@ -161,6 +164,10 @@ function renderNestedPart(
 
   if (part.type === "tool-fetch_url") {
     return <ChatFetchUrlToolPart key={key} part={part as never} />;
+  }
+
+  if (part.type === "tool-web_search") {
+    return <ChatWebSearchToolPart key={key} part={part as never} />;
   }
 
   if (part.type.startsWith("tool-")) {

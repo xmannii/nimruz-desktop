@@ -27,6 +27,29 @@ test("writes require approval when disabled", () => {
   assert.equal(decision.type, "user-approval");
 });
 
+test("creating a skill follows write approval settings", () => {
+  const requiresApproval = evaluateToolPolicy({
+    toolName: "create_skill",
+    trust: { ...DEFAULT_WORKSPACE_TRUST, autoApproveWrites: false },
+  });
+  assert.equal(requiresApproval.type, "user-approval");
+
+  const approved = evaluateToolPolicy({
+    toolName: "create_skill",
+    trust: { ...DEFAULT_WORKSPACE_TRUST, autoApproveWrites: true },
+  });
+  assert.equal(approved.type, "approved");
+});
+
+test("skill creation is denied when write tools are disabled", () => {
+  const decision = evaluateToolPolicy({
+    toolName: "create_skill",
+    trust: DEFAULT_WORKSPACE_TRUST,
+    slices: { writeTools: false },
+  });
+  assert.equal(decision.type, "denied");
+});
+
 test("shell requires approval by default", () => {
   const decision = evaluateToolPolicy({
     toolName: "run_command",

@@ -59,6 +59,16 @@ test("agent mode prompt executes active plans and tracks verified progress", () 
   assert.match(prompt, /verified/i);
 });
 
+test("skill prompt defines safe skill creation behavior", () => {
+  const prompt = readPrompt("skill-tools.md");
+
+  assert.match(prompt, /create_skill/);
+  assert.match(prompt, /explicitly asks/i);
+  assert.match(prompt, /kebab-case/);
+  assert.match(prompt, /Do not put YAML frontmatter/i);
+  assert.match(prompt, /Never overwrite/i);
+});
+
 test("plan subagent prompt remains research-only", () => {
   const prompt = readPrompt("plan-spawn-subagent-tools.md");
 

@@ -54,7 +54,9 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   update_plan_status: ListTodoIcon,
   ask_user_question: ListTodoIcon,
   fetch_url: GlobeIcon,
+  web_search: GlobeIcon,
   load_skill: SparklesIcon,
+  create_skill: SparklesIcon,
   save_memory: SparklesIcon,
   delete_memory: SparklesIcon,
 };
@@ -78,7 +80,9 @@ const TOOL_DONE_LABELS: Record<string, string> = {
   update_plan_status: "وضعیت پلن",
   ask_user_question: "سوال",
   fetch_url: "صفحه",
+  web_search: "جستجوی وب",
   load_skill: "مهارت",
+  create_skill: "ساخت مهارت",
   save_memory: "حافظه",
   delete_memory: "حذف حافظه",
 };

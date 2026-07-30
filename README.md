@@ -22,7 +22,7 @@ Pre-built **Windows** and **macOS** installers are published on every [release](
 | **Windows** | `.exe` (NSIS) | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Linux** | AppImage | Build locally with `pnpm dist` |
 
-See [CHANGELOG.md](CHANGELOG.md) for **v1.3.0** release notes (desktop Companion, composer + menu, per-chat MCP, and MCP settings).
+See [CHANGELOG.md](CHANGELOG.md) for **v1.4.0** release notes (native and local model providers, redesigned model settings, web search, and skill creation).
 
 ### macOS install
 
@@ -64,7 +64,7 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 - **Tool timeline** — connected reasoning + tool steps; long runs compact into one expandable summary
 - **Codex with ChatGPT sign-in** — sync and use models available to an eligible ChatGPT account in a restricted, isolated runtime
 - **Native model providers** — OpenAI, Anthropic, Google Gemini, OpenRouter, and generic OpenAI-compatible/local servers
-- **Web fetch** — `fetch_url` for public pages (SSRF-safe HTML → text)
+- **Web search & fetch** — discover sources with `web_search`, then read public pages with the SSRF-safe `fetch_url`
 - **Auto titles** — conversations named from the first message
 - **Chat management** — pin, export Markdown/JSON, copy/regenerate, search history
 
@@ -72,7 +72,7 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 
 - **Memories** — durable facts the assistant can save and forget
 - **Experts (متخصص‌ها)** — reusable specialists via `/` in chat
-- **Skills (مهارت‌ها)** — `SKILL.md` packs loaded on demand with `load_skill`
+- **Skills (مهارت‌ها)** — load `SKILL.md` packs on demand and create new personal skills with approval
 - **Personalization** — response style, custom instructions, profile context
 
 ### App polish
@@ -105,7 +105,7 @@ pnpm dev
 On first launch:
 
 1. Complete the short onboarding tour (or skip it).
-2. Open **Settings → Models** and connect ChatGPT for Codex, add an OpenRouter key, or configure another provider.
+2. Open **Settings → Models → Providers** to connect a cloud or local provider, then use **Add model** to enable its models.
 3. Create or open a **workspace** and link a project folder when you want the agent to touch files.
 
 Workspace-specific MCP servers can be added under **Settings → MCP servers**.
