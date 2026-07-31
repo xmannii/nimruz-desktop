@@ -1,7 +1,20 @@
-import { dialog, ipcMain, shell, type IpcMainInvokeEvent } from "electron";
+import {
+  app,
+  dialog,
+  ipcMain,
+  shell,
+  type IpcMainInvokeEvent,
+} from "electron";
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { nanoid } from "nanoid";
 import { listInstalledFonts } from "./system-fonts";
@@ -72,6 +85,22 @@ function parseNumstat(value: string): { additions: number; deletions: number } {
     additions: Number.isFinite(Number(added)) ? Number(added) : 0,
     deletions: Number.isFinite(Number(deleted)) ? Number(deleted) : 0,
   };
+}
+
+function resolveTelegramBotAvatarPath(): string | null {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const candidates = [
+    path.join(here, "../assets/telegram-bot-avatar.png"),
+    path.join(app.getAppPath(), "assets/telegram-bot-avatar.png"),
+    // Fallback to the app mark if the dedicated avatar is missing.
+    path.join(here, "../assets/icon.png"),
+    path.join(app.getAppPath(), "assets/icon.png"),
+  ];
+  for (const candidate of candidates) {
+    const absolute = path.resolve(candidate);
+    if (existsSync(absolute)) return absolute;
+  }
+  return null;
 }
 
 function assertTrustedSender(
@@ -909,6 +938,23 @@ export function registerIpcHandlers(options: {
   handle("telegram:begin-pairing", () => telegram.beginPairing());
   handle("telegram:unpair", () => telegram.unpair());
   handle("telegram:clear-token", () => telegram.clearToken());
+  handle("telegram:export-bot-avatar", async () => {
+    const source = resolveTelegramBotAvatarPath();
+    if (!source) {
+      throw new Error("تصویر پروفایل ربات نیمروز در بستهٔ برنامه پیدا نشد.");
+    }
+    const window = getMainWindow();
+    const result = await dialog.showSaveDialog(window ?? undefined!, {
+      title: "ذخیره تصویر پروفایل ربات تلگرام",
+      defaultPath: "nimruz-telegram-bot-avatar.png",
+      filters: [{ name: "PNG", extensions: ["png"] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { saved: false as const, path: null };
+    }
+    copyFileSync(source, result.filePath);
+    return { saved: true as const, path: result.filePath };
+  });
   handle(
     "storage:import-legacy",
     (value: unknown): LegacyImportResult =>

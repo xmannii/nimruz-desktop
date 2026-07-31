@@ -74,6 +74,11 @@ const desktopApi: DesktopAPI = {
     beginPairing: () => ipcRenderer.invoke("telegram:begin-pairing"),
     unpair: () => ipcRenderer.invoke("telegram:unpair"),
     clearToken: () => ipcRenderer.invoke("telegram:clear-token"),
+    exportBotAvatar: () =>
+      ipcRenderer.invoke("telegram:export-bot-avatar") as Promise<{
+        saved: boolean;
+        path: string | null;
+      }>,
     onStatusChange: (callback) => {
       const handler = (
         _event: Electron.IpcRendererEvent,

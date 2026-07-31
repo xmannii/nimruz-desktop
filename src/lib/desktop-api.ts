@@ -134,6 +134,7 @@ export type DesktopAPI = {
     beginPairing: () => Promise<TelegramStatus>;
     unpair: () => Promise<TelegramStatus>;
     clearToken: () => Promise<TelegramStatus>;
+    exportBotAvatar: () => Promise<{ saved: boolean; path: string | null }>;
     onStatusChange: (
       callback: (status: TelegramStatus) => void
     ) => () => void;

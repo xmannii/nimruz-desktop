@@ -31,6 +31,11 @@ import {
   markdownToTelegramHtml,
   splitTelegramChunks,
 } from "@/lib/telegram-format";
+import {
+  buildTelegramHelpMessage,
+  buildTelegramPairedWelcomeMessage,
+  buildTelegramUnpairedStartMessage,
+} from "@/lib/telegram-messages";
 import { classifyFile } from "@/lib/workspace";
 import type { AppDatabase } from "../storage/database";
 import type { CredentialService } from "../credentials";
@@ -72,9 +77,6 @@ const PROGRESS_EDIT_MIN_MS = 2_000;
 const TYPING_REFRESH_MS = 4_000;
 const MAX_PROGRESS_STEPS = 6;
 const PROGRESS_SUBJECT_MAX = 48;
-const HELP_TEXT =
-  "پیام متنی، صوتی، تصویر یا سند بفرستید تا نیمروز آن را روی این کامپیوتر اجرا کند.\nپیام صوتی با مدل محلی شنوا رونویسی می‌شود.\nPDF و فایل‌های متنی/کد پشتیبانی می‌شوند؛ تصویر فقط با مدل‌های vision.\nاگر خروجی یک فایل باشد، با آرتیفکت ساخته و برایتان در تلگرام فرستاده می‌شود.\n\nاز دکمه‌های پایین می‌توانید گفت‌وگوی تازه بسازید، گفت‌وگوهای اخیر را باز کنید، مدل را عوض کنید یا کار جاری را متوقف کنید.";
-
 const TOOL_PROGRESS_LABELS: Record<string, string> = {
   list_directory: "فهرست فایل‌ها",
   read_file: "خواندن فایل",
@@ -838,6 +840,8 @@ export class TelegramService {
 
     const text = message.text?.trim() ?? "";
     const settings = this.#database.loadTelegramSettings();
+    const workspaceTitle =
+      this.#database.getWorkspace(settings.workspaceId)?.title ?? null;
     const pairMatch = text.match(/^\/start(?:@\w+)?\s+([A-Za-z0-9_-]+)$/);
     if (
       this.#pairingCode &&
@@ -854,8 +858,12 @@ export class TelegramService {
       this.emitStatus();
       await api.sendMessage(
         String(message.chat.id),
-        `نیمروز به این حساب متصل شد.\n\n${HELP_TEXT}`,
+        buildTelegramPairedWelcomeMessage({
+          botUsername: settings.botUsername,
+          workspaceTitle,
+        }),
         {
+          parseMode: "HTML",
           replyMarkup: TELEGRAM_MAIN_KEYBOARD,
         }
       );
@@ -866,6 +874,20 @@ export class TelegramService {
       String(message.from.id) !== settings.pairedUserId ||
       String(message.chat.id) !== settings.pairedChatId
     ) {
+      // Friendly guide for strangers / unpaired /start attempts only.
+      if (
+        /^\/start(?:@\w+)?(?:\s+\S+)?$/.test(text) ||
+        text === "/help" ||
+        text === TELEGRAM_BUTTONS.help
+      ) {
+        await api.sendMessage(
+          String(message.chat.id),
+          buildTelegramUnpairedStartMessage({
+            botUsername: settings.botUsername,
+          }),
+          { parseMode: "HTML" }
+        );
+      }
       return;
     }
 
@@ -884,9 +906,18 @@ export class TelegramService {
       text === "/help" ||
       text === TELEGRAM_BUTTONS.help
     ) {
-      await api.sendMessage(settings.pairedChatId, HELP_TEXT, {
-        replyMarkup: TELEGRAM_MAIN_KEYBOARD,
-      });
+      await api.sendMessage(
+        settings.pairedChatId,
+        buildTelegramHelpMessage({
+          botUsername: settings.botUsername,
+          workspaceTitle,
+          paired: true,
+        }),
+        {
+          parseMode: "HTML",
+          replyMarkup: TELEGRAM_MAIN_KEYBOARD,
+        }
+      );
       return;
     }
     if (text === "/new" || text === TELEGRAM_BUTTONS.newChat) {

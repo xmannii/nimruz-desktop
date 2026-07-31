@@ -28,7 +28,9 @@ import type { TelegramStatus } from "@/lib/telegram";
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
+  DownloadIcon,
   ExternalLinkIcon,
+  ImageIcon,
   KeyRoundIcon,
   SendIcon,
   ShieldCheckIcon,
@@ -121,6 +123,22 @@ export function TelegramSettingsSection() {
     }
     if (!current?.pairingLink) return;
     await window.desktop.updates.openUrl(current.pairingLink);
+  }
+
+  async function exportBotAvatar() {
+    setIsSaving(true);
+    try {
+      const result = await window.desktop.telegram.exportBotAvatar();
+      if (result.saved) {
+        toast.success("تصویر پروفایل ذخیره شد — آن را در BotFather روی ربات بگذارید.");
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "ذخیره تصویر پروفایل ناموفق بود."
+      );
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   const paired = Boolean(
@@ -285,7 +303,7 @@ export function TelegramSettingsSection() {
 
       <SettingsSection
         title="جفت‌کردن حساب"
-        description="لازم نیست شناسه عددی تلگرام را پیدا کنید؛ لینک امن با شناسه واقعی حساب را هنگام شروع ربات ثبت می‌کند."
+        description="لازم نیست شناسه عددی تلگرام را پیدا کنید؛ لینک امن با شناسه واقعی حساب را هنگام شروع ربات ثبت می‌کند. پس از Start، راهنمای کامل با قالب‌بندی در چت ربات می‌آید."
         icon={ShieldCheckIcon}
       >
         {!status?.tokenConfigured ? (
@@ -293,8 +311,11 @@ export function TelegramSettingsSection() {
             <KeyRoundIcon />
             <AlertTitle>ابتدا ربات را متصل کنید</AlertTitle>
             <AlertDescription>
-              یک ربات اختصاصی با BotFather بسازید و توکن آن را در بخش بالا
-              ذخیره کنید.
+              در تلگرام به{" "}
+              <span dir="ltr">@BotFather</span> پیام دهید،{" "}
+              <span dir="ltr">/newbot</span> بزنید، نام و username را بسازید،
+              توکن را کپی کنید و در بخش بالا ذخیره کنید. بعد می‌توانید با دکمهٔ
+              جفت‌سازی، حساب خود را امن وصل کنید.
             </AlertDescription>
           </Alert>
         ) : paired ? (
@@ -367,6 +388,42 @@ export function TelegramSettingsSection() {
             و کامپیوتر باید روشن و آنلاین بمانند.
           </AlertDescription>
         </Alert>
+      </SettingsSection>
+
+      <SettingsSection
+        title="تصویر پروفایل ربات"
+        description="اختیاری: آواتار آمادهٔ نیمروز برای BotFather — روی اتصال تأثیری ندارد."
+        icon={ImageIcon}
+      >
+        <Field className="rounded-2xl border border-border/70 bg-background p-4">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <img
+              src="/telegram-bot-avatar.png"
+              alt="آواتار پیشنهادی ربات نیمروز"
+              width={72}
+              height={72}
+              className="size-16 shrink-0 rounded-xl border border-border/60 bg-muted object-cover shadow-sm"
+            />
+            <FieldContent className="min-w-0 flex-1 gap-2">
+              <FieldTitle>آواتار نیمروز برای تلگرام</FieldTitle>
+              <FieldDescription>
+                PNG مربعی را ذخیره کنید، سپس در{" "}
+                <span dir="ltr">@BotFather</span> ←{" "}
+                <span dir="ltr">Edit Bot → Edit Botpic</span> بفرستید.
+              </FieldDescription>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-1 self-start"
+                disabled={isSaving}
+                onClick={() => void exportBotAvatar()}
+              >
+                <DownloadIcon data-icon="inline-start" />
+                ذخیره تصویر پروفایل
+              </Button>
+            </FieldContent>
+          </div>
+        </Field>
       </SettingsSection>
     </div>
   );

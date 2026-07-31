@@ -22,7 +22,7 @@ Pre-built **Windows** and **macOS** installers are published on every [release](
 | **Windows** | `.exe` (NSIS) | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Linux** | AppImage | Build locally with `pnpm dist` |
 
-See [CHANGELOG.md](CHANGELOG.md) for **v1.4.0** release notes (native and local model providers, redesigned model settings, web search, and skill creation).
+See [CHANGELOG.md](CHANGELOG.md) for **v1.5.0** notes (Telegram desktop agent relay — testing on `dev` before stable). Stable installs are still the latest GitHub **Release**; development builds use the rolling [`dev-latest`](https://github.com/xmannii/nimruz-desktop/releases/tag/dev-latest) prerelease when available.
 
 ### macOS install
 
@@ -74,6 +74,11 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 - **Experts (متخصص‌ها)** — reusable specialists via `/` in chat
 - **Skills (مهارت‌ها)** — load `SKILL.md` packs on demand and create new personal skills with approval
 - **Personalization** — response style, custom instructions, profile context
+
+### Remote & speech
+
+- **Telegram assistant** — pair a BotFather bot, message from your phone; runs the local agent in a chosen workspace (text, voice via Shenava, photos/docs, artifact delivery)
+- **Shenava speech** — local Persian ASR for chat mic input and Telegram voice notes
 
 ### App polish
 
