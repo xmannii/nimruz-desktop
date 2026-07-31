@@ -1,4 +1,6 @@
 import { randomBytes } from "node:crypto";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { nanoid } from "nanoid";
 import { OggOpusDecoder } from "ogg-opus-decoder";
 import {
@@ -10,6 +12,7 @@ import {
 import type { ChatUIMessage } from "@/lib/chat/message";
 import type { LocalChat } from "@/lib/chat/storage";
 import { getChatErrorMessage } from "@/lib/chat/errors";
+import { CODEX_PROVIDER_ID } from "@/lib/models/catalog";
 import {
   resamplePcm,
   SHENAVA_SAMPLE_RATE,
@@ -28,6 +31,7 @@ import {
   markdownToTelegramHtml,
   splitTelegramChunks,
 } from "@/lib/telegram-format";
+import { classifyFile } from "@/lib/workspace";
 import type { AppDatabase } from "../storage/database";
 import type { CredentialService } from "../credentials";
 import type { ShenavaService } from "../shenava/service";
@@ -43,6 +47,15 @@ import {
   type TelegramUpdate,
 } from "./api";
 import {
+  buildTelegramUserContent,
+  collectArtifactDeliverables,
+  extractTelegramInboundMedia,
+  telegramDocumentFilename,
+  TELEGRAM_INBOUND_MAX_BYTES,
+  TELEGRAM_OUTBOUND_MAX_BYTES,
+  validateTelegramInboundMedia,
+} from "./media";
+import {
   listPickableTelegramModels,
   listRecentWorkspaceChats,
   modelsKeyboard,
@@ -52,8 +65,42 @@ import {
 export { TELEGRAM_CHAT_CHANNEL, TELEGRAM_STATUS_CHANNEL };
 
 const MAX_PROMPT_LENGTH = 12_000;
+const TRANSCRIPT_EPHEMERAL_MS = 4_500;
+/** Minimum gap between Telegram status message edits (Bot API rate limits). */
+const PROGRESS_EDIT_MIN_MS = 2_000;
+/** Telegram typing indicators expire after ~5s; refresh before that. */
+const TYPING_REFRESH_MS = 4_000;
+const MAX_PROGRESS_STEPS = 6;
+const PROGRESS_SUBJECT_MAX = 48;
 const HELP_TEXT =
-  "پیام متنی یا صوتی بفرستید تا نیمروز آن را روی این کامپیوتر اجرا کند.\nپیام صوتی با مدل محلی شنوا رونویسی می‌شود.\n\nاز دکمه‌های پایین می‌توانید گفت‌وگوی تازه بسازید، گفت‌وگوهای اخیر را باز کنید، مدل را عوض کنید یا کار جاری را متوقف کنید.";
+  "پیام متنی، صوتی، تصویر یا سند بفرستید تا نیمروز آن را روی این کامپیوتر اجرا کند.\nپیام صوتی با مدل محلی شنوا رونویسی می‌شود.\nPDF و فایل‌های متنی/کد پشتیبانی می‌شوند؛ تصویر فقط با مدل‌های vision.\nاگر خروجی یک فایل باشد، با آرتیفکت ساخته و برایتان در تلگرام فرستاده می‌شود.\n\nاز دکمه‌های پایین می‌توانید گفت‌وگوی تازه بسازید، گفت‌وگوهای اخیر را باز کنید، مدل را عوض کنید یا کار جاری را متوقف کنید.";
+
+const TOOL_PROGRESS_LABELS: Record<string, string> = {
+  list_directory: "فهرست فایل‌ها",
+  read_file: "خواندن فایل",
+  search_files: "جستجو",
+  grep: "جستجو",
+  write_file: "نوشتن فایل",
+  apply_patch: "اعمال تغییر",
+  move_file: "انتقال فایل",
+  delete_file: "حذف فایل",
+  run_command: "اجرای دستور",
+  fetch_url: "دریافت صفحه",
+  web_search: "جستجوی وب",
+  create_artifact: "ساخت آرتیفکت",
+  update_task: "به‌روزرسانی تسک",
+  write_plan: "ذخیره پلن",
+  update_plan: "به‌روزرسانی پلن",
+  read_active_plan: "خواندن پلن",
+  update_plan_progress: "ثبت پیشرفت پلن",
+  update_plan_status: "وضعیت پلن",
+  ask_user_question: "پرسش از شما",
+  load_skill: "بارگذاری مهارت",
+  create_skill: "ساخت مهارت",
+  save_memory: "ذخیره حافظه",
+  delete_memory: "حذف حافظه",
+  create_expert: "ساخت متخصص",
+};
 
 type ManualApprovalPart = {
   type: string;
@@ -66,6 +113,24 @@ type ManualApprovalPart = {
     reason?: string;
     isAutomatic?: boolean;
   };
+};
+
+export type TelegramProgressStepState =
+  | "running"
+  | "done"
+  | "error"
+  | "approval"
+  | "denied";
+
+export type TelegramProgressStep = {
+  toolName: string;
+  state: TelegramProgressStepState;
+  subject: string | null;
+};
+
+export type TelegramAgentProgress = {
+  steps: TelegramProgressStep[];
+  phase: "starting" | "tools" | "writing" | "waiting_approval";
 };
 
 type TelegramServiceOptions = {
@@ -172,10 +237,265 @@ function cloneAssistantMessage(message: ChatUIMessage): ChatUIMessage {
   return structuredClone(message);
 }
 
+function toolProgressLabel(toolName: string): string {
+  if (TOOL_PROGRESS_LABELS[toolName]) return TOOL_PROGRESS_LABELS[toolName];
+  if (toolName.startsWith("mcp_")) {
+    const bare = toolName.replace(/^mcp_[^_]+_/, "").replace(/^mcp_/, "");
+    return bare ? `ابزار MCP · ${bare}` : "ابزار MCP";
+  }
+  return toolName.replace(/_/g, " ");
+}
+
+function progressSubject(input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const record = input as Record<string, unknown>;
+  const candidate =
+    record.command ??
+    record.path ??
+    record.from ??
+    record.url ??
+    record.query ??
+    record.title ??
+    record.question ??
+    record.name;
+  if (typeof candidate !== "string") return null;
+  const normalized = candidate.replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  return normalized.length > PROGRESS_SUBJECT_MAX
+    ? `${normalized.slice(0, PROGRESS_SUBJECT_MAX - 1)}…`
+    : normalized;
+}
+
+function mapToolProgressState(state: string): TelegramProgressStepState | null {
+  switch (state) {
+    case "input-streaming":
+    case "input-available":
+    case "approval-responded":
+      return "running";
+    case "approval-requested":
+      return "approval";
+    case "output-available":
+      return "done";
+    case "output-error":
+      return "error";
+    case "output-denied":
+      return "denied";
+    default:
+      return null;
+  }
+}
+
+/** Build a compact progress snapshot from the streaming assistant message. */
+export function agentProgressFromMessage(
+  message: ChatUIMessage | undefined
+): TelegramAgentProgress {
+  const steps: TelegramProgressStep[] = [];
+  let hasText = false;
+  if (message) {
+    for (const part of message.parts) {
+      if (part.type === "text" && "text" in part) {
+        const text = typeof part.text === "string" ? part.text.trim() : "";
+        if (text) hasText = true;
+      }
+      if (!part.type.startsWith("tool-") || !("state" in part)) continue;
+      const mapped = mapToolProgressState(String(part.state));
+      if (!mapped) continue;
+      const toolName = part.type.replace(/^tool-/, "");
+      const input =
+        "input" in part ? (part as { input?: unknown }).input : undefined;
+      steps.push({
+        toolName,
+        state: mapped,
+        subject: progressSubject(input),
+      });
+    }
+  }
+
+  const visibleSteps = steps.slice(-MAX_PROGRESS_STEPS);
+  const waitingApproval = visibleSteps.some((step) => step.state === "approval");
+  const toolsActive = visibleSteps.some(
+    (step) => step.state === "running" || step.state === "approval"
+  );
+  let phase: TelegramAgentProgress["phase"] = "starting";
+  if (waitingApproval) phase = "waiting_approval";
+  else if (toolsActive) phase = "tools";
+  else if (hasText) phase = "writing";
+  else if (visibleSteps.length > 0) phase = "tools";
+
+  return { steps: visibleSteps, phase };
+}
+
+export function progressSignature(progress: TelegramAgentProgress): string {
+  return JSON.stringify({
+    phase: progress.phase,
+    steps: progress.steps.map((step) => [
+      step.toolName,
+      step.state,
+      step.subject,
+    ]),
+  });
+}
+
+export function formatTelegramAgentProgress(
+  progress: TelegramAgentProgress
+): string {
+  // Empty while the model is only "thinking" — typing indicator covers that.
+  if (progress.steps.length === 0) return "";
+
+  const lines: string[] = [];
+  for (const step of progress.steps) {
+    const mark =
+      step.state === "done"
+        ? "✓"
+        : step.state === "error"
+          ? "✗"
+          : step.state === "denied"
+            ? "⊘"
+            : step.state === "approval"
+              ? "⏸"
+              : "→";
+    const label = toolProgressLabel(step.toolName);
+    const subject = step.subject ? ` · ${step.subject}` : "";
+    if (step.state === "approval") {
+      lines.push(`${mark} منتظر تأیید · ${label}${subject}`);
+    } else {
+      lines.push(`${mark} ${label}${subject}`);
+    }
+  }
+
+  if (progress.phase === "writing") {
+    lines.push("", "در حال نوشتن پاسخ…");
+  } else if (progress.phase === "waiting_approval") {
+    lines.push("", "برای ادامه باید تأیید کنید.");
+  }
+
+  return lines.join("\n");
+}
+
+type TypingIndicator = {
+  dispose: () => void;
+};
+
+/** Keeps the Telegram "typing…" bubble alive for long agent runs. */
+function createTypingIndicator(
+  api: TelegramApi,
+  chatId: string,
+  intervalMs = TYPING_REFRESH_MS
+): TypingIndicator {
+  let stopped = false;
+  const pulse = () => {
+    if (stopped) return;
+    void api.sendChatAction(chatId, "typing").catch(() => undefined);
+  };
+  pulse();
+  const timer = setInterval(pulse, intervalMs);
+  return {
+    dispose() {
+      stopped = true;
+      clearInterval(timer);
+    },
+  };
+}
+
+type ProgressUpdater = {
+  onMessage: (message: ChatUIMessage) => void;
+  dispose: () => Promise<void>;
+};
+
+/**
+ * Lazy tool-progress status: no message until the first real tool step.
+ * Typing covers the idle "thinking" phase.
+ */
+function createProgressUpdater(
+  api: TelegramApi,
+  chatId: string,
+  minIntervalMs = PROGRESS_EDIT_MIN_MS
+): ProgressUpdater {
+  let messageId: number | null = null;
+  let lastSignature = "";
+  let lastSentAt = 0;
+  let pendingText: string | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let closed = false;
+  let chain: Promise<void> = Promise.resolve();
+
+  const publish = (text: string) => {
+    chain = chain
+      .then(async () => {
+        if (closed || !text) return;
+        try {
+          if (messageId == null) {
+            const sent = await api.sendMessage(chatId, text);
+            messageId = sent.message_id;
+          } else {
+            await api.editMessageText(chatId, messageId, text);
+          }
+          lastSentAt = Date.now();
+        } catch {
+          // Ignore "message is not modified", deleted messages, and transient errors.
+        }
+      })
+      .catch(() => undefined);
+    return chain;
+  };
+
+  const flushPending = () => {
+    timer = null;
+    if (closed || !pendingText) return;
+    const text = pendingText;
+    pendingText = null;
+    void publish(text);
+  };
+
+  return {
+    onMessage(message) {
+      if (closed) return;
+      const progress = agentProgressFromMessage(message);
+      // Skip empty thinking snapshots — typing is enough.
+      if (progress.steps.length === 0) return;
+      const signature = progressSignature(progress);
+      if (signature === lastSignature) return;
+      lastSignature = signature;
+      const text = formatTelegramAgentProgress(progress);
+      if (!text) return;
+      const elapsed = lastSentAt === 0 ? minIntervalMs : Date.now() - lastSentAt;
+      if (elapsed >= minIntervalMs) {
+        if (timer) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        pendingText = null;
+        void publish(text);
+        return;
+      }
+      pendingText = text;
+      if (!timer) {
+        timer = setTimeout(flushPending, minIntervalMs - elapsed);
+      }
+    },
+    async dispose() {
+      closed = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+      pendingText = null;
+      await chain;
+      if (messageId != null) {
+        await api.deleteMessage(chatId, messageId).catch(() => undefined);
+        messageId = null;
+      }
+    },
+  };
+}
+
 /** Resume from the last assistant message when continuing after tool approvals. */
 export async function readAgentResponse(
   response: Response,
-  previousAssistant?: ChatUIMessage
+  previousAssistant?: ChatUIMessage,
+  options?: {
+    onProgress?: (message: ChatUIMessage) => void;
+  }
 ) {
   if (!response.ok) {
     let message = `Agent returned HTTP ${response.status}.`;
@@ -210,6 +530,7 @@ export async function readAgentResponse(
     terminateOnError: true,
   })) {
     message = next;
+    options?.onProgress?.(next);
   }
   return message;
 }
@@ -242,6 +563,7 @@ export class TelegramService {
   #agentAbort: AbortController | null = null;
   #pollGeneration = 0;
   #busy = false;
+  #pendingDeletes = new Set<ReturnType<typeof setTimeout>>();
 
   constructor(options: TelegramServiceOptions) {
     this.#database = options.database;
@@ -400,6 +722,8 @@ export class TelegramService {
     this.stopPolling();
     this.#agentAbort?.abort();
     this.#agentAbort = null;
+    for (const timeout of this.#pendingDeletes) clearTimeout(timeout);
+    this.#pendingDeletes.clear();
   }
 
   private emitStatus() {
@@ -498,11 +822,16 @@ export class TelegramService {
   }
 
   private async handleMessage(api: TelegramApi, message: TelegramMessage) {
+    const hasText = typeof message.text === "string";
+    const hasVoice = Boolean(message.voice);
+    const hasMedia = Boolean(
+      message.document || (message.photo && message.photo.length > 0)
+    );
     if (
       message.chat.type !== "private" ||
       !message.from ||
       message.from.is_bot ||
-      (typeof message.text !== "string" && !message.voice)
+      (!hasText && !hasVoice && !hasMedia)
     ) {
       return;
     }
@@ -542,6 +871,11 @@ export class TelegramService {
 
     if (message.voice) {
       await this.handleVoice(api, message);
+      return;
+    }
+
+    if (hasMedia) {
+      await this.handleMedia(api, message);
       return;
     }
 
@@ -602,8 +936,7 @@ export class TelegramService {
       return;
     }
 
-    await api.sendMessage(settings.pairedChatId, "در حال انجام…");
-    await this.runUserPrompt(api, text);
+    await this.runUserPrompt(api, { text });
   }
 
   private async handleVoice(api: TelegramApi, message: TelegramMessage) {
@@ -643,10 +976,8 @@ export class TelegramService {
 
     this.#busy = true;
     this.emitStatus();
-    await api.sendMessage(
-      settings.pairedChatId,
-      "در حال رونویسی محلی با شنوا…"
-    );
+    // record_voice / typing both work; typing is the familiar "bot is working" cue.
+    const typing = createTypingIndicator(api, settings.pairedChatId);
     try {
       const encoded = await api.downloadFile(
         message.voice.file_id,
@@ -671,19 +1002,144 @@ export class TelegramService {
       if (!transcript) {
         throw new Error("گفتار قابل‌تشخیصی در پیام شنیده نشد.");
       }
-      await this.sendText(
+      typing.dispose();
+      await this.sendEphemeralText(
         api,
         settings.pairedChatId,
-        `شنیدم:\n${transcript}`
+        `شنیدم:\n${transcript}`,
+        TRANSCRIPT_EPHEMERAL_MS
       );
-      await this.runUserPrompt(api, transcript);
+      await this.runUserPrompt(api, { text: transcript });
     } catch (error) {
+      typing.dispose();
       await this.sendText(
         api,
         settings.pairedChatId,
         `رونویسی پیام صوتی ناموفق بود: ${getChatErrorMessage(error)}`
       );
     } finally {
+      typing.dispose();
+      if (!this.#agentAbort) {
+        this.#busy = false;
+        this.emitStatus();
+      }
+    }
+  }
+
+  private async handleMedia(api: TelegramApi, message: TelegramMessage) {
+    const settings = this.#database.loadTelegramSettings();
+    if (!settings.pairedChatId) return;
+    if (this.#busy) {
+      await api.sendMessage(
+        settings.pairedChatId,
+        "یک کار دیگر هنوز در حال اجراست. پس از پایان آن دوباره فایل را بفرستید."
+      );
+      return;
+    }
+
+    const media = extractTelegramInboundMedia(message);
+    if (!media) return;
+
+    // Resolve model flags using the chat that would handle this turn.
+    const previewChat = settings.activeChatId
+      ? this.#database
+          .loadChats()
+          .find(
+            (chat) =>
+              chat.id === settings.activeChatId &&
+              chat.workspaceId === settings.workspaceId
+          )
+      : null;
+    const resolved =
+      previewChat != null
+        ? this.#database.resolveChatModel(
+            previewChat.providerId,
+            previewChat.model
+          )
+        : this.#database.resolveChatModel(
+            settings.preferredProviderId,
+            settings.preferredModelId
+          );
+    if (!resolved) {
+      await api.sendMessage(
+        settings.pairedChatId,
+        "هیچ مدل فعالی در دسترس نیست. ابتدا یک مدل را در تنظیمات نیمروز فعال کنید."
+      );
+      return;
+    }
+    if (resolved.provider.id === CODEX_PROVIDER_ID) {
+      await api.sendMessage(
+        settings.pairedChatId,
+        "پیوست فایل در حالت Codex از تلگرام پشتیبانی نمی‌شود. مدل دیگری انتخاب کنید یا متن بفرستید."
+      );
+      return;
+    }
+
+    const validation = validateTelegramInboundMedia(media, {
+      supportsImages: resolved.model.supportsImages,
+    });
+    if (!validation.ok) {
+      await api.sendMessage(settings.pairedChatId, validation.reason);
+      return;
+    }
+
+    this.#busy = true;
+    this.emitStatus();
+    const typing = createTypingIndicator(api, settings.pairedChatId);
+    try {
+      const bytes = await api.downloadFile(
+        media.fileId,
+        AbortSignal.timeout(60_000)
+      );
+      if (bytes.byteLength > TELEGRAM_INBOUND_MAX_BYTES) {
+        throw new Error(
+          "حجم این فایل برای دریافت از تلگرام بیش از حد زیاد است (حداکثر ۲۰ مگابایت)."
+        );
+      }
+      const base64 = Buffer.from(bytes).toString("base64");
+      const imported = this.#agentDeps.files.importFiles(settings.workspaceId, [
+        {
+          name: media.fileName,
+          base64,
+          mimeType: media.mimeType,
+        },
+      ]);
+      const item = imported[0];
+      if (!item) throw new Error("ذخیره فایل در فضای کاری ناموفق بود.");
+
+      const content = buildTelegramUserContent({
+        caption: media.caption,
+        imported: [
+          {
+            name: item.name,
+            relativePath: item.relativePath,
+            mimeType: item.mimeType,
+            category: classifyFile(item.name),
+            base64: media.isImage ? base64 : undefined,
+          },
+        ],
+        supportsImages: resolved.model.supportsImages,
+      });
+      if (content.parts.length === 0) {
+        throw new Error("محتوای قابل‌ارسالی از این فایل ساخته نشد.");
+      }
+
+      typing.dispose();
+      await this.runUserPrompt(api, {
+        parts: content.parts,
+        metadata: content.metadata,
+        titleSeed: content.titleSeed,
+        textForLimits: content.textForLimits,
+      });
+    } catch (error) {
+      typing.dispose();
+      await this.sendText(
+        api,
+        settings.pairedChatId,
+        `دریافت فایل ناموفق بود: ${getChatErrorMessage(error)}`
+      );
+    } finally {
+      typing.dispose();
       if (!this.#agentAbort) {
         this.#busy = false;
         this.emitStatus();
@@ -815,15 +1271,17 @@ export class TelegramService {
       callback.id,
       approved ? "تأیید شد" : "رد شد"
     );
-    if (callback.message) {
-      await api
-        .editMessageReplyMarkup(
+    try {
+      await this.continueChat(api, chat);
+    } finally {
+      if (callback.message) {
+        await this.deleteMessageNow(
+          api,
           String(callback.message.chat.id),
           callback.message.message_id
-        )
-        .catch(() => undefined);
+        );
+      }
     }
-    await this.continueChat(api, chat);
   }
 
   private async startNewChat(api: TelegramApi, settings: TelegramSettings) {
@@ -957,14 +1415,40 @@ export class TelegramService {
     return chat;
   }
 
-  private async runUserPrompt(api: TelegramApi, text: string) {
+  private async runUserPrompt(
+    api: TelegramApi,
+    input: {
+      text?: string;
+      parts?: ChatUIMessage["parts"];
+      metadata?: ChatUIMessage["metadata"];
+      titleSeed?: string;
+      textForLimits?: string;
+    }
+  ) {
     const settings = this.#database.loadTelegramSettings();
     try {
-      const chat = this.ensureChat(settings, text);
+      const text = input.text?.trim() ?? "";
+      const parts =
+        input.parts ??
+        (text ? ([{ type: "text" as const, text }] as ChatUIMessage["parts"]) : []);
+      if (parts.length === 0) {
+        throw new Error("پیام خالی است.");
+      }
+      const limitSource = input.textForLimits ?? text;
+      if (limitSource.length > MAX_PROMPT_LENGTH) {
+        throw new Error(
+          `پیام باید حداکثر ${MAX_PROMPT_LENGTH.toLocaleString("fa-IR")} نویسه باشد.`
+        );
+      }
+      const chat = this.ensureChat(
+        settings,
+        input.titleSeed ?? (text || "گفتگوی تلگرام")
+      );
       const userMessage: ChatUIMessage = {
         id: nanoid(),
         role: "user",
-        parts: [{ type: "text", text }],
+        parts,
+        ...(input.metadata ? { metadata: input.metadata } : {}),
       };
       chat.messages = [...chat.messages, userMessage];
       chat.updatedAt = Date.now();
@@ -986,10 +1470,16 @@ export class TelegramService {
     this.#busy = true;
     this.#agentAbort = new AbortController();
     this.emitStatus();
+
+    const typing = createTypingIndicator(api, settings.pairedChatId);
+    const progressUpdater = createProgressUpdater(api, settings.pairedChatId);
     try {
       const lastMessage = chat.messages.at(-1) as ChatUIMessage | undefined;
       const resumeAssistant =
         lastMessage?.role === "assistant" ? lastMessage : undefined;
+      // Show resumed tool state immediately (e.g. after approval).
+      if (resumeAssistant) progressUpdater.onMessage(resumeAssistant);
+
       const response = await this.#runAgent(
         {
           messages: chat.messages as ChatUIMessage[],
@@ -1007,7 +1497,9 @@ export class TelegramService {
         this.#agentDeps,
         this.#agentAbort.signal
       );
-      const assistant = await readAgentResponse(response, resumeAssistant);
+      const assistant = await readAgentResponse(response, resumeAssistant, {
+        onProgress: (message) => progressUpdater.onMessage(message),
+      });
       if (!assistant) throw new Error("پاسخی از مدل دریافت نشد.");
       chat.messages = replaceOrAppendAssistant(
         chat.messages as ChatUIMessage[],
@@ -1017,6 +1509,12 @@ export class TelegramService {
       chat.updatedAt = Date.now();
       this.#database.saveChats([chat]);
       this.emitChat(chat);
+
+      typing.dispose();
+      await progressUpdater.dispose();
+
+      // Send create_artifact outputs as Telegram documents before the text reply.
+      await this.deliverArtifacts(api, settings.pairedChatId, chat, assistant);
 
       const text = textFromMessage(assistant);
       if (text) await this.sendText(api, settings.pairedChatId, text, { html: true });
@@ -1063,9 +1561,92 @@ export class TelegramService {
         );
       }
     } finally {
+      typing.dispose();
+      await progressUpdater.dispose();
       this.#busy = false;
       this.#agentAbort = null;
       this.emitStatus();
+    }
+  }
+
+  private async deliverArtifacts(
+    api: TelegramApi,
+    chatId: string,
+    chat: LocalChat,
+    assistant: ChatUIMessage
+  ) {
+    const deliverables = collectArtifactDeliverables(assistant);
+    if (deliverables.length === 0) return;
+
+    const workspaceId = chat.workspaceId;
+    if (!workspaceId) return;
+
+    const records = this.#database.listArtifacts(workspaceId);
+    const byId = new Map(records.map((item) => [item.id, item] as const));
+
+    for (const item of deliverables) {
+      try {
+        const record = byId.get(item.id);
+        const storagePath = record?.storagePath ?? item.path;
+        if (!storagePath || !existsSync(storagePath)) {
+          await this.sendText(
+            api,
+            chatId,
+            `آرتیفکت «${item.title}» ساخته شد اما فایل آن پیدا نشد.`
+          );
+          continue;
+        }
+        const sizeBytes = record?.sizeBytes ?? item.sizeBytes;
+        if (sizeBytes != null && sizeBytes > TELEGRAM_OUTBOUND_MAX_BYTES) {
+          await this.sendText(
+            api,
+            chatId,
+            `آرتیفکت «${item.title}» بزرگ‌تر از حد ارسال تلگرام است (حداکثر ۲۰ مگابایت). آن را در نیمروز باز کنید.`
+          );
+          continue;
+        }
+        const bytes = new Uint8Array(readFileSync(storagePath));
+        if (bytes.byteLength > TELEGRAM_OUTBOUND_MAX_BYTES) {
+          await this.sendText(
+            api,
+            chatId,
+            `آرتیفکت «${item.title}» بزرگ‌تر از حد ارسال تلگرام است. آن را در نیمروز باز کنید.`
+          );
+          continue;
+        }
+        const filename = telegramDocumentFilename(item.title, storagePath);
+        const mimeType =
+          record?.mimeType ||
+          (path.extname(storagePath).toLowerCase() === ".svg"
+            ? "image/svg+xml"
+            : "application/octet-stream");
+        const caption = item.title.slice(0, 1024);
+
+        // Raster-ish SVG is still sent as a document; jpeg/png artifacts as photo.
+        const isPhoto =
+          mimeType === "image/jpeg" ||
+          mimeType === "image/png" ||
+          mimeType === "image/webp";
+        if (isPhoto) {
+          await api.sendPhoto(
+            chatId,
+            { bytes, filename, mimeType },
+            { caption }
+          );
+        } else {
+          await api.sendDocument(
+            chatId,
+            { bytes, filename, mimeType },
+            { caption }
+          );
+        }
+      } catch (error) {
+        await this.sendText(
+          api,
+          chatId,
+          `ارسال آرتیفکت «${item.title}» ناموفق بود: ${getChatErrorMessage(error)}`
+        );
+      }
     }
   }
 
@@ -1117,24 +1698,81 @@ export class TelegramService {
       replyMarkup?: TelegramReplyMarkup;
     } = {}
   ) {
-    if (!chatId) return;
+    await this.sendTextMessages(api, chatId, text, options);
+  }
+
+  private async sendEphemeralText(
+    api: TelegramApi,
+    chatId: string | null,
+    text: string,
+    delayMs: number,
+    options: {
+      html?: boolean;
+      replyMarkup?: TelegramReplyMarkup;
+    } = {}
+  ) {
+    const messages = await this.sendTextMessages(api, chatId, text, options);
+    for (const message of messages) {
+      this.deleteMessageLater(api, chatId!, message.message_id, delayMs);
+    }
+  }
+
+  private async sendTextMessages(
+    api: TelegramApi,
+    chatId: string | null,
+    text: string,
+    options: {
+      html?: boolean;
+      replyMarkup?: TelegramReplyMarkup;
+    } = {}
+  ) {
+    if (!chatId) return [];
     const chunks = splitTelegramChunks(text);
+    const sent: TelegramMessage[] = [];
     for (const [index, chunk] of chunks.entries()) {
       const replyMarkup =
         index === chunks.length - 1 ? options.replyMarkup : undefined;
       if (options.html) {
         const html = markdownToTelegramHtml(chunk);
         try {
-          await api.sendMessage(chatId, html, {
-            parseMode: "HTML",
-            replyMarkup,
-          });
+          sent.push(
+            await api.sendMessage(chatId, html, {
+              parseMode: "HTML",
+              replyMarkup,
+            })
+          );
           continue;
         } catch {
           // Odd Markdown can produce invalid Telegram HTML; send plain text.
         }
       }
-      await api.sendMessage(chatId, chunk, { replyMarkup });
+      sent.push(await api.sendMessage(chatId, chunk, { replyMarkup }));
     }
+    return sent;
+  }
+
+  private deleteMessageLater(
+    api: TelegramApi,
+    chatId: string,
+    messageId: number,
+    delayMs: number
+  ) {
+    if (delayMs <= 0) {
+      void this.deleteMessageNow(api, chatId, messageId);
+      return;
+    }
+    const timeout = setTimeout(() => {
+      this.#pendingDeletes.delete(timeout);
+      void this.deleteMessageNow(api, chatId, messageId);
+    }, delayMs);
+    this.#pendingDeletes.add(timeout);
+  }
+
+  private async deleteMessageNow(
+    api: TelegramApi,
+    chatId: string,
+    messageId: number
+  ) {
+    await api.deleteMessage(chatId, messageId).catch(() => undefined);
   }
 }

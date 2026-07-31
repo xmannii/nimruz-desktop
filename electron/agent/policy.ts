@@ -343,6 +343,16 @@ export function evaluateToolPolicy(options: {
     };
   }
 
+  // Artifacts write only into managed app storage (preview/remote deliverables),
+  // not the project tree — always safe to auto-approve so Telegram/desktop
+  // can receive files without an extra confirmation step.
+  if (options.toolName === "create_artifact") {
+    return {
+      type: "approved",
+      reason: "Artifact creation is auto-approved.",
+    };
+  }
+
   if (meta.risk === "destructive") {
     return {
       type: "user-approval",

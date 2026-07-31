@@ -27,6 +27,20 @@ test("writes require approval when disabled", () => {
   assert.equal(decision.type, "user-approval");
 });
 
+test("create_artifact is always auto-approved even when writes need approval", () => {
+  const decision = evaluateToolPolicy({
+    toolName: "create_artifact",
+    trust: {
+      level: "ask",
+      autoApproveReads: true,
+      autoApproveWrites: false,
+      autoApproveShell: false,
+      autoApproveNetwork: false,
+    },
+  });
+  assert.equal(decision.type, "approved");
+});
+
 test("creating a skill follows write approval settings", () => {
   const requiresApproval = evaluateToolPolicy({
     toolName: "create_skill",

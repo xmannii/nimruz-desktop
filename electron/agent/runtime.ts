@@ -19,6 +19,7 @@ import {
   buildPlanSystemInstructions,
   buildSystemInstructions,
   getAgentModePrompt,
+  getTelegramRemotePrompt,
   getWorkspaceToolsPrompt,
 } from "@/lib/ai/system-prompt";
 import {
@@ -104,12 +105,13 @@ export type AgentRuntimeDeps = {
 
 const MAX_STEPS = 20;
 const MAX_WALL_MS = 5 * 60_000;
+/** Conservative remote trust: reads + network free; project writes/shell still ask. */
 const TELEGRAM_REMOTE_TRUST: WorkspaceTrustSettings = {
   level: "ask",
   autoApproveReads: true,
   autoApproveWrites: false,
   autoApproveShell: false,
-  autoApproveNetwork: false,
+  autoApproveNetwork: true,
 };
 
 function resolveModelOrError(
@@ -613,6 +615,8 @@ export async function handleAgentChatRequest(
           ].join("\n\n"),
     workspaceAppendix,
     routingAppendix,
+    // Channel-only appendix: does not change stored chat history.
+    isTelegramRequest ? getTelegramRemotePrompt() : "",
   ]
     .filter(Boolean)
     .join("\n\n");

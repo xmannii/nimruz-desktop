@@ -94,6 +94,125 @@ test("sends HTML parse mode and reply keyboards", async () => {
   });
 });
 
+test("deletes Telegram messages by chat and message id", async () => {
+  const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const api = new TelegramApi(
+    "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghi",
+    async (input, init) => {
+      const url = String(input);
+      const body =
+        typeof init?.body === "string"
+          ? (JSON.parse(init.body) as Record<string, unknown>)
+          : undefined;
+      calls.push({ url, body });
+      return Response.json({ ok: true, result: true });
+    }
+  );
+
+  await api.deleteMessage("42", 99);
+  assert.ok(calls[0]?.url.endsWith("/deleteMessage"));
+  assert.equal(calls[0]?.body?.chat_id, "42");
+  assert.equal(calls[0]?.body?.message_id, 99);
+});
+
+test("edits Telegram message text for live progress updates", async () => {
+  const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const api = new TelegramApi(
+    "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghi",
+    async (input, init) => {
+      const url = String(input);
+      const body =
+        typeof init?.body === "string"
+          ? (JSON.parse(init.body) as Record<string, unknown>)
+          : undefined;
+      calls.push({ url, body });
+      return Response.json({
+        ok: true,
+        result: {
+          message_id: 12,
+          chat: { id: 42, type: "private" },
+          text: "updated",
+        },
+      });
+    }
+  );
+
+  await api.editMessageText("42", 12, "در حال انجام…\n\n→ خواندن فایل");
+  assert.ok(calls[0]?.url.endsWith("/editMessageText"));
+  assert.equal(calls[0]?.body?.chat_id, "42");
+  assert.equal(calls[0]?.body?.message_id, 12);
+  assert.equal(calls[0]?.body?.text, "در حال انجام…\n\n→ خواندن فایل");
+});
+
+test("sends chat actions for the typing indicator", async () => {
+  const calls: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const api = new TelegramApi(
+    "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghi",
+    async (input, init) => {
+      const url = String(input);
+      const body =
+        typeof init?.body === "string"
+          ? (JSON.parse(init.body) as Record<string, unknown>)
+          : undefined;
+      calls.push({ url, body });
+      return Response.json({ ok: true, result: true });
+    }
+  );
+
+  await api.sendChatAction("42", "typing");
+  assert.ok(calls[0]?.url.endsWith("/sendChatAction"));
+  assert.equal(calls[0]?.body?.chat_id, "42");
+  assert.equal(calls[0]?.body?.action, "typing");
+});
+
+test("sends local documents and photos as multipart form data", async () => {
+  const calls: Array<{ url: string; body: FormData | undefined }> = [];
+  const api = new TelegramApi(
+    "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghi",
+    async (input, init) => {
+      const url = String(input);
+      calls.push({
+        url,
+        body: init?.body instanceof FormData ? init.body : undefined,
+      });
+      return Response.json({
+        ok: true,
+        result: {
+          message_id: 3,
+          chat: { id: 7, type: "private" },
+        },
+      });
+    }
+  );
+
+  await api.sendDocument(
+    "7",
+    {
+      bytes: new Uint8Array([1, 2, 3]),
+      filename: "report.md",
+      mimeType: "text/markdown",
+    },
+    { caption: "Report" }
+  );
+  assert.ok(calls[0]?.url.endsWith("/sendDocument"));
+  assert.ok(calls[0]?.body instanceof FormData);
+  assert.equal(calls[0]?.body?.get("chat_id"), "7");
+  assert.equal(calls[0]?.body?.get("caption"), "Report");
+  assert.ok(calls[0]?.body?.get("document") instanceof Blob);
+
+  await api.sendPhoto(
+    "7",
+    {
+      bytes: new Uint8Array([9, 9]),
+      filename: "shot.png",
+      mimeType: "image/png",
+    },
+    { caption: "Shot" }
+  );
+  assert.ok(calls[1]?.url.endsWith("/sendPhoto"));
+  assert.ok(calls[1]?.body?.get("photo") instanceof Blob);
+});
+
 test("surfaces Telegram API descriptions", async () => {
   const api = new TelegramApi(
     "123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghi",

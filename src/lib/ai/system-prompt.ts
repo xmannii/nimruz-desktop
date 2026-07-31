@@ -16,9 +16,15 @@ import spawnSubagentToolsMd from "@/lib/ai/prompts/spawn-subagent-tools.md";
 import planModeMd from "@/lib/ai/prompts/plan-mode.md";
 import agentModeMd from "@/lib/ai/prompts/agent-mode.md";
 import planSpawnSubagentToolsMd from "@/lib/ai/prompts/plan-spawn-subagent-tools.md";
+import telegramRemoteMd from "@/lib/ai/prompts/telegram-remote.md";
 
 export function getBaseSystemPrompt() {
   return systemPromptMd.trim();
+}
+
+/** Extra instructions only for agent runs started from Telegram. */
+export function getTelegramRemotePrompt() {
+  return telegramRemoteMd.trim();
 }
 
 export function getMemoryToolsPrompt() {

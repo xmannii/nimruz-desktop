@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import {
+  agentProgressFromMessage,
+  formatTelegramAgentProgress,
+  progressSignature,
   readAgentResponse,
   replaceOrAppendAssistant,
 } from "./service";
@@ -104,4 +107,146 @@ test("replaceOrAppendAssistant updates the last assistant when resuming", () => 
     ...messages,
     next,
   ]);
+});
+
+test("agentProgressFromMessage maps tool states and subjects", () => {
+  const message = {
+    id: "a1",
+    role: "assistant",
+    parts: [
+      {
+        type: "tool-read_file",
+        toolCallId: "t1",
+        state: "output-available",
+        input: { path: "src/app.ts" },
+      },
+      {
+        type: "tool-run_command",
+        toolCallId: "t2",
+        state: "input-available",
+        input: { command: "pnpm test" },
+      },
+    ],
+  } as ChatUIMessage;
+
+  const progress = agentProgressFromMessage(message);
+  assert.equal(progress.phase, "tools");
+  assert.deepEqual(progress.steps, [
+    { toolName: "read_file", state: "done", subject: "src/app.ts" },
+    { toolName: "run_command", state: "running", subject: "pnpm test" },
+  ]);
+
+  const text = formatTelegramAgentProgress(progress);
+  assert.doesNotMatch(text, /در حال انجام/);
+  assert.match(text, /✓ خواندن فایل · src\/app\.ts/);
+  assert.match(text, /→ اجرای دستور · pnpm test/);
+});
+
+test("formatTelegramAgentProgress is empty while only thinking", () => {
+  assert.equal(
+    formatTelegramAgentProgress({ steps: [], phase: "starting" }),
+    ""
+  );
+});
+
+test("agentProgressFromMessage reports approval and writing phases", () => {
+  const approval = agentProgressFromMessage({
+    id: "a2",
+    role: "assistant",
+    parts: [
+      {
+        type: "tool-write_file",
+        toolCallId: "t3",
+        state: "approval-requested",
+        input: { path: "README.md" },
+        approval: { id: "appr-1" },
+      },
+    ],
+  } as unknown as ChatUIMessage);
+  assert.equal(approval.phase, "waiting_approval");
+  assert.match(
+    formatTelegramAgentProgress(approval),
+    /⏸ منتظر تأیید · نوشتن فایل · README\.md/
+  );
+
+  const writing = agentProgressFromMessage({
+    id: "a3",
+    role: "assistant",
+    parts: [
+      {
+        type: "tool-read_file",
+        toolCallId: "t4",
+        state: "output-available",
+        input: { path: "a.ts" },
+      },
+      { type: "text", text: "خلاصه فایل" },
+    ],
+  } as ChatUIMessage);
+  assert.equal(writing.phase, "writing");
+  assert.match(formatTelegramAgentProgress(writing), /در حال نوشتن پاسخ…/);
+});
+
+test("progress signature ignores pure text growth", () => {
+  const base = {
+    id: "a4",
+    role: "assistant",
+    parts: [
+      {
+        type: "tool-read_file",
+        toolCallId: "t5",
+        state: "output-available",
+        input: { path: "x.ts" },
+      },
+      { type: "text", text: "a" },
+    ],
+  } as ChatUIMessage;
+  const grown = {
+    ...base,
+    parts: [
+      base.parts[0],
+      { type: "text", text: "a longer answer" },
+    ],
+  } as ChatUIMessage;
+  assert.equal(
+    progressSignature(agentProgressFromMessage(base)),
+    progressSignature(agentProgressFromMessage(grown))
+  );
+});
+
+test("readAgentResponse reports intermediate progress snapshots", async () => {
+  const progressChunks = [
+    { type: "start" },
+    { type: "start-step" },
+    {
+      type: "tool-input-available",
+      toolCallId: "call_progress_1",
+      toolName: "read_file",
+      input: { path: "src/main.ts" },
+    },
+    {
+      type: "tool-output-available",
+      toolCallId: "call_progress_1",
+      output: { content: "ok" },
+    },
+    { type: "finish-step" },
+    { type: "text-start", id: "text-p" },
+    { type: "text-delta", id: "text-p", delta: "تمام." },
+    { type: "text-end", id: "text-p" },
+    { type: "finish" },
+  ];
+
+  const snapshots: string[] = [];
+  const message = await readAgentResponse(sseResponse(progressChunks), undefined, {
+    onProgress: (next) => {
+      snapshots.push(progressSignature(agentProgressFromMessage(next)));
+    },
+  });
+  assert.ok(message);
+  assert.ok(snapshots.length >= 2);
+  assert.ok(
+    snapshots.some((signature) => signature.includes("read_file") && signature.includes("running"))
+  );
+  assert.ok(
+    snapshots.some((signature) => signature.includes("writing") || signature.includes("done"))
+  );
 });

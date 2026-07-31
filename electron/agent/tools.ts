@@ -179,7 +179,7 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
     }),
     run_command: tool({
       description:
-        "Run a scoped, non-interactive project command for tests, builds, package managers, scripts, or CLIs. Do not use to read/search files when dedicated tools suffice, and do not run interactive or destructive commands.",
+        "Run a scoped, non-interactive command. Use for tests, builds, package managers, scripts, CLIs, and system queries (e.g. battery, disk, network status). The command executes on the user's actual machine. Do not run destructive or interactive commands.",
       inputSchema: z.object({
         command: z
           .string()
@@ -207,7 +207,7 @@ export function buildAgentTools(ctx: AgentToolContext): ToolSet {
     }),
     create_artifact: tool({
       description:
-        "Create a durable preview-panel deliverable instead of dumping a long standalone body into chat. Use for requested diagrams, HTML/UI previews, SVG, reports, samples, or JSON/CSV. Use write_file/apply_patch when changing the project tree.",
+        "Create a durable deliverable for the preview panel and remote channels (e.g. Telegram file send) instead of dumping a long standalone body into chat. Use for requested diagrams, HTML/UI previews, SVG, reports, samples, or JSON/CSV. Use write_file/apply_patch when changing the project tree.",
       inputSchema: z.object({
         title: z
           .string()
