@@ -2,6 +2,19 @@ export const TELEGRAM_CREDENTIAL_ID = "telegram-bot";
 export const TELEGRAM_STATUS_CHANNEL = "telegram:status-changed";
 export const TELEGRAM_CHAT_CHANNEL = "telegram:chat-changed";
 
+export const TELEGRAM_PROXY_MODES = ["direct", "system", "custom"] as const;
+export type TelegramProxyMode = (typeof TELEGRAM_PROXY_MODES)[number];
+
+export type TelegramProxySettings = {
+  mode: TelegramProxyMode;
+  url: string | null;
+};
+
+export const DEFAULT_TELEGRAM_PROXY_SETTINGS: TelegramProxySettings = {
+  mode: "direct",
+  url: null,
+};
+
 export type TelegramSettings = {
   enabled: boolean;
   workspaceId: string;
@@ -14,6 +27,7 @@ export type TelegramSettings = {
   preferredProviderId: string | null;
   preferredModelId: string | null;
   lastUpdateId: number | null;
+  proxy: TelegramProxySettings;
 };
 
 export const TELEGRAM_BUTTONS = {
@@ -79,6 +93,7 @@ export const DEFAULT_TELEGRAM_SETTINGS: TelegramSettings = {
   preferredProviderId: null,
   preferredModelId: null,
   lastUpdateId: null,
+  proxy: DEFAULT_TELEGRAM_PROXY_SETTINGS,
 };
 
 function optionalText(value: unknown, maxLength: number): string | null {
@@ -90,6 +105,73 @@ function optionalText(value: unknown, maxLength: number): string | null {
 function telegramId(value: unknown): string | null {
   if (typeof value !== "string" || !/^-?\d{1,20}$/.test(value)) return null;
   return value;
+}
+
+const TELEGRAM_PROXY_MODE_SET = new Set<string>(TELEGRAM_PROXY_MODES);
+const TELEGRAM_PROXY_PROTOCOLS = new Set([
+  "http:",
+  "https:",
+  "socks4:",
+  "socks5:",
+]);
+
+export function normalizeTelegramProxyUrl(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error("آدرس پراکسی تلگرام را وارد کنید.");
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(value.trim());
+  } catch {
+    throw new Error("آدرس پراکسی تلگرام معتبر نیست.");
+  }
+
+  if (!TELEGRAM_PROXY_PROTOCOLS.has(parsed.protocol)) {
+    throw new Error(
+      "پراکسی تلگرام باید از نوع HTTP، HTTPS، SOCKS4 یا SOCKS5 باشد."
+    );
+  }
+  if (!parsed.hostname) {
+    throw new Error("نام میزبان پراکسی تلگرام معتبر نیست.");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error(
+      "برای امنیت، نام کاربری و رمز پراکسی را داخل آدرس وارد نکنید. پراکسی بدون احراز هویت استفاده کنید."
+    );
+  }
+  if ((parsed.pathname && parsed.pathname !== "/") || parsed.search || parsed.hash) {
+    throw new Error("آدرس پراکسی فقط باید شامل نوع، میزبان و درگاه باشد.");
+  }
+
+  return `${parsed.protocol}//${parsed.host}`;
+}
+
+export function normalizeTelegramProxySettings(
+  value: unknown
+): TelegramProxySettings {
+  const settings =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const mode =
+    typeof settings.mode === "string" &&
+    TELEGRAM_PROXY_MODE_SET.has(settings.mode)
+      ? (settings.mode as TelegramProxyMode)
+      : DEFAULT_TELEGRAM_PROXY_SETTINGS.mode;
+
+  return {
+    mode,
+    url: mode === "custom" ? normalizeTelegramProxyUrl(settings.url) : null,
+  };
+}
+
+function sanitizeTelegramProxySettings(value: unknown): TelegramProxySettings {
+  try {
+    return normalizeTelegramProxySettings(value);
+  } catch {
+    return DEFAULT_TELEGRAM_PROXY_SETTINGS;
+  }
 }
 
 export function sanitizeTelegramSettings(value: unknown): TelegramSettings {
@@ -136,6 +218,7 @@ export function sanitizeTelegramSettings(value: unknown): TelegramSettings {
         ? settings.preferredModelId.trim()
         : null,
     lastUpdateId,
+    proxy: sanitizeTelegramProxySettings(settings.proxy),
   };
 }
 

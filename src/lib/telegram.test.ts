@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   DEFAULT_TELEGRAM_SETTINGS,
   normalizeTelegramBotToken,
+  normalizeTelegramProxySettings,
+  normalizeTelegramProxyUrl,
   normalizeTelegramUsername,
   sanitizeTelegramSettings,
 } from "./telegram";
@@ -46,3 +48,34 @@ test("validates bot tokens and normalizes bot usernames", () => {
   assert.equal(normalizeTelegramUsername("bad name"), null);
 });
 
+test("normalizes safe Telegram proxy modes and addresses", () => {
+  assert.deepEqual(normalizeTelegramProxySettings({ mode: "system" }), {
+    mode: "system",
+    url: null,
+  });
+  assert.deepEqual(
+    normalizeTelegramProxySettings({
+      mode: "custom",
+      url: " socks5://127.0.0.1:1080/ ",
+    }),
+    { mode: "custom", url: "socks5://127.0.0.1:1080" }
+  );
+  assert.equal(
+    normalizeTelegramProxyUrl("https://proxy.example:8443"),
+    "https://proxy.example:8443"
+  );
+  assert.throws(
+    () => normalizeTelegramProxyUrl("socks5://user:secret@127.0.0.1:1080"),
+    /نام کاربری و رمز/
+  );
+  assert.throws(() => normalizeTelegramProxyUrl("ftp://proxy.example"));
+});
+
+test("falls back to direct connection for invalid persisted proxy settings", () => {
+  assert.deepEqual(
+    sanitizeTelegramSettings({
+      proxy: { mode: "custom", url: "not a proxy" },
+    }).proxy,
+    DEFAULT_TELEGRAM_SETTINGS.proxy
+  );
+});

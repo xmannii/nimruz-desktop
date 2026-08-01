@@ -24,7 +24,11 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
-import type { TelegramStatus } from "@/lib/telegram";
+import type {
+  TelegramProxyMode,
+  TelegramStatus,
+} from "@/lib/telegram";
+import { getTelegramErrorMessage } from "@/lib/telegram-errors";
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
@@ -35,7 +39,9 @@ import {
   SendIcon,
   ShieldCheckIcon,
   UnplugIcon,
+  WifiIcon,
 } from "lucide-react";
+import { Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -55,11 +61,24 @@ function connectionBadge(status: TelegramStatus | null) {
   }
 }
 
-export function TelegramSettingsSection() {
+export type TelegramSettingsView =
+  | "overview"
+  | "pairing"
+  | "connection"
+  | "runtime";
+
+export function TelegramSettingsSection({
+  view = "overview",
+}: {
+  view?: TelegramSettingsView;
+}) {
   const { workspaces } = useAppShell();
+  const navigate = useNavigate();
   const [status, setStatus] = useState<TelegramStatus | null>(null);
   const [token, setToken] = useState("");
   const [workspaceId, setWorkspaceId] = useState("home");
+  const [proxyMode, setProxyMode] = useState<TelegramProxyMode>("direct");
+  const [proxyUrl, setProxyUrl] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -70,6 +89,8 @@ export function TelegramSettingsSection() {
         if (!active) return;
         setStatus(next);
         setWorkspaceId(next.settings.workspaceId);
+        setProxyMode(next.settings.proxy.mode);
+        setProxyUrl(next.settings.proxy.url ?? "");
       })
       .catch(() => {
         if (active) toast.error("خواندن وضعیت تلگرام ناموفق بود.");
@@ -97,9 +118,7 @@ export function TelegramSettingsSection() {
       if (success) toast.success(success);
       return next;
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "این کار تلگرام نشد."
-      );
+      toast.error(getTelegramErrorMessage(error, "این کار تلگرام انجام نشد."));
       return null;
     } finally {
       setIsSaving(false);
@@ -111,7 +130,26 @@ export function TelegramSettingsSection() {
       () => window.desktop.telegram.configure({ token, workspaceId }),
       "ربات بررسی شد؛ حالا حساب تلگرام خود را جفت کنید."
     );
-    if (next) setToken("");
+    if (next) {
+      setToken("");
+      void navigate({ to: "/settings/telegram/pairing" });
+    }
+  }
+
+  async function saveProxy() {
+    const next = await runAction(
+      () =>
+        window.desktop.telegram.setProxy({
+          mode: proxyMode,
+          url: proxyMode === "custom" ? proxyUrl : null,
+        }),
+      status?.tokenConfigured
+        ? "روش اتصال ذخیره و با تلگرام بررسی شد."
+        : "روش اتصال ذخیره شد."
+    );
+    if (!next) return;
+    setProxyMode(next.settings.proxy.mode);
+    setProxyUrl(next.settings.proxy.url ?? "");
   }
 
   async function openPairingLink() {
@@ -151,7 +189,126 @@ export function TelegramSettingsSection() {
 
   return (
     <div className="flex flex-col gap-10">
-      <SettingsSection
+      {view === "connection" ? (
+        <SettingsSection
+        title="روش اتصال به تلگرام"
+        description="اتصال ربات می‌تواند مستقیم باشد، از پراکسی سیستم‌عامل استفاده کند یا فقط برای تلگرام از یک پراکسی سفارشی عبور کند. این انتخاب روی مدل‌ها و به‌روزرسانی برنامه اثری ندارد."
+        icon={WifiIcon}
+      >
+        <FieldGroup className="gap-4">
+          <Field className="rounded-2xl border border-border/70 bg-background p-4">
+            <FieldContent>
+              <FieldTitle>مسیر شبکه</FieldTitle>
+              <FieldDescription>
+                اگر تلگرام با اتصال مستقیم در دسترس نیست، ابتدا پراکسی
+                سیستم‌عامل و سپس پراکسی سفارشی را امتحان کنید.
+              </FieldDescription>
+            </FieldContent>
+
+            <FieldGroup>
+              <Field>
+                <FieldLabel>روش اتصال</FieldLabel>
+                <Select
+                  value={proxyMode}
+                  disabled={isSaving}
+                  onValueChange={(value) => {
+                    if (
+                      value === "direct" ||
+                      value === "system" ||
+                      value === "custom"
+                    ) {
+                      setProxyMode(value);
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue>
+                      {proxyMode === "system"
+                        ? "پراکسی سیستم‌عامل"
+                        : proxyMode === "custom"
+                          ? "پراکسی سفارشی"
+                          : "اتصال مستقیم"}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectItem value="direct">اتصال مستقیم</SelectItem>
+                      <SelectItem value="system">
+                        پراکسی سیستم‌عامل
+                      </SelectItem>
+                      <SelectItem value="custom">پراکسی سفارشی</SelectItem>
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  «پراکسی سیستم‌عامل» تنظیمات شبکهٔ macOS، Windows یا Linux را
+                  دنبال می‌کند.
+                </FieldDescription>
+              </Field>
+
+              {proxyMode === "custom" ? (
+                <Field>
+                  <FieldLabel htmlFor="telegram-proxy-url">
+                    آدرس پراکسی
+                  </FieldLabel>
+                  <Input
+                    id="telegram-proxy-url"
+                    dir="ltr"
+                    type="text"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="socks5://127.0.0.1:1080"
+                    value={proxyUrl}
+                    disabled={isSaving}
+                    onChange={(event) => setProxyUrl(event.target.value)}
+                  />
+                  <FieldDescription>
+                    HTTP، HTTPS، SOCKS4 و SOCKS5 پشتیبانی می‌شوند. برای امنیت،
+                    پراکسی دارای نام کاربری یا رمز در این نسخه ذخیره نمی‌شود.
+                  </FieldDescription>
+                </Field>
+              ) : null}
+
+              <Button
+                type="button"
+                variant="outline"
+                className="self-start"
+                disabled={
+                  isSaving ||
+                  (proxyMode === "custom" && !proxyUrl.trim())
+                }
+                onClick={() => void saveProxy()}
+              >
+                {isSaving ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <WifiIcon data-icon="inline-start" />
+                )}
+                ذخیره و بررسی اتصال
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="self-start"
+                render={<Link to="/settings/telegram/runtime" />}
+              >
+                رد کردن و ادامه به امنیت
+              </Button>
+            </FieldGroup>
+          </Field>
+          {status?.error ? (
+            <Alert variant="destructive">
+              <AlertTriangleIcon />
+              <AlertTitle>اتصال تلگرام برقرار نشد</AlertTitle>
+              <AlertDescription>{status.error}</AlertDescription>
+            </Alert>
+          ) : null}
+        </FieldGroup>
+        </SettingsSection>
+      ) : null}
+
+      {view === "overview" ? (
+        <SettingsSection
         title="دستیار تلگرام"
         description="از تلفن خود به نیمروز پیام بدهید؛ کارها روی همین کامپیوتر و در فضای کاری انتخاب‌شده اجرا می‌شوند. پس از جفت‌سازی، دکمه‌های پایین چت برای گفت‌وگوی تازه، گفت‌وگوهای اخیر، تعویض مدل و توقف در دسترس‌اند."
         icon={SendIcon}
@@ -291,33 +448,48 @@ export function TelegramSettingsSection() {
                 نمی‌کند.
               </AlertDescription>
             </Alert>
-          ) : status?.error ? (
+          ) : null}
+          {status?.error ? (
             <Alert variant="destructive">
               <AlertTriangleIcon />
-              <AlertTitle>تلگرام در دسترس نیست</AlertTitle>
-              <AlertDescription>{status.error}</AlertDescription>
+              <AlertTitle>اتصال تلگرام برقرار نشد</AlertTitle>
+              <AlertDescription>
+                {status.error} برای تغییر مسیر اتصال، زیرصفحهٔ «شبکه و پراکسی»
+                را باز کنید.
+              </AlertDescription>
             </Alert>
           ) : null}
         </FieldGroup>
-      </SettingsSection>
+        </SettingsSection>
+      ) : null}
 
-      <SettingsSection
+      {view === "pairing" ? (
+        <SettingsSection
         title="جفت‌کردن حساب"
         description="لازم نیست شناسه عددی تلگرام را پیدا کنید؛ لینک امن با شناسه واقعی حساب را هنگام شروع ربات ثبت می‌کند. پس از Start، راهنمای کامل با قالب‌بندی در چت ربات می‌آید."
         icon={ShieldCheckIcon}
       >
         {!status?.tokenConfigured ? (
-          <Alert>
-            <KeyRoundIcon />
-            <AlertTitle>ابتدا ربات را متصل کنید</AlertTitle>
-            <AlertDescription>
-              در تلگرام به{" "}
-              <span dir="ltr">@BotFather</span> پیام دهید،{" "}
-              <span dir="ltr">/newbot</span> بزنید، نام و username را بسازید،
-              توکن را کپی کنید و در بخش بالا ذخیره کنید. بعد می‌توانید با دکمهٔ
-              جفت‌سازی، حساب خود را امن وصل کنید.
-            </AlertDescription>
-          </Alert>
+          <FieldGroup>
+            <Alert>
+              <KeyRoundIcon />
+              <AlertTitle>ابتدا ربات را متصل کنید</AlertTitle>
+              <AlertDescription>
+                در تلگرام به{" "}
+                <span dir="ltr">@BotFather</span> پیام دهید،{" "}
+                <span dir="ltr">/newbot</span> بزنید، نام و username را بسازید،
+                توکن را کپی کنید و در مرحلهٔ «تنظیم ربات» ذخیره کنید.
+              </AlertDescription>
+            </Alert>
+            <Button
+              type="button"
+              className="self-start"
+              render={<Link to="/settings/telegram" />}
+            >
+              <KeyRoundIcon data-icon="inline-start" />
+              رفتن به تنظیم ربات
+            </Button>
+          </FieldGroup>
         ) : paired ? (
           <FieldGroup>
             <Alert>
@@ -345,6 +517,13 @@ export function TelegramSettingsSection() {
             >
               جفت‌کردن حساب دیگر
             </Button>
+            <Button
+              type="button"
+              className="self-start"
+              render={<Link to="/settings/telegram/connection" />}
+            >
+              ادامه به شبکه و پراکسی
+            </Button>
           </FieldGroup>
         ) : (
           <FieldGroup>
@@ -367,9 +546,11 @@ export function TelegramSettingsSection() {
             </Button>
           </FieldGroup>
         )}
-      </SettingsSection>
+        </SettingsSection>
+      ) : null}
 
-      <SettingsSection
+      {view === "runtime" ? (
+        <SettingsSection
         title="نحوه اجرا"
         description="اتصال بدون سرور واسط و فقط هنگام روشن‌بودن نیمروز کار می‌کند."
         icon={ShieldCheckIcon}
@@ -388,9 +569,11 @@ export function TelegramSettingsSection() {
             و کامپیوتر باید روشن و آنلاین بمانند.
           </AlertDescription>
         </Alert>
-      </SettingsSection>
+        </SettingsSection>
+      ) : null}
 
-      <SettingsSection
+      {view === "overview" ? (
+        <SettingsSection
         title="تصویر پروفایل ربات"
         description="اختیاری: آواتار آمادهٔ نیمروز برای BotFather — روی اتصال تأثیری ندارد."
         icon={ImageIcon}
@@ -424,7 +607,8 @@ export function TelegramSettingsSection() {
             </FieldContent>
           </div>
         </Field>
-      </SettingsSection>
+        </SettingsSection>
+      ) : null}
     </div>
   );
 }

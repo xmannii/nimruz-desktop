@@ -28,7 +28,10 @@ import type {
   CompanionShortcutStatus,
 } from "@/lib/settings/companion";
 import type { NotificationSettings } from "@/lib/settings/notifications";
-import type { TelegramStatus } from "@/lib/telegram";
+import type {
+  TelegramProxySettings,
+  TelegramStatus,
+} from "@/lib/telegram";
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
 import type { Expert } from "@/lib/settings/experts";
@@ -131,6 +134,7 @@ export type DesktopAPI = {
     }) => Promise<TelegramStatus>;
     setEnabled: (enabled: boolean) => Promise<TelegramStatus>;
     setWorkspace: (workspaceId: string) => Promise<TelegramStatus>;
+    setProxy: (proxy: TelegramProxySettings) => Promise<TelegramStatus>;
     beginPairing: () => Promise<TelegramStatus>;
     unpair: () => Promise<TelegramStatus>;
     clearToken: () => Promise<TelegramStatus>;

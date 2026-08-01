@@ -11,7 +11,7 @@ import {
 } from "ai";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import type { LocalChat } from "@/lib/chat/storage";
-import { getChatErrorMessage } from "@/lib/chat/errors";
+import { getTelegramErrorMessage } from "@/lib/telegram-errors";
 import { CODEX_PROVIDER_ID } from "@/lib/models/catalog";
 import {
   resamplePcm,
@@ -24,6 +24,8 @@ import {
   TELEGRAM_MAIN_KEYBOARD,
   TELEGRAM_STATUS_CHANNEL,
   normalizeTelegramBotToken,
+  normalizeTelegramProxySettings,
+  type TelegramProxySettings,
   type TelegramSettings,
   type TelegramStatus,
 } from "@/lib/telegram";
@@ -146,6 +148,7 @@ type TelegramServiceOptions = {
   ) => Promise<Response>;
   shenava: ShenavaService;
   fetchImpl?: typeof fetch;
+  applyProxy?: (proxy: TelegramProxySettings) => Promise<void>;
   onStatusChange?: (status: TelegramStatus) => void;
   onChatChange?: (chat: LocalChat) => void;
 };
@@ -555,6 +558,7 @@ export class TelegramService {
   readonly #runAgent: TelegramServiceOptions["runAgent"];
   readonly #shenava: ShenavaService;
   readonly #fetchImpl: typeof fetch;
+  readonly #applyProxy: (proxy: TelegramProxySettings) => Promise<void>;
   readonly #onStatusChange?: (status: TelegramStatus) => void;
   readonly #onChatChange?: (chat: LocalChat) => void;
 
@@ -574,13 +578,15 @@ export class TelegramService {
     this.#runAgent = options.runAgent;
     this.#shenava = options.shenava;
     this.#fetchImpl = options.fetchImpl ?? globalThis.fetch;
+    this.#applyProxy = options.applyProxy ?? (async () => undefined);
     this.#onStatusChange = options.onStatusChange;
     this.#onChatChange = options.onChatChange;
   }
 
-  initialize() {
+  async initialize() {
     const settings = this.#database.loadTelegramSettings();
     try {
+      await this.#applyProxy(settings.proxy);
       if (settings.enabled && this.#credentials.getKey(TELEGRAM_CREDENTIAL_ID)) {
         this.startPolling();
       } else {
@@ -589,7 +595,7 @@ export class TelegramService {
       }
     } catch (error) {
       this.#connectionState = "error";
-      this.#error = getChatErrorMessage(error);
+      this.#error = getTelegramErrorMessage(error);
       this.emitStatus();
     }
   }
@@ -621,29 +627,67 @@ export class TelegramService {
     if (!this.#database.getWorkspace(workspaceId)) {
       throw new Error("فضای کاری انتخاب‌شده پیدا نشد.");
     }
-    const api = new TelegramApi(token, this.#fetchImpl);
-    const bot = await api.getMe(AbortSignal.timeout(15_000));
-    if (!bot.is_bot || !bot.username) {
-      throw new Error("این توکن به یک ربات معتبر تلگرام تعلق ندارد.");
+    try {
+      await this.#applyProxy(this.#database.loadTelegramSettings().proxy);
+      const api = new TelegramApi(token, this.#fetchImpl);
+      const bot = await api.getMe(AbortSignal.timeout(15_000));
+      if (!bot.is_bot || !bot.username) {
+        throw new Error("این توکن به یک ربات معتبر تلگرام تعلق ندارد.");
+      }
+      await api.deleteWebhook(AbortSignal.timeout(15_000));
+      this.#credentials.setKey(TELEGRAM_CREDENTIAL_ID, token);
+      this.#pairingCode = randomBytes(18).toString("base64url");
+      this.#database.saveTelegramSettings({
+        ...this.#database.loadTelegramSettings(),
+        enabled: true,
+        workspaceId,
+        botUsername: bot.username,
+        botName: bot.first_name,
+        pairedUserId: null,
+        pairedChatId: null,
+        pairedUsername: null,
+        activeChatId: null,
+        lastUpdateId: null,
+      });
+      this.#error = null;
+      this.startPolling();
+      return this.getStatus();
+    } catch (error) {
+      const message = getTelegramErrorMessage(error);
+      this.#connectionState = "error";
+      this.#error = message;
+      this.emitStatus();
+      throw new Error(message);
     }
-    await api.deleteWebhook(AbortSignal.timeout(15_000));
-    this.#credentials.setKey(TELEGRAM_CREDENTIAL_ID, token);
-    this.#pairingCode = randomBytes(18).toString("base64url");
-    this.#database.saveTelegramSettings({
+  }
+
+  async setProxy(value: unknown) {
+    const proxy = normalizeTelegramProxySettings(value);
+    const settings = this.#database.saveTelegramSettings({
       ...this.#database.loadTelegramSettings(),
-      enabled: true,
-      workspaceId,
-      botUsername: bot.username,
-      botName: bot.first_name,
-      pairedUserId: null,
-      pairedChatId: null,
-      pairedUsername: null,
-      activeChatId: null,
-      lastUpdateId: null,
+      proxy,
     });
-    this.#error = null;
-    this.startPolling();
-    return this.getStatus();
+    this.stopPolling();
+
+    try {
+      await this.#applyProxy(proxy);
+      const token = this.#credentials.getKey(TELEGRAM_CREDENTIAL_ID);
+      if (token) {
+        await new TelegramApi(token, this.#fetchImpl).getMe(
+          AbortSignal.timeout(15_000)
+        );
+      }
+      this.#error = null;
+      if (settings.enabled && token) this.startPolling();
+      else this.emitStatus();
+      return this.getStatus();
+    } catch (error) {
+      const message = getTelegramErrorMessage(error);
+      this.#connectionState = "error";
+      this.#error = message;
+      this.emitStatus();
+      throw new Error(message);
+    }
   }
 
   setEnabled(enabled: boolean) {
@@ -804,7 +848,7 @@ export class TelegramService {
       } catch (error) {
         if (abort.signal.aborted) return;
         this.#connectionState = "error";
-        this.#error = getChatErrorMessage(error);
+        this.#error = getTelegramErrorMessage(error);
         this.emitStatus();
         try {
           await delay(2_500, abort.signal);
@@ -1046,7 +1090,10 @@ export class TelegramService {
       await this.sendText(
         api,
         settings.pairedChatId,
-        `رونویسی پیام صوتی ناموفق بود: ${getChatErrorMessage(error)}`
+        `رونویسی پیام صوتی ناموفق بود: ${getTelegramErrorMessage(
+          error,
+          "پردازش پیام صوتی با خطا روبه‌رو شد. دوباره تلاش کنید."
+        )}`
       );
     } finally {
       typing.dispose();
@@ -1167,7 +1214,10 @@ export class TelegramService {
       await this.sendText(
         api,
         settings.pairedChatId,
-        `دریافت فایل ناموفق بود: ${getChatErrorMessage(error)}`
+        `دریافت فایل ناموفق بود: ${getTelegramErrorMessage(
+          error,
+          "دریافت یا پردازش فایل با خطا روبه‌رو شد. دوباره تلاش کنید."
+        )}`
       );
     } finally {
       typing.dispose();
@@ -1490,7 +1540,10 @@ export class TelegramService {
       await this.sendText(
         api,
         settings.pairedChatId,
-        `خطا: ${getChatErrorMessage(error)}`
+        `خطا: ${getTelegramErrorMessage(
+          error,
+          "اجرای درخواست با خطا روبه‌رو شد. دوباره تلاش کنید."
+        )}`
       );
     }
   }
@@ -1588,7 +1641,10 @@ export class TelegramService {
         await this.sendText(
           api,
           settings.pairedChatId,
-          `خطا: ${getChatErrorMessage(error)}`
+          `خطا: ${getTelegramErrorMessage(
+            error,
+            "ادامهٔ درخواست با خطا روبه‌رو شد. دوباره تلاش کنید."
+          )}`
         );
       }
     } finally {
@@ -1675,7 +1731,10 @@ export class TelegramService {
         await this.sendText(
           api,
           chatId,
-          `ارسال آرتیفکت «${item.title}» ناموفق بود: ${getChatErrorMessage(error)}`
+          `ارسال آرتیفکت «${item.title}» ناموفق بود: ${getTelegramErrorMessage(
+            error,
+            "فایل ساخته شد اما ارسال آن به تلگرام با خطا روبه‌رو شد."
+          )}`
         );
       }
     }

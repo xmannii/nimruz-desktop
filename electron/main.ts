@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   nativeImage,
   Notification,
+  session,
   shell,
 } from "electron";
 import { randomBytes } from "node:crypto";
@@ -31,6 +32,7 @@ import {
 } from "./notifications/service";
 import { attachWindowStateEvents } from "./window-controls";
 import { TelegramService } from "./telegram/service";
+import { createTelegramNetwork } from "./telegram/network";
 import {
   TELEGRAM_CHAT_CHANNEL,
   TELEGRAM_STATUS_CHANNEL,
@@ -263,12 +265,20 @@ app.whenReady().then(async () => {
     createSkill: async (skill: SkillDocument) => skills.create(skill),
   };
 
+  // Keep Telegram proxy settings isolated from model providers, updates, and
+  // the renderer. This in-memory session exists only while Nimruz is running.
+  const telegramNetwork = createTelegramNetwork(
+    session.fromPartition("nimruz-telegram")
+  );
+
   telegram = new TelegramService({
     database,
     credentials,
     agentDeps,
     runAgent: handleAgentChatRequest,
     shenava,
+    fetchImpl: telegramNetwork.fetch,
+    applyProxy: telegramNetwork.applyProxy,
     onStatusChange: (status) => {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(TELEGRAM_STATUS_CHANNEL, status);
@@ -295,7 +305,7 @@ app.whenReady().then(async () => {
     getCompanionWindow: () => companion?.getWindow() ?? null,
     getRendererUrl: () => rendererUrl,
   });
-  telegram.initialize();
+  await telegram.initialize();
 
   if (isDev && RENDERER_DEV_URL) {
     const result = await startServer({

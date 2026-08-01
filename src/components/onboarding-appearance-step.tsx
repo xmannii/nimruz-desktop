@@ -2,7 +2,12 @@
 
 import { FontPicker } from "@/components/settings/font-picker";
 import { useAppearanceSettings } from "@/hooks/use-appearance-settings";
-import { COLOR_THEME_OPTIONS, type ColorTheme } from "@/lib/settings/appearance";
+import {
+  COLOR_THEME_OPTIONS,
+  FONT_SIZE_OPTIONS,
+  type ColorTheme,
+  type FontSize,
+} from "@/lib/settings/appearance";
 import { cn } from "@/lib/utils";
 import { MonitorIcon, MoonIcon, SunIcon } from "lucide-react";
 import { useTheme } from "next-themes";
@@ -106,6 +111,47 @@ export function OnboardingAppearanceStep() {
           }
           disabled={!isHydrated}
         />
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-muted-foreground">اندازه متن</p>
+        <div className="grid grid-cols-4 gap-2">
+          {FONT_SIZE_OPTIONS.map((option) => {
+            const isSelected =
+              isHydrated && appearance.fontSize === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                disabled={!isHydrated}
+                aria-pressed={isSelected}
+                onClick={() =>
+                  updateAppearance({
+                    ...appearance,
+                    fontSize: option.value as FontSize,
+                  })
+                }
+                className={cn(
+                  "rounded-xl border px-2 py-2.5 text-center transition-colors",
+                  isSelected
+                    ? "border-primary/40 bg-primary/5 ring-1 ring-primary/20"
+                    : "border-border/70 bg-background hover:bg-muted/50"
+                )}
+              >
+                <span
+                  className="block font-medium leading-none"
+                  style={{ fontSize: `${option.rootPx}px` }}
+                >
+                  آ
+                </span>
+                <span className="mt-1.5 block text-[11px] font-medium">
+                  {option.label}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

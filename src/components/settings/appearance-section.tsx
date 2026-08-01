@@ -3,9 +3,16 @@
 import { FontPicker } from "@/components/settings/font-picker";
 import { SettingsSection } from "@/components/settings/settings-section";
 import { useAppearanceSettings } from "@/hooks/use-appearance-settings";
-import { COLOR_THEME_OPTIONS, type ColorTheme } from "@/lib/settings/appearance";
+import {
+  COLOR_THEME_OPTIONS,
+  FONT_SIZE_OPTIONS,
+  VAZIRMATN_CREDIT,
+  type ColorTheme,
+  type FontSize,
+} from "@/lib/settings/appearance";
 import { cn } from "@/lib/utils";
 import {
+  ALargeSmallIcon,
   MonitorIcon,
   MoonIcon,
   PaletteIcon,
@@ -93,7 +100,7 @@ export function AppearanceSettingsSection() {
 
       <SettingsSection
         title="فونت"
-        description="هر فونت نصب‌شده روی سیستم را انتخاب کنید. وزیرمتن پیش‌فرض است."
+        description={`هر فونت نصب‌شده روی سیستم را انتخاب کنید. وزیرمتن پیش‌فرض است — ${VAZIRMATN_CREDIT}.`}
         icon={TypeIcon}
       >
         <FontPicker
@@ -101,6 +108,50 @@ export function AppearanceSettingsSection() {
           onValueChange={(fontFamily) => updateDraft("fontFamily", fontFamily)}
           disabled={!isHydrated}
         />
+      </SettingsSection>
+
+      <SettingsSection
+        title="اندازه متن"
+        description="اندازه نوشته‌های برنامه را برای خوانایی بیشتر تنظیم کنید."
+        icon={ALargeSmallIcon}
+      >
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {FONT_SIZE_OPTIONS.map((option) => {
+            const isSelected =
+              isHydrated && appearance.fontSize === option.value;
+
+            return (
+              <button
+                key={option.value}
+                type="button"
+                disabled={!isHydrated}
+                aria-pressed={isSelected}
+                onClick={() =>
+                  updateDraft("fontSize", option.value as FontSize)
+                }
+                className={cn(
+                  "rounded-2xl border px-3.5 py-3 text-right transition-colors",
+                  isSelected
+                    ? "border-primary/40 bg-primary/5 ring-1 ring-primary/20"
+                    : "border-border/70 bg-background hover:bg-muted/50"
+                )}
+              >
+                <span
+                  className="block font-medium leading-none"
+                  style={{ fontSize: `${option.rootPx}px` }}
+                >
+                  آ
+                </span>
+                <span className="mt-2 block text-sm font-medium">
+                  {option.label}
+                </span>
+                <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
+                  {option.description}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </SettingsSection>
 
       <SettingsSection

@@ -71,6 +71,7 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("telegram:set-enabled", enabled),
     setWorkspace: (workspaceId) =>
       ipcRenderer.invoke("telegram:set-workspace", workspaceId),
+    setProxy: (proxy) => ipcRenderer.invoke("telegram:set-proxy", proxy),
     beginPairing: () => ipcRenderer.invoke("telegram:begin-pairing"),
     unpair: () => ipcRenderer.invoke("telegram:unpair"),
     clearToken: () => ipcRenderer.invoke("telegram:clear-token"),

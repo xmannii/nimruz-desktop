@@ -285,3 +285,49 @@ test("rejects Telegram voice notes when Shenava is not installed", async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("persists an isolated proxy and translates token connection failures", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "nimruz-telegram-"));
+  const database = new AppDatabase(path.join(directory, "test.sqlite3"));
+  const credentials = createCredentials();
+  const applied: Array<{ mode: string; url: string | null }> = [];
+  const service = new TelegramService({
+    database,
+    credentials,
+    agentDeps: {} as AgentRuntimeDeps,
+    runAgent: async () => new Response(),
+    shenava: {} as ShenavaService,
+    applyProxy: async (proxy) => {
+      applied.push(proxy);
+    },
+    fetchImpl: async () => {
+      throw new TypeError("fetch failed", {
+        cause: Object.assign(new Error("connect ECONNREFUSED"), {
+          code: "ECONNREFUSED",
+        }),
+      });
+    },
+  });
+
+  try {
+    const status = await service.setProxy({
+      mode: "custom",
+      url: "socks5://127.0.0.1:1080",
+    });
+    assert.deepEqual(status.settings.proxy, {
+      mode: "custom",
+      url: "socks5://127.0.0.1:1080",
+    });
+    assert.deepEqual(applied.at(-1), status.settings.proxy);
+
+    await assert.rejects(
+      () => service.configure(TOKEN, "home"),
+      /اتصال رد شد/
+    );
+    assert.match(service.getStatus().error ?? "", /اتصال رد شد/);
+  } finally {
+    service.dispose();
+    database.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

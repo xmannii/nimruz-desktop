@@ -935,6 +935,7 @@ export function registerIpcHandlers(options: {
   handle("telegram:set-workspace", (workspaceId: string) =>
     telegram.setWorkspace(workspaceId)
   );
+  handle("telegram:set-proxy", (value: unknown) => telegram.setProxy(value));
   handle("telegram:begin-pairing", () => telegram.beginPairing());
   handle("telegram:unpair", () => telegram.unpair());
   handle("telegram:clear-token", () => telegram.clearToken());
