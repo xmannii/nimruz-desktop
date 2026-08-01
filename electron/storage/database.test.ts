@@ -13,6 +13,7 @@ import {
 } from "@/lib/workspace";
 import { DEFAULT_PERSONALIZATION_SETTINGS } from "@/lib/settings/personalization";
 import { DEFAULT_NOTIFICATION_SETTINGS } from "@/lib/settings/notifications";
+import { DEFAULT_TELEGRAM_SETTINGS } from "@/lib/telegram";
 import {
   CODEX_BASE_URL,
   CODEX_PROVIDER_ID,
@@ -103,6 +104,14 @@ test("persists chats, projects, settings, memories, and credentials", async () =
       microphoneEnabled: true,
       microphoneAccelerator: "Command+Shift+M",
     });
+    database.saveTelegramSettings({
+      ...DEFAULT_TELEGRAM_SETTINGS,
+      enabled: true,
+      workspaceId: project.id,
+      pairedUserId: "123456789",
+      pairedChatId: "123456789",
+      pairedUsername: "@mani",
+    });
     database.setCredential("openrouter", Buffer.from("encrypted"), "••••1234");
 
     assert.ok(
@@ -128,6 +137,14 @@ test("persists chats, projects, settings, memories, and credentials", async () =
       accelerator: "Command+Shift+K",
       microphoneEnabled: true,
       microphoneAccelerator: "Command+Shift+M",
+    });
+    assert.deepEqual(database.loadTelegramSettings(), {
+      ...DEFAULT_TELEGRAM_SETTINGS,
+      enabled: true,
+      workspaceId: project.id,
+      pairedUserId: "123456789",
+      pairedChatId: "123456789",
+      pairedUsername: "@mani",
     });
     assert.equal(database.getCredential("openrouter")?.hint, "••••1234");
 

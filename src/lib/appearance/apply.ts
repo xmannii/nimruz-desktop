@@ -2,6 +2,7 @@ import {
   DEFAULT_APPEARANCE_SETTINGS,
   DEFAULT_FONT_FAMILY,
   SYSTEM_FONT_VALUE,
+  getFontSizeRootPx,
   type AppearanceSettings,
 } from "@/lib/settings/appearance";
 
@@ -27,5 +28,7 @@ export function applyAppearanceSettings(
 ) {
   const root = document.documentElement;
   root.dataset.colorTheme = settings.colorTheme;
+  root.dataset.fontSize = settings.fontSize;
   root.style.setProperty("--font-ui", buildFontStack(settings.fontFamily));
+  root.style.fontSize = `${getFontSizeRootPx(settings.fontSize)}px`;
 }

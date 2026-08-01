@@ -16,6 +16,7 @@ import { Route as AppTranscribeRouteImport } from './routes/_app.transcribe'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
 import { Route as AppWorkspaceWorkspaceIdRouteImport } from './routes/_app.workspace.$workspaceId'
+import { Route as AppSettingsTelegramRouteImport } from './routes/_app.settings.telegram'
 import { Route as AppSettingsSpeechRouteImport } from './routes/_app.settings.speech'
 import { Route as AppSettingsSkillsRouteImport } from './routes/_app.settings.skills'
 import { Route as AppSettingsResearchAgentsRouteImport } from './routes/_app.settings.research-agents'
@@ -31,7 +32,11 @@ import { Route as AppSettingsAppearanceRouteImport } from './routes/_app.setting
 import { Route as AppSettingsAboutRouteImport } from './routes/_app.settings.about'
 import { Route as AppChatChatIdRouteImport } from './routes/_app.chat.$chatId'
 import { Route as AppWorkspaceWorkspaceIdIndexRouteImport } from './routes/_app.workspace.$workspaceId.index'
+import { Route as AppSettingsTelegramIndexRouteImport } from './routes/_app.settings.telegram.index'
 import { Route as AppSettingsModelsIndexRouteImport } from './routes/_app.settings.models.index'
+import { Route as AppSettingsTelegramRuntimeRouteImport } from './routes/_app.settings.telegram.runtime'
+import { Route as AppSettingsTelegramPairingRouteImport } from './routes/_app.settings.telegram.pairing'
+import { Route as AppSettingsTelegramConnectionRouteImport } from './routes/_app.settings.telegram.connection'
 import { Route as AppSettingsModelsProvidersRouteImport } from './routes/_app.settings.models.providers'
 import { Route as AppSettingsModelsAddRouteImport } from './routes/_app.settings.models.add'
 import { Route as AppSettingsModelsActiveRouteImport } from './routes/_app.settings.models.active'
@@ -70,6 +75,11 @@ const AppWorkspaceWorkspaceIdRoute = AppWorkspaceWorkspaceIdRouteImport.update({
   id: '/workspace/$workspaceId',
   path: '/workspace/$workspaceId',
   getParentRoute: () => AppRoute,
+} as any)
+const AppSettingsTelegramRoute = AppSettingsTelegramRouteImport.update({
+  id: '/telegram',
+  path: '/telegram',
+  getParentRoute: () => AppSettingsRoute,
 } as any)
 const AppSettingsSpeechRoute = AppSettingsSpeechRouteImport.update({
   id: '/speech',
@@ -149,11 +159,35 @@ const AppWorkspaceWorkspaceIdIndexRoute =
     path: '/',
     getParentRoute: () => AppWorkspaceWorkspaceIdRoute,
   } as any)
+const AppSettingsTelegramIndexRoute =
+  AppSettingsTelegramIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AppSettingsTelegramRoute,
+  } as any)
 const AppSettingsModelsIndexRoute = AppSettingsModelsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AppSettingsModelsRoute,
 } as any)
+const AppSettingsTelegramRuntimeRoute =
+  AppSettingsTelegramRuntimeRouteImport.update({
+    id: '/runtime',
+    path: '/runtime',
+    getParentRoute: () => AppSettingsTelegramRoute,
+  } as any)
+const AppSettingsTelegramPairingRoute =
+  AppSettingsTelegramPairingRouteImport.update({
+    id: '/pairing',
+    path: '/pairing',
+    getParentRoute: () => AppSettingsTelegramRoute,
+  } as any)
+const AppSettingsTelegramConnectionRoute =
+  AppSettingsTelegramConnectionRouteImport.update({
+    id: '/connection',
+    path: '/connection',
+    getParentRoute: () => AppSettingsTelegramRoute,
+  } as any)
 const AppSettingsModelsProvidersRoute =
   AppSettingsModelsProvidersRouteImport.update({
     id: '/providers',
@@ -196,12 +230,17 @@ export interface FileRoutesByFullPath {
   '/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/settings/skills': typeof AppSettingsSkillsRoute
   '/settings/speech': typeof AppSettingsSpeechRoute
+  '/settings/telegram': typeof AppSettingsTelegramRouteWithChildren
   '/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
   '/settings/': typeof AppSettingsIndexRoute
   '/settings/models/active': typeof AppSettingsModelsActiveRoute
   '/settings/models/add': typeof AppSettingsModelsAddRoute
   '/settings/models/providers': typeof AppSettingsModelsProvidersRoute
+  '/settings/telegram/connection': typeof AppSettingsTelegramConnectionRoute
+  '/settings/telegram/pairing': typeof AppSettingsTelegramPairingRoute
+  '/settings/telegram/runtime': typeof AppSettingsTelegramRuntimeRoute
   '/settings/models/': typeof AppSettingsModelsIndexRoute
+  '/settings/telegram/': typeof AppSettingsTelegramIndexRoute
   '/workspace/$workspaceId/': typeof AppWorkspaceWorkspaceIdIndexRoute
   '/workspace/$workspaceId/chat/$chatId': typeof AppWorkspaceWorkspaceIdChatChatIdRoute
 }
@@ -226,7 +265,11 @@ export interface FileRoutesByTo {
   '/settings/models/active': typeof AppSettingsModelsActiveRoute
   '/settings/models/add': typeof AppSettingsModelsAddRoute
   '/settings/models/providers': typeof AppSettingsModelsProvidersRoute
+  '/settings/telegram/connection': typeof AppSettingsTelegramConnectionRoute
+  '/settings/telegram/pairing': typeof AppSettingsTelegramPairingRoute
+  '/settings/telegram/runtime': typeof AppSettingsTelegramRuntimeRoute
   '/settings/models': typeof AppSettingsModelsIndexRoute
+  '/settings/telegram': typeof AppSettingsTelegramIndexRoute
   '/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdIndexRoute
   '/workspace/$workspaceId/chat/$chatId': typeof AppWorkspaceWorkspaceIdChatChatIdRoute
 }
@@ -251,12 +294,17 @@ export interface FileRoutesById {
   '/_app/settings/research-agents': typeof AppSettingsResearchAgentsRoute
   '/_app/settings/skills': typeof AppSettingsSkillsRoute
   '/_app/settings/speech': typeof AppSettingsSpeechRoute
+  '/_app/settings/telegram': typeof AppSettingsTelegramRouteWithChildren
   '/_app/workspace/$workspaceId': typeof AppWorkspaceWorkspaceIdRouteWithChildren
   '/_app/settings/': typeof AppSettingsIndexRoute
   '/_app/settings/models/active': typeof AppSettingsModelsActiveRoute
   '/_app/settings/models/add': typeof AppSettingsModelsAddRoute
   '/_app/settings/models/providers': typeof AppSettingsModelsProvidersRoute
+  '/_app/settings/telegram/connection': typeof AppSettingsTelegramConnectionRoute
+  '/_app/settings/telegram/pairing': typeof AppSettingsTelegramPairingRoute
+  '/_app/settings/telegram/runtime': typeof AppSettingsTelegramRuntimeRoute
   '/_app/settings/models/': typeof AppSettingsModelsIndexRoute
+  '/_app/settings/telegram/': typeof AppSettingsTelegramIndexRoute
   '/_app/workspace/$workspaceId/': typeof AppWorkspaceWorkspaceIdIndexRoute
   '/_app/workspace/$workspaceId/chat/$chatId': typeof AppWorkspaceWorkspaceIdChatChatIdRoute
 }
@@ -281,12 +329,17 @@ export interface FileRouteTypes {
     | '/settings/research-agents'
     | '/settings/skills'
     | '/settings/speech'
+    | '/settings/telegram'
     | '/workspace/$workspaceId'
     | '/settings/'
     | '/settings/models/active'
     | '/settings/models/add'
     | '/settings/models/providers'
+    | '/settings/telegram/connection'
+    | '/settings/telegram/pairing'
+    | '/settings/telegram/runtime'
     | '/settings/models/'
+    | '/settings/telegram/'
     | '/workspace/$workspaceId/'
     | '/workspace/$workspaceId/chat/$chatId'
   fileRoutesByTo: FileRoutesByTo
@@ -311,7 +364,11 @@ export interface FileRouteTypes {
     | '/settings/models/active'
     | '/settings/models/add'
     | '/settings/models/providers'
+    | '/settings/telegram/connection'
+    | '/settings/telegram/pairing'
+    | '/settings/telegram/runtime'
     | '/settings/models'
+    | '/settings/telegram'
     | '/workspace/$workspaceId'
     | '/workspace/$workspaceId/chat/$chatId'
   id:
@@ -335,12 +392,17 @@ export interface FileRouteTypes {
     | '/_app/settings/research-agents'
     | '/_app/settings/skills'
     | '/_app/settings/speech'
+    | '/_app/settings/telegram'
     | '/_app/workspace/$workspaceId'
     | '/_app/settings/'
     | '/_app/settings/models/active'
     | '/_app/settings/models/add'
     | '/_app/settings/models/providers'
+    | '/_app/settings/telegram/connection'
+    | '/_app/settings/telegram/pairing'
+    | '/_app/settings/telegram/runtime'
     | '/_app/settings/models/'
+    | '/_app/settings/telegram/'
     | '/_app/workspace/$workspaceId/'
     | '/_app/workspace/$workspaceId/chat/$chatId'
   fileRoutesById: FileRoutesById
@@ -400,6 +462,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/workspace/$workspaceId'
       preLoaderRoute: typeof AppWorkspaceWorkspaceIdRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/_app/settings/telegram': {
+      id: '/_app/settings/telegram'
+      path: '/telegram'
+      fullPath: '/settings/telegram'
+      preLoaderRoute: typeof AppSettingsTelegramRouteImport
+      parentRoute: typeof AppSettingsRoute
     }
     '/_app/settings/speech': {
       id: '/_app/settings/speech'
@@ -506,12 +575,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppWorkspaceWorkspaceIdIndexRouteImport
       parentRoute: typeof AppWorkspaceWorkspaceIdRoute
     }
+    '/_app/settings/telegram/': {
+      id: '/_app/settings/telegram/'
+      path: '/'
+      fullPath: '/settings/telegram/'
+      preLoaderRoute: typeof AppSettingsTelegramIndexRouteImport
+      parentRoute: typeof AppSettingsTelegramRoute
+    }
     '/_app/settings/models/': {
       id: '/_app/settings/models/'
       path: '/'
       fullPath: '/settings/models/'
       preLoaderRoute: typeof AppSettingsModelsIndexRouteImport
       parentRoute: typeof AppSettingsModelsRoute
+    }
+    '/_app/settings/telegram/runtime': {
+      id: '/_app/settings/telegram/runtime'
+      path: '/runtime'
+      fullPath: '/settings/telegram/runtime'
+      preLoaderRoute: typeof AppSettingsTelegramRuntimeRouteImport
+      parentRoute: typeof AppSettingsTelegramRoute
+    }
+    '/_app/settings/telegram/pairing': {
+      id: '/_app/settings/telegram/pairing'
+      path: '/pairing'
+      fullPath: '/settings/telegram/pairing'
+      preLoaderRoute: typeof AppSettingsTelegramPairingRouteImport
+      parentRoute: typeof AppSettingsTelegramRoute
+    }
+    '/_app/settings/telegram/connection': {
+      id: '/_app/settings/telegram/connection'
+      path: '/connection'
+      fullPath: '/settings/telegram/connection'
+      preLoaderRoute: typeof AppSettingsTelegramConnectionRouteImport
+      parentRoute: typeof AppSettingsTelegramRoute
     }
     '/_app/settings/models/providers': {
       id: '/_app/settings/models/providers'
@@ -561,6 +658,23 @@ const AppSettingsModelsRouteChildren: AppSettingsModelsRouteChildren = {
 const AppSettingsModelsRouteWithChildren =
   AppSettingsModelsRoute._addFileChildren(AppSettingsModelsRouteChildren)
 
+interface AppSettingsTelegramRouteChildren {
+  AppSettingsTelegramConnectionRoute: typeof AppSettingsTelegramConnectionRoute
+  AppSettingsTelegramPairingRoute: typeof AppSettingsTelegramPairingRoute
+  AppSettingsTelegramRuntimeRoute: typeof AppSettingsTelegramRuntimeRoute
+  AppSettingsTelegramIndexRoute: typeof AppSettingsTelegramIndexRoute
+}
+
+const AppSettingsTelegramRouteChildren: AppSettingsTelegramRouteChildren = {
+  AppSettingsTelegramConnectionRoute: AppSettingsTelegramConnectionRoute,
+  AppSettingsTelegramPairingRoute: AppSettingsTelegramPairingRoute,
+  AppSettingsTelegramRuntimeRoute: AppSettingsTelegramRuntimeRoute,
+  AppSettingsTelegramIndexRoute: AppSettingsTelegramIndexRoute,
+}
+
+const AppSettingsTelegramRouteWithChildren =
+  AppSettingsTelegramRoute._addFileChildren(AppSettingsTelegramRouteChildren)
+
 interface AppSettingsRouteChildren {
   AppSettingsAboutRoute: typeof AppSettingsAboutRoute
   AppSettingsAppearanceRoute: typeof AppSettingsAppearanceRoute
@@ -575,6 +689,7 @@ interface AppSettingsRouteChildren {
   AppSettingsResearchAgentsRoute: typeof AppSettingsResearchAgentsRoute
   AppSettingsSkillsRoute: typeof AppSettingsSkillsRoute
   AppSettingsSpeechRoute: typeof AppSettingsSpeechRoute
+  AppSettingsTelegramRoute: typeof AppSettingsTelegramRouteWithChildren
   AppSettingsIndexRoute: typeof AppSettingsIndexRoute
 }
 
@@ -592,6 +707,7 @@ const AppSettingsRouteChildren: AppSettingsRouteChildren = {
   AppSettingsResearchAgentsRoute: AppSettingsResearchAgentsRoute,
   AppSettingsSkillsRoute: AppSettingsSkillsRoute,
   AppSettingsSpeechRoute: AppSettingsSpeechRoute,
+  AppSettingsTelegramRoute: AppSettingsTelegramRouteWithChildren,
   AppSettingsIndexRoute: AppSettingsIndexRoute,
 }
 

@@ -1,99 +1,200 @@
-![Nimruz banner](public/banner.png)
+<p align="center">
+  <img src="public/screenshots/simple-chat.png" alt="Nimruz Persian chat" width="1000" />
+</p>
 
-# Nimruz Desktop
+<h1 align="center">Nimruz Desktop</h1>
 
-**نیمروز** — an open-source Persian AI **workspace agent** for the desktop. Built with Electron, React, and the [Vercel AI SDK](https://github.com/vercel/ai).
+<p align="center">
+  <strong>An open-source, Persian-first desktop agent that can work in your files, understand your voice, and keep going from Telegram.</strong>
+</p>
 
-[فارسی](README.fa.md)
+<p align="center">
+  <a href="https://github.com/xmannii/nimruz-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/xmannii/nimruz-desktop?display_name=tag&amp;sort=semver&amp;style=flat-square&amp;label=release&amp;color=F5B82E" alt="Latest release" /></a>
+  <a href="https://github.com/xmannii/nimruz-desktop/releases"><img src="https://img.shields.io/github/downloads/xmannii/nimruz-desktop/total?style=flat-square&amp;label=downloads&amp;color=7C3AED" alt="GitHub downloads" /></a>
+  <a href="https://github.com/xmannii/nimruz-desktop/blob/dev/LICENSE"><img src="https://img.shields.io/github/license/xmannii/nimruz-desktop?style=flat-square&amp;label=license&amp;color=22C55E" alt="MIT license" /></a>
+  <a href="https://github.com/xmannii/nimruz-desktop/tree/dev"><img src="https://img.shields.io/github/last-commit/xmannii/nimruz-desktop/dev?style=flat-square&amp;label=dev&amp;color=0EA5E9" alt="Latest dev commit" /></a>
+</p>
 
-> **v1.0.0** — Nimruz is no longer “just a chat app.” It is an agentic workspace: chat plus tools that can work inside your project folders, with approvals, artifacts, and local-first storage.
+<p align="center">
+  <a href="https://github.com/xmannii/nimruz-desktop/releases/latest">Download</a> ·
+  <a href="#-screenshots">Screenshots</a> ·
+  <a href="https://github.com/xmannii/nimruz-desktop/issues">Report an issue</a> ·
+  <a href="README.fa.md">فارسی</a>
+</p>
 
-> **Experimental software** — expect rough edges. Please test it and [report issues on GitHub](https://github.com/xmannii/nimruz-desktop/issues).
+Nimruz is a local-first AI workspace for work that needs more than a chat box. Give it a project folder, ask for a result, and watch it inspect files, use tools, create artifacts, and ask for approval before sensitive actions. Speak in Persian with local Shenava transcription, or send the same desktop agent a message from Telegram.
 
-Connect Codex through your ChatGPT account, [OpenRouter](https://openrouter.ai/), or any OpenAI-compatible provider. Tool-capable providers can work inside linked workspace folders with approvals, artifacts, and tasks; Codex runs as a subscription-backed conversational model in an isolated runtime. Chats, workspaces, memories, experts, skills, and settings remain local to your machine.
+> **Experimental software.** Nimruz is under active development. The Telegram relay is currently being tested in `dev` builds; use the latest stable GitHub Release for the main desktop app.
 
-## Download
+## ✨ The product in three moves
 
-Pre-built **Windows** and **macOS** installers are published on every [release](https://github.com/xmannii/nimruz-desktop/releases).
-
-| Platform | Installer | Latest |
+| Start with a workspace | Talk naturally | Continue from Telegram |
 | --- | --- | --- |
-| **macOS** (Apple Silicon) | `.dmg` | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
-| **Windows** | `.exe` (NSIS) | [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) |
+| Link a project folder and give the agent real context. | Use Persian voice input instead of typing every thought. | Pair a BotFather bot and reach the agent from your phone. |
+| It reads, searches, edits, runs approved commands, and makes deliverables. | Shenava transcribes speech locally on your device. | Text, voice notes, photos, documents, progress updates, and artifacts all flow through the bot. |
+
+## 🤖 Agentic workspace
+
+Nimruz turns a conversation into a place where work can actually happen.
+
+- Link one or more project folders to a workspace.
+- Let the agent read, list, search, write, patch, and inspect files.
+- Run shell commands, web searches, and workspace MCP tools; sensitive operations remain approval-gated.
+- Break down longer work into plans, tasks, and independent subagents.
+- Follow every run in a tool timeline, with files, artifacts, tasks, and activity in the side panel.
+- Attach files and artifacts to a prompt, or mention them with `@`.
+
+The important part is the boundary: Nimruz scopes tools to the selected workspace and keeps risky actions visible before they run.
+
+## 🎙️ Persian voice-to-text
+
+Speak once and keep moving. Download a Shenava speech model, select it in **Settings → Speech**, and use the microphone in chat or the dedicated transcription page.
+
+- Persian speech recognition runs locally on the device.
+- Record from the microphone or transcribe an audio file.
+- Keep raw and corrected text side by side, then export the result.
+- Use the same local transcription pipeline for Telegram voice notes.
+- Optional AI cleanup can improve punctuation, spacing, and readability with your selected model.
+
+## 📲 Telegram assistant
+
+Your desktop agent does not have to stay in the desktop window. Connect a BotFather bot, pair your Telegram account, choose a workspace, and message Nimruz from your phone.
+
+The Telegram assistant supports:
+
+- Text prompts and voice notes.
+- Photos with a vision-capable model, plus supported PDFs and text/code documents.
+- Live progress while the agent is working.
+- Recent conversations, model switching, stopping a run, and help from the bot keyboard.
+- Artifact delivery back into the Telegram chat.
+
+The app remains the runtime: Nimruz must be running for the bot to respond, and the selected workspace stays on your computer. Pairing is limited to the Telegram account that starts the one-time pairing flow. File writes, terminal commands, and other sensitive operations still require approval.
+
+## Also included
+
+- **Model choice** — Codex through ChatGPT sign-in, OpenAI, Anthropic, Google Gemini, OpenRouter, and generic OpenAI-compatible or local servers.
+- **Skills and experts** — load `SKILL.md` packs on demand and call reusable specialists with `/`.
+- **Memories and personalization** — save durable context and control the assistant's response style.
+- **Web research** — search the web and read public pages through SSRF-safe tools.
+- **Companion window** — open a small always-available chat with a global shortcut.
+- **Persian-first UI** — RTL chat, Persian typography, light/dark/system themes, and the Nimruz color theme.
+
+## 📸 Screenshots
+
+These are real captures from Nimruz's Persian-first interface.
+
+### Agentic tool calls
+
+Give Nimruz a goal and follow the work as it searches, reasons, and uses tools inside the workspace.
+
+![Nimruz agentic tool calls](public/screenshots/agentic-tool-calls.png)
+
+### From a chat to a deliverable
+
+The agent can turn a conversation into a concrete artifact you can preview and export.
+
+![Nimruz artifact preview](public/screenshots/artifact.png)
+
+### Persian speech-to-text
+
+Shenava runs locally on the device: choose an audio file or record live, then review the raw and corrected transcript.
+
+![Nimruz speech-to-text upload](public/screenshots/stt-1.png)
+
+![Nimruz speech-to-text results](public/screenshots/stt-2.png)
+
+<details>
+<summary>Explore the rest of the app</summary>
+
+### Model providers
+
+Connect cloud, compatible, or local model providers from one place.
+
+![Nimruz model providers](public/screenshots/model-providers.png)
+
+### Personalization
+
+Set the assistant's response style, profile context, and preferred instructions.
+
+![Nimruz personalization](public/screenshots/personalization.png)
+
+### Simple chat
+
+For quick questions, use a lightweight conversation without workspace tools.
+
+![Nimruz simple chat](public/screenshots/simple-chat.png)
+
+</details>
+
+## 🚀 Download
+
+Pre-built installers are published on every [GitHub Release](https://github.com/xmannii/nimruz-desktop/releases).
+
+| Platform | Installer | Where to get it |
+| --- | --- | --- |
+| **macOS** (Apple Silicon) | `.dmg` | [Latest release](https://github.com/xmannii/nimruz-desktop/releases/latest) |
+| **Windows** | `.exe` (NSIS) | [Latest release](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Linux** | AppImage | Build locally with `pnpm dist` |
 
-See [CHANGELOG.md](CHANGELOG.md) for **v1.4.0** release notes (native and local model providers, redesigned model settings, web search, and skill creation).
+The rolling [`dev-latest`](https://github.com/xmannii/nimruz-desktop/releases/tag/dev-latest) prerelease may include Telegram assistant changes before they reach a stable release.
 
 ### macOS install
 
 1. Download the latest `.dmg` from [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest).
 2. Open the DMG and drag **Nimruz** to **Applications**.
-3. Open Nimruz using one of the methods below.
+3. Right-click **Nimruz** in Applications, choose **Open**, then choose **Open** again.
 
-macOS builds are not code-signed or notarized yet, so Gatekeeper may block the app. The **“Nimruz is damaged and can’t be opened”** message is misleading — the app is fine; macOS is rejecting an unsigned download.
-
-**Recommended:** Right-click **Nimruz** in Applications → **Open** → **Open** again. You only need to do this once.
-
-**Alternative:** Remove the download quarantine flag, then open normally:
+macOS builds are not code-signed or notarized yet. If Gatekeeper has already blocked the app, open **System Settings → Privacy & Security** and choose **Open Anyway** next to Nimruz. As a terminal alternative:
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/Nimruz.app
 ```
-
-**If macOS already blocked the app:** Open **System Settings → Privacy & Security** and click **Open Anyway** next to the Nimruz entry.
 
 ### Windows install
 
 1. Download the latest `.exe` installer from [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest).
 2. Run the installer and follow the prompts.
 
-## Features
+## Quick start
 
-### Agentic workspace
+1. Launch Nimruz and finish or skip the onboarding tour.
+2. Open **Settings → Models → Providers** and connect a model provider. You can use Codex with an eligible ChatGPT account, OpenRouter, or an OpenAI-compatible/local provider.
+3. Create or open a **workspace**, then link a project folder when you want the agent to work with files.
+4. Start an agent chat with a concrete outcome, for example:
 
-- **Workspaces** — link project folders; chats live under a workspace (with a default home workspace)
-- **Agent tools** — read/list/search files, write and patch, shell commands, artifacts, and tasks
-- **Workspace MCP tools** — connect stdio, HTTP, or SSE MCP servers; discovered tools are namespaced and require per-call approval
-- **Approvals** — risky tools ask before running; optional “always allow” per workspace
-- **Side panel** — files, artifacts, tasks, activity, and workspace settings
-- **Composer context** — attach files/artifacts, workspace picker, and `@`-mentions
+   > Inspect this project, summarize its structure, and create a short `TODO.md`. Ask before changing files.
 
-### Chat & models
+5. Approve only the actions you want the agent to take.
 
-- **Streaming chat** — markdown, code, math (KaTeX), Mermaid, RTL-first Persian UI
-- **Tool timeline** — connected reasoning + tool steps; long runs compact into one expandable summary
-- **Codex with ChatGPT sign-in** — sync and use models available to an eligible ChatGPT account in a restricted, isolated runtime
-- **Native model providers** — OpenAI, Anthropic, Google Gemini, OpenRouter, and generic OpenAI-compatible/local servers
-- **Web search & fetch** — discover sources with `web_search`, then read public pages with the SSRF-safe `fetch_url`
-- **Auto titles** — conversations named from the first message
-- **Chat management** — pin, export Markdown/JSON, copy/regenerate, search history
+### Turn on voice input
 
-### Personalization & skills
+Open **Settings → Speech**, download a Shenava model, select it, and then use the microphone button in the chat composer. For longer recordings or files, open the **Transcribe** page.
 
-- **Memories** — durable facts the assistant can save and forget
-- **Experts (متخصص‌ها)** — reusable specialists via `/` in chat
-- **Skills (مهارت‌ها)** — load `SKILL.md` packs on demand and create new personal skills with approval
-- **Personalization** — response style, custom instructions, profile context
+### Connect Telegram
 
-### App polish
+1. Message [@BotFather](https://t.me/BotFather) in Telegram, run `/newbot`, and copy the token.
+2. In Nimruz, open **Settings → Telegram**, paste the token, and choose the workspace the bot may use.
+3. Start the one-time pairing flow and open its link from the Telegram account you want to authorize.
+4. Keep Nimruz running, then send a message or voice note to the bot.
 
-- **Appearance** — light/dark/system, color themes (including نیمروز), system font picker
-- **Onboarding** — first-run tour (appearance, models, workspaces, chat basics)
-- **Local-first** — SQLite in Electron `userData`; API keys in the OS keychain
-- **Automated releases** — GitHub Actions publishes Windows + macOS installers when the version on `main` changes
+The bot token is stored through the operating system's secure credential store. No `.env` file is needed for normal use.
 
-## Screenshots
+## Local-first by default
 
-_Add screenshots here after publishing the 1.0 release._
+Nimruz stores chats, workspaces, memories, experts, skills, settings, runs, tasks, and artifacts in its local application data. Provider API keys and the Codex session are kept in the operating system credential store. When you choose a cloud model, the relevant prompt and files are still sent to that provider to produce a response; Nimruz does not claim that cloud inference is local.
 
-## Getting started
+Workspace tools are path-scoped. Writes, shell commands, MCP calls, and other sensitive operations can ask for approval. Telegram is a remote input/output channel to the local desktop runtime, not a separate hosted copy of your workspace.
+
+### Codex note
+
+Nimruz can connect Codex through the supported ChatGPT sign-in flow and run it as a coding model in an isolated runtime. Codex does not gain access to Nimruz's linked workspaces, shell, web tools, MCP servers, or Telegram. This integration uses the signed-in ChatGPT account's Codex access; it does **not** turn a ChatGPT subscription into general OpenAI API credit.
+
+## 🛠️ Build from source
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) 22.12.0 or newer
+- [Node.js](https://nodejs.org/) 22.13.0 or newer
 - [pnpm](https://pnpm.io/) 9 or newer
-
-### Install and run
 
 ```bash
 git clone https://github.com/xmannii/nimruz-desktop.git
@@ -102,112 +203,40 @@ pnpm install
 pnpm dev
 ```
 
-On first launch:
-
-1. Complete the short onboarding tour (or skip it).
-2. Open **Settings → Models → Providers** to connect a cloud or local provider, then use **Add model** to enable its models.
-3. Create or open a **workspace** and link a project folder when you want the agent to touch files.
-
-Workspace-specific MCP servers can be added under **Settings → MCP servers**.
-Select a workspace, then test the connection before enabling it for agent turns. See
-[Workspace MCP tools](docs/MCP.md) for supported transports, lifecycle, and the
-current authentication boundary.
-
-For native provider transports, authentication boundaries, and adapter tests,
-see [Model provider adapters](docs/PROVIDERS.md).
-
-API keys are encrypted through macOS Keychain, Windows DPAPI, or a Linux libsecret/KWallet keyring. On Linux, storage is refused when only Electron's insecure `basic_text` backend is available.
-
-No `.env` file is required for normal use — credentials are managed inside the app.
-
-### Use a ChatGPT account with Codex
-
-1. Open **Settings → Models → Codex** and select **Connect ChatGPT**.
-2. Complete the OpenAI sign-in in your browser. A device-code flow is available as a fallback.
-3. Return to Nimruz. The app syncs the Codex models currently available to the signed-in account; select one and start a chat.
-
-Codex availability, model access, credits, and rate limits follow the signed-in account's ChatGPT plan and workspace policy. OpenAI currently documents Codex access across eligible Free, Go, Plus, Pro, Business, Enterprise, and Edu offerings; see [Codex pricing and plan availability](https://learn.chatgpt.com/docs/pricing) for the current details. Business, Enterprise, and Edu accounts also remain subject to their workspace administrator's permissions.
-
-Nimruz uses Codex's supported ChatGPT browser sign-in and experimental app-server interface. Codex owns token refresh and stores the session in the operating-system keyring; Nimruz does not copy the session tokens into SQLite or a plaintext `auth.json` file. See OpenAI's [Codex authentication documentation](https://learn.chatgpt.com/docs/auth) for how ChatGPT sign-in, workspace controls, and credential storage work. Logging out from the Codex card clears the Codex session and Nimruz's local Codex thread mappings.
-
-For local safety, Nimruz starts Codex with a least-privilege permission profile: commands can read only Codex's minimal runtime files and Nimruz's dedicated empty workspace, cannot write there, and have no network access. Shell, web-search, browser, connector, plugin, computer-use, and multi-agent tool surfaces are disabled, and no parent-process environment variables are exposed to model-run commands. This integration exposes Codex as a coding model inside Nimruz; it does **not** convert a ChatGPT subscription into general OpenAI API credit or replace an API key for custom providers. Codex usage is counted under the user's ChatGPT plan.
-
-### Build a distributable
-
-```bash
-pnpm dist
-```
-
-Installers are written to `release/` (DMG / NSIS / AppImage depending on your platform).
-
-### Release (GitHub Actions)
-
-When you bump the version in `package.json` and push to `main`, GitHub Actions automatically:
-
-1. Builds **Windows** (NSIS `.exe`) and **macOS** (`.dmg`) installers
-2. Creates a GitHub Release with both artifacts attached
-
-```bash
-# 1. Change "version" in package.json (e.g. 1.0.0 → 1.0.1)
-# 2. Update CHANGELOG.md (Persian; also powers Settings → تغییرات نسخه‌ها and What’s New)
-# 3. Commit and push:
-git add package.json CHANGELOG.md
-git commit -m "Bump version to 1.0.1"
-git push origin main
-```
-
-You can also run the **Release** workflow manually from the Actions tab (`workflow_dispatch`).
-
-## Architecture
-
-```
-Electron main (Node)
-├─ authenticated local HTTP server
-│  ├─ POST /api/chat       → workspace ToolLoopAgent or Codex app-server
-│  ├─ POST /api/agent/run  → workspace agent runtime (FS, shell, artifacts, tasks)
-│  ├─ POST /api/chat/title → auto title generation (OpenAI-compatible)
-│  └─ GET  /*              → hardened static renderer (production only)
-├─ SQLite database    → chats, workspaces, roots, artifacts, tasks, runs, memories, experts, settings, Codex thread mappings
-├─ Workspace files    → scoped paths under linked/managed roots
-├─ Skills store       → ~/.nimruz/skills and standard agent skill paths
-├─ safeStorage        → encrypted provider API keys
-├─ Codex app-server   → managed ChatGPT auth, model sync, isolated native threads
-└─ BrowserWindow → sandboxed Vite renderer
-```
-
-- **Dev:** Vite serves the renderer on `:5173` and proxies `/api` to the main-process server on `:43117`.
-- **Prod:** the main-process server serves both the static renderer and the API on one random localhost port.
-
-## Tech stack
-
-| Layer | Tools |
-| --- | --- |
-| Desktop shell | Electron |
-| UI | React 19, TanStack Router, Tailwind CSS 4, shadcn/ui |
-| AI | Codex app-server, Vercel AI SDK, OpenRouter / OpenAI-compatible providers |
-| Storage | Node SQLite (`node:sqlite`), OS keychain |
-| Build | Vite, esbuild, electron-builder |
-
-## Scripts
+### Useful scripts
 
 | Command | Description |
 | --- | --- |
-| `pnpm dev` | Start Vite + Electron in development |
-| `pnpm build` | Build renderer and main process |
-| `pnpm start` | Build and launch Electron |
-| `pnpm dist` | Build platform installer |
+| `pnpm dev` | Start Vite and Electron in development |
+| `pnpm build` | Build the renderer and Electron main process |
+| `pnpm start` | Build and launch the desktop app |
+| `pnpm dist` | Build a platform installer |
 | `pnpm typecheck` | Run TypeScript checks |
 | `pnpm test` | Run unit tests |
 
-## Local data
+Workspace-specific MCP servers can be configured under **Settings → MCP servers**. See [Workspace MCP tools](docs/MCP.md) for transports, lifecycle, and the current authentication boundary. For provider setup and adapter behavior, see [Model provider adapters](docs/PROVIDERS.md).
 
-Application data lives in Electron's platform-specific `userData` directory (folder name **Nimruz**) as `nimruz.sqlite3`. Codex keeps its app state in a separate `codex/` directory and operates in a dedicated `codex-workspace/`; authentication secrets remain in the OS credential store. Legacy IndexedDB/localStorage data is imported once and kept as a rollback copy. Saved API keys and Codex sessions are not portable between machines or OS users.
+<details>
+<summary>Architecture</summary>
 
-Skills are stored under `~/.nimruz/skills` (and other standard agent skill directories). Workspace-linked folders stay on disk where you pointed them; managed roots and artifacts are stored under app data.
+```text
+Electron main (Node)
+├─ authenticated local HTTP server
+│  ├─ /api/chat       → workspace ToolLoopAgent or Codex app-server
+│  ├─ /api/agent/run → workspace agent runtime
+│  └─ /api/chat/title → automatic chat title generation
+├─ SQLite             → chats, workspaces, artifacts, tasks, runs, memories, experts, settings
+├─ workspace files   → scoped paths under linked or managed roots
+├─ skills store      → ~/.nimruz/skills and standard agent skill paths
+├─ secure storage    → provider keys and Codex credentials
+└─ BrowserWindow     → sandboxed Vite / React renderer
+```
+
+</details>
 
 ## Contributing
 
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, and PR guidelines.
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, checks, and pull request guidelines. Product changes and release notes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

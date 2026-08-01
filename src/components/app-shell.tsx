@@ -86,6 +86,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     createChat,
     selectChat,
     updateChat,
+    upsertExternalChat,
     renameChat,
     lockChatTitle,
     setChatPinned,
@@ -206,6 +207,13 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
       unsubscribeOpenChat();
     };
   }, [getChatById, navigate, selectChat, setActiveWorkspaceId]);
+
+  useEffect(() => {
+    return window.desktop.telegram.onChatChange((chat) => {
+      discardChatRuntime(chat.id);
+      upsertExternalChat(chat);
+    });
+  }, [discardChatRuntime, upsertExternalChat]);
 
   useEffect(() => {
     if (!areSettingsHydrated || !isCatalogHydrated) return;

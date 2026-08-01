@@ -1,6 +1,6 @@
 {
   "name": "nimruz-desktop",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Nimruz — Persian desktop AI workspace agent with Codex",
   "license": "MIT",
   "engines": {
@@ -71,6 +71,7 @@
     "motion": "^12.42.2",
     "nanoid": "^6.0.0",
     "next-themes": "^0.4.6",
+    "ogg-opus-decoder": "1.7.3",
     "pdfjs-dist": "^6.1.200",
     "react": "19.2.4",
     "react-day-picker": "^10.0.1",

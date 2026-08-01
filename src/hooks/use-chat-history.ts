@@ -401,6 +401,13 @@ export function useChatHistory(
     });
   }, []);
 
+  const upsertExternalChat = useCallback((value: LocalChat) => {
+    const chat = normalizeChat(value);
+    setChats((current) =>
+      sortChats([chat, ...current.filter((item) => item.id !== chat.id)])
+    );
+  }, []);
+
   const renameChat = useCallback((id: string, title: string) => {
     const trimmedTitle = title.trim().replace(/\s+/g, " ");
     if (!trimmedTitle) return;
@@ -499,6 +506,7 @@ export function useChatHistory(
     createChat,
     selectChat,
     updateChat,
+    upsertExternalChat,
     setChatWorkspaceId,
     renameChat,
     lockChatTitle,

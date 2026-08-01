@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   nativeImage,
   Notification,
+  session,
   shell,
 } from "electron";
 import { randomBytes } from "node:crypto";
@@ -12,6 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WorkspaceFilesStore } from "./agent/workspace-files";
 import { WorkspaceEventBus } from "./agent/events";
+import { handleAgentChatRequest } from "./agent/runtime";
 import { CredentialService } from "./credentials";
 import { CodexService } from "./codex/service";
 import { CompanionController } from "./companion/controller";
@@ -29,6 +31,12 @@ import {
   type NativeNotificationPayload,
 } from "./notifications/service";
 import { attachWindowStateEvents } from "./window-controls";
+import { TelegramService } from "./telegram/service";
+import { createTelegramNetwork } from "./telegram/network";
+import {
+  TELEGRAM_CHAT_CHANNEL,
+  TELEGRAM_STATUS_CHANNEL,
+} from "@/lib/telegram";
 import {
   APP_NAME,
   APP_NAME_FA,
@@ -72,6 +80,7 @@ let codex: CodexService | null = null;
 let shenava: ShenavaService | null = null;
 let notificationService: DesktopNotificationService | null = null;
 let companion: CompanionController | null = null;
+let telegram: TelegramService | null = null;
 let rendererUrl = "";
 const activeNotifications = new Set<Notification>();
 let isQuitting = false;
@@ -232,20 +241,6 @@ app.whenReady().then(async () => {
   workspaceFiles.ensureManagedRoot(HOME_WORKSPACE_ID);
   const sessionToken = randomBytes(32).toString("base64url");
 
-  registerIpcHandlers({
-    database,
-    credentials,
-    codex,
-    skills,
-    workspaceFiles,
-    workspaceEvents,
-    shenava,
-    sessionToken,
-    getMainWindow: () => mainWindow,
-    getCompanionWindow: () => companion?.getWindow() ?? null,
-    getRendererUrl: () => rendererUrl,
-  });
-
   const agentDeps = {
     database,
     files: workspaceFiles,
@@ -269,6 +264,48 @@ app.whenReady().then(async () => {
       skills.loadSkillContent(name, database!.loadSkillsPreferences()),
     createSkill: async (skill: SkillDocument) => skills.create(skill),
   };
+
+  // Keep Telegram proxy settings isolated from model providers, updates, and
+  // the renderer. This in-memory session exists only while Nimruz is running.
+  const telegramNetwork = createTelegramNetwork(
+    session.fromPartition("nimruz-telegram")
+  );
+
+  telegram = new TelegramService({
+    database,
+    credentials,
+    agentDeps,
+    runAgent: handleAgentChatRequest,
+    shenava,
+    fetchImpl: telegramNetwork.fetch,
+    applyProxy: telegramNetwork.applyProxy,
+    onStatusChange: (status) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(TELEGRAM_STATUS_CHANNEL, status);
+      }
+    },
+    onChatChange: (chat) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(TELEGRAM_CHAT_CHANNEL, chat);
+      }
+    },
+  });
+
+  registerIpcHandlers({
+    database,
+    credentials,
+    codex,
+    skills,
+    workspaceFiles,
+    workspaceEvents,
+    shenava,
+    telegram,
+    sessionToken,
+    getMainWindow: () => mainWindow,
+    getCompanionWindow: () => companion?.getWindow() ?? null,
+    getRendererUrl: () => rendererUrl,
+  });
+  await telegram.initialize();
 
   if (isDev && RENDERER_DEV_URL) {
     const result = await startServer({
@@ -322,6 +359,7 @@ app.whenReady().then(async () => {
 app.on("before-quit", () => {
   isQuitting = true;
   companion?.dispose();
+  telegram?.dispose();
   shenava?.cancelDownload();
   codex?.dispose();
   localServer?.close();
@@ -330,6 +368,7 @@ app.on("before-quit", () => {
   database = null;
   codex = null;
   shenava = null;
+  telegram = null;
   notificationService = null;
   activeNotifications.clear();
   companion = null;

@@ -50,6 +50,11 @@ import {
   type NotificationSettings,
 } from "@/lib/settings/notifications";
 import {
+  DEFAULT_TELEGRAM_SETTINGS,
+  sanitizeTelegramSettings,
+  type TelegramSettings,
+} from "@/lib/telegram";
+import {
   sanitizeMemories,
   type MemoryEntry,
 } from "@/lib/settings/memories";
@@ -1830,6 +1835,40 @@ export class AppDatabase {
       .prepare(
         `INSERT INTO settings (key, value_json, updated_at)
          VALUES ('notifications', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(settings), Date.now());
+    return settings;
+  }
+
+  loadTelegramSettings(): TelegramSettings {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("telegram");
+    if (typeof row?.value_json !== "string") {
+      return DEFAULT_TELEGRAM_SETTINGS;
+    }
+    try {
+      const settings = sanitizeTelegramSettings(JSON.parse(row.value_json));
+      return this.getWorkspace(settings.workspaceId)
+        ? settings
+        : { ...settings, workspaceId: HOME_WORKSPACE_ID, activeChatId: null };
+    } catch {
+      return DEFAULT_TELEGRAM_SETTINGS;
+    }
+  }
+
+  saveTelegramSettings(value: unknown): TelegramSettings {
+    const sanitized = sanitizeTelegramSettings(value);
+    const settings = this.getWorkspace(sanitized.workspaceId)
+      ? sanitized
+      : { ...sanitized, workspaceId: HOME_WORKSPACE_ID, activeChatId: null };
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('telegram', ?, ?)
          ON CONFLICT(key) DO UPDATE SET
            value_json = excluded.value_json,
            updated_at = excluded.updated_at`

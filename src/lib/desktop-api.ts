@@ -28,6 +28,10 @@ import type {
   CompanionShortcutStatus,
 } from "@/lib/settings/companion";
 import type { NotificationSettings } from "@/lib/settings/notifications";
+import type {
+  TelegramProxySettings,
+  TelegramStatus,
+} from "@/lib/telegram";
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
 import type { Expert } from "@/lib/settings/experts";
@@ -121,6 +125,24 @@ export type DesktopAPI = {
     onOpenChat: (
       callback: (payload: NotificationOpenChatPayload) => void
     ) => () => void;
+  };
+  telegram: {
+    getStatus: () => Promise<TelegramStatus>;
+    configure: (options: {
+      token: string;
+      workspaceId: string;
+    }) => Promise<TelegramStatus>;
+    setEnabled: (enabled: boolean) => Promise<TelegramStatus>;
+    setWorkspace: (workspaceId: string) => Promise<TelegramStatus>;
+    setProxy: (proxy: TelegramProxySettings) => Promise<TelegramStatus>;
+    beginPairing: () => Promise<TelegramStatus>;
+    unpair: () => Promise<TelegramStatus>;
+    clearToken: () => Promise<TelegramStatus>;
+    exportBotAvatar: () => Promise<{ saved: boolean; path: string | null }>;
+    onStatusChange: (
+      callback: (status: TelegramStatus) => void
+    ) => () => void;
+    onChatChange: (callback: (chat: LocalChat) => void) => () => void;
   };
   companion: {
     hide: () => Promise<void>;

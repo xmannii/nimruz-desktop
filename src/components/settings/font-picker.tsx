@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DEFAULT_FONT_FAMILY,
   SYSTEM_FONT_VALUE,
+  VAZIRMATN_CREDIT,
   getFontFamilyLabel,
   loadSystemFonts,
 } from "@/lib/settings/appearance";
@@ -27,6 +28,7 @@ const PINNED_FONTS = [
   {
     value: DEFAULT_FONT_FAMILY,
     label: "وزیرمتن (پیش‌فرض)",
+    credit: VAZIRMATN_CREDIT,
   },
   {
     value: SYSTEM_FONT_VALUE,
@@ -124,11 +126,18 @@ export function FontPicker({
           open && "bg-muted/50"
         )}
       >
-        <span
-          className="min-w-0 truncate"
-          style={{ fontFamily: fontStack(value) }}
-        >
-          {getFontFamilyLabel(value)}
+        <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5 text-right">
+          <span
+            className="w-full truncate"
+            style={{ fontFamily: fontStack(value) }}
+          >
+            {getFontFamilyLabel(value)}
+          </span>
+          {value === DEFAULT_FONT_FAMILY ? (
+            <span className="w-full truncate text-[11px] text-muted-foreground">
+              {VAZIRMATN_CREDIT}
+            </span>
+          ) : null}
         </span>
         <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground" />
       </PopoverTrigger>
@@ -154,6 +163,7 @@ export function FontPicker({
             </div>
             {PINNED_FONTS.map((font) => {
               const isSelected = value === font.value;
+              const credit = "credit" in font ? font.credit : undefined;
               return (
                 <button
                   key={font.value}
@@ -164,11 +174,18 @@ export function FontPicker({
                     isSelected && "bg-muted"
                   )}
                 >
-                  <span
-                    className="min-w-0 flex-1 truncate"
-                    style={{ fontFamily: fontStack(font.value) }}
-                  >
-                    {font.label}
+                  <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
+                    <span
+                      className="w-full truncate"
+                      style={{ fontFamily: fontStack(font.value) }}
+                    >
+                      {font.label}
+                    </span>
+                    {credit ? (
+                      <span className="w-full truncate text-[11px] text-muted-foreground">
+                        {credit}
+                      </span>
+                    ) : null}
                   </span>
                   {isSelected ? (
                     <CheckIcon className="size-3.5 shrink-0 text-primary" />

@@ -30,15 +30,19 @@ import {
   CircleHelpIcon,
   CpuIcon,
   InfoIcon,
+  LockKeyholeIcon,
   Mic2Icon,
   PanelTopOpenIcon,
   PaletteIcon,
   PlusIcon,
   SearchIcon,
   ScrollTextIcon,
+  SendIcon,
+  ShieldCheckIcon,
   SparklesIcon,
   UserRoundIcon,
   WaypointsIcon,
+  WifiIcon,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -54,6 +58,10 @@ type SettingsPath =
   | "/settings/notifications"
   | "/settings/speech"
   | "/settings/companion"
+  | "/settings/telegram"
+  | "/settings/telegram/pairing"
+  | "/settings/telegram/connection"
+  | "/settings/telegram/runtime"
   | "/settings/research-agents"
   | "/settings/skills"
   | "/settings/mcp"
@@ -69,6 +77,7 @@ type SettingsNavItem = {
   icon: LucideIcon;
   match: (pathname: string) => boolean;
   badgeKey?: "memories";
+  defaultOpen?: boolean;
   children?: SettingsNavItem[];
 };
 
@@ -113,9 +122,41 @@ export const SETTINGS_NAV_GROUPS: Array<{
         match: (pathname) => pathname.startsWith("/settings/companion"),
       },
       {
+        to: "/settings/telegram",
+        label: "تلگرام",
+        icon: SendIcon,
+        match: (pathname) =>
+          pathname === "/settings/telegram" ||
+          pathname === "/settings/telegram/",
+        children: [
+          {
+            to: "/settings/telegram/pairing",
+            label: "جفت‌سازی حساب",
+            icon: ShieldCheckIcon,
+            match: (pathname) =>
+              pathname.startsWith("/settings/telegram/pairing"),
+          },
+          {
+            to: "/settings/telegram/connection",
+            label: "شبکه و پراکسی",
+            icon: WifiIcon,
+            match: (pathname) =>
+              pathname.startsWith("/settings/telegram/connection"),
+          },
+          {
+            to: "/settings/telegram/runtime",
+            label: "اجرا و امنیت",
+            icon: LockKeyholeIcon,
+            match: (pathname) =>
+              pathname.startsWith("/settings/telegram/runtime"),
+          },
+        ],
+      },
+      {
         to: "/settings/models",
         label: "مدل‌ها",
         icon: CpuIcon,
+        defaultOpen: true,
         match: (pathname) =>
           pathname === "/settings/models" || pathname === "/settings/models/",
         children: [
@@ -244,13 +285,13 @@ function SettingsNavItemRow({
   const hasActiveChild =
     item.children?.some((child) => itemOrChildMatches(child, pathname)) ?? false;
   const [open, setOpen] = useState(
-    Boolean(item.children?.length) || active || hasActiveChild
+    Boolean(item.defaultOpen) || hasActiveChild
   );
   const Icon = item.icon;
 
   useEffect(() => {
-    if (active || hasActiveChild) setOpen(true);
-  }, [active, hasActiveChild]);
+    if (hasActiveChild) setOpen(true);
+  }, [hasActiveChild]);
 
   const menuButton = (
     <SidebarMenuButton
