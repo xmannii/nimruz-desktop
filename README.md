@@ -1,23 +1,39 @@
-![Nimruz chat](public/screenshots/simple-chat.png)
+<p align="center">
+  <img src="public/screenshots/simple-chat.png" alt="Nimruz Persian chat" width="1000" />
+</p>
 
-# Nimruz Desktop
+<h1 align="center">Nimruz Desktop</h1>
 
-> An open-source, Persian-first desktop agent that can work in your files, understand your voice, and keep going from Telegram.
+<p align="center">
+  <strong>An open-source, Persian-first desktop agent that can work in your files, understand your voice, and keep going from Telegram.</strong>
+</p>
 
-[Download the latest release](https://github.com/xmannii/nimruz-desktop/releases/latest) · [Report an issue](https://github.com/xmannii/nimruz-desktop/issues) · [فارسی](README.fa.md)
+<p align="center">
+  <a href="https://github.com/xmannii/nimruz-desktop/releases/latest"><img src="https://img.shields.io/github/v/release/xmannii/nimruz-desktop?display_name=tag&amp;sort=semver&amp;style=flat-square&amp;label=release&amp;color=F5B82E" alt="Latest release" /></a>
+  <a href="https://github.com/xmannii/nimruz-desktop/releases"><img src="https://img.shields.io/github/downloads/xmannii/nimruz-desktop/total?style=flat-square&amp;label=downloads&amp;color=7C3AED" alt="GitHub downloads" /></a>
+  <a href="https://github.com/xmannii/nimruz-desktop/blob/dev/LICENSE"><img src="https://img.shields.io/github/license/xmannii/nimruz-desktop?style=flat-square&amp;label=license&amp;color=22C55E" alt="MIT license" /></a>
+  <a href="https://github.com/xmannii/nimruz-desktop/tree/dev"><img src="https://img.shields.io/github/last-commit/xmannii/nimruz-desktop/dev?style=flat-square&amp;label=dev&amp;color=0EA5E9" alt="Latest dev commit" /></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/xmannii/nimruz-desktop/releases/latest">Download</a> ·
+  <a href="#-screenshots">Screenshots</a> ·
+  <a href="https://github.com/xmannii/nimruz-desktop/issues">Report an issue</a> ·
+  <a href="README.fa.md">فارسی</a>
+</p>
 
 Nimruz is a local-first AI workspace for work that needs more than a chat box. Give it a project folder, ask for a result, and watch it inspect files, use tools, create artifacts, and ask for approval before sensitive actions. Speak in Persian with local Shenava transcription, or send the same desktop agent a message from Telegram.
 
 > **Experimental software.** Nimruz is under active development. The Telegram relay is currently being tested in `dev` builds; use the latest stable GitHub Release for the main desktop app.
 
-## The product in three moves
+## ✨ The product in three moves
 
 | Start with a workspace | Talk naturally | Continue from Telegram |
 | --- | --- | --- |
 | Link a project folder and give the agent real context. | Use Persian voice input instead of typing every thought. | Pair a BotFather bot and reach the agent from your phone. |
 | It reads, searches, edits, runs approved commands, and makes deliverables. | Shenava transcribes speech locally on your device. | Text, voice notes, photos, documents, progress updates, and artifacts all flow through the bot. |
 
-## Agentic workspace
+## 🤖 Agentic workspace
 
 Nimruz turns a conversation into a place where work can actually happen.
 
@@ -30,7 +46,7 @@ Nimruz turns a conversation into a place where work can actually happen.
 
 The important part is the boundary: Nimruz scopes tools to the selected workspace and keeps risky actions visible before they run.
 
-## Persian voice-to-text
+## 🎙️ Persian voice-to-text
 
 Speak once and keep moving. Download a Shenava speech model, select it in **Settings → Speech**, and use the microphone in chat or the dedicated transcription page.
 
@@ -40,7 +56,7 @@ Speak once and keep moving. Download a Shenava speech model, select it in **Sett
 - Use the same local transcription pipeline for Telegram voice notes.
 - Optional AI cleanup can improve punctuation, spacing, and readability with your selected model.
 
-## Telegram assistant
+## 📲 Telegram assistant
 
 Your desktop agent does not have to stay in the desktop window. Connect a BotFather bot, pair your Telegram account, choose a workspace, and message Nimruz from your phone.
 
@@ -63,7 +79,7 @@ The app remains the runtime: Nimruz must be running for the bot to respond, and 
 - **Companion window** — open a small always-available chat with a global shortcut.
 - **Persian-first UI** — RTL chat, Persian typography, light/dark/system themes, and the Nimruz color theme.
 
-## Screenshots
+## 📸 Screenshots
 
 These are real captures from Nimruz's Persian-first interface.
 
@@ -112,7 +128,7 @@ For quick questions, use a lightweight conversation without workspace tools.
 
 The next screenshot worth adding is a Telegram run: voice note or text prompt → progress update → final answer → delivered artifact. See [docs/README-SCREENSHOTS.md](docs/README-SCREENSHOTS.md) for the exact capture state and redaction checklist.
 
-## Download
+## 🚀 Download
 
 Pre-built installers are published on every [GitHub Release](https://github.com/xmannii/nimruz-desktop/releases).
 
@@ -175,7 +191,7 @@ Workspace tools are path-scoped. Writes, shell commands, MCP calls, and other se
 
 Nimruz can connect Codex through the supported ChatGPT sign-in flow and run it as a coding model in an isolated runtime. Codex does not gain access to Nimruz's linked workspaces, shell, web tools, MCP servers, or Telegram. This integration uses the signed-in ChatGPT account's Codex access; it does **not** turn a ChatGPT subscription into general OpenAI API credit.
 
-## Build from source
+## 🛠️ Build from source
 
 ### Prerequisites
 
