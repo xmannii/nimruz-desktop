@@ -1,4 +1,4 @@
-![Nimruz banner](public/banner.png)
+![Nimruz chat](public/screenshots/simple-chat.png)
 
 # Nimruz Desktop
 

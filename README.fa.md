@@ -1,4 +1,4 @@
-![بنر نیمروز](public/banner.png)
+![چت نیمروز](public/screenshots/simple-chat.png)
 
 # نیمروز دسکتاپ
 
