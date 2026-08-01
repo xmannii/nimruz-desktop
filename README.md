@@ -126,8 +126,6 @@ For quick questions, use a lightweight conversation without workspace tools.
 
 </details>
 
-The next screenshot worth adding is a Telegram run: voice note or text prompt → progress update → final answer → delivered artifact. See [docs/README-SCREENSHOTS.md](docs/README-SCREENSHOTS.md) for the exact capture state and redaction checklist.
-
 ## 🚀 Download
 
 Pre-built installers are published on every [GitHub Release](https://github.com/xmannii/nimruz-desktop/releases).
