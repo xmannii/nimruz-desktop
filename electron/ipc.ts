@@ -3,6 +3,7 @@ import {
   dialog,
   ipcMain,
   shell,
+  systemPreferences,
   type IpcMainInvokeEvent,
 } from "electron";
 import { execFile } from "node:child_process";
@@ -142,6 +143,7 @@ export function registerIpcHandlers(options: {
   getMainWindow: () => import("electron").BrowserWindow | null;
   getCompanionWindow: () => import("electron").BrowserWindow | null;
   getRendererUrl: () => string;
+  onOpenFolderReady: () => void;
 }) {
   const {
     database,
@@ -905,6 +907,26 @@ export function registerIpcHandlers(options: {
     database.saveAppearance(value)
   );
   handle("fonts:list", () => listInstalledFonts());
+  handle("app:open-folder-ready", () => options.onOpenFolderReady());
+
+  handle("privacy:get-microphone-access-status", () => {
+    if (process.platform !== "darwin" && process.platform !== "win32") {
+      return "unknown";
+    }
+    return systemPreferences.getMediaAccessStatus("microphone");
+  });
+
+  handle("privacy:open-microphone-settings", async () => {
+    const url =
+      process.platform === "win32"
+        ? "ms-settings:privacy-microphone"
+        : process.platform === "darwin"
+          ? "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+          : null;
+    if (!url) return false;
+    await shell.openExternal(url);
+    return true;
+  });
   handle("storage:load-memories", (): MemoryEntry[] =>
     database.loadMemories()
   );

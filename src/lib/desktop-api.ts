@@ -103,6 +103,19 @@ export type NotificationOpenChatPayload = {
   workspaceId: string | null;
 };
 
+export type OpenFolderRequest = {
+  path: string;
+  title: string;
+  workspaceId: string | null;
+};
+
+export type MicrophoneAccessStatus =
+  | "not-determined"
+  | "granted"
+  | "denied"
+  | "restricted"
+  | "unknown";
+
 export type DesktopAPI = {
   platform: NodeJS.Platform;
   isDesktop: true;
@@ -115,6 +128,14 @@ export type DesktopAPI = {
     close: () => Promise<void>;
     getState: () => Promise<WindowState>;
     onStateChange: (callback: (state: WindowState) => void) => () => void;
+  };
+  privacy: {
+    getMicrophoneAccessStatus: () => Promise<MicrophoneAccessStatus>;
+    openMicrophoneSettings: () => Promise<boolean>;
+  };
+  shellIntegration: {
+    readyForOpenFolder: () => Promise<void>;
+    onOpenFolder: (callback: (request: OpenFolderRequest) => void) => () => void;
   };
   notifications: {
     getSettings: () => Promise<NotificationSettings>;

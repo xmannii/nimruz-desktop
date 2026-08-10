@@ -16,7 +16,7 @@ import {
 } from "@/lib/settings/appearance";
 import { cn } from "@/lib/utils";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 type FontPickerProps = {
   value: string;
@@ -51,39 +51,26 @@ export function FontPicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [hasRequestedSystemFonts, setHasRequestedSystemFonts] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!open) return;
-
-    let cancelled = false;
-
+  const requestSystemFonts = useCallback(async () => {
+    if (hasRequestedSystemFonts) return;
+    setHasRequestedSystemFonts(true);
     setLoading(true);
     setError(null);
-
-    void loadSystemFonts()
-      .then((fonts) => {
-        if (cancelled) return;
-        setSystemFonts(fonts);
-        if (fonts.length === 0) {
-          setError("فونت‌های سیستم پیدا نشد");
-        }
-      })
-      .catch((loadError) => {
-        console.error("Failed to load system fonts:", loadError);
-        if (!cancelled) {
-          setError("خطا در خواندن فونت‌های سیستم");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [open]);
+    try {
+      const fonts = await loadSystemFonts();
+      setSystemFonts(fonts);
+      if (fonts.length === 0) setError("فونت‌های سیستم پیدا نشد");
+    } catch (loadError) {
+      console.error("Failed to load system fonts:", loadError);
+      setError("خطا در خواندن فونت‌های سیستم");
+    } finally {
+      setLoading(false);
+    }
+  }, [hasRequestedSystemFonts]);
 
   const installedFonts = useMemo(() => {
     const pinnedValues = new Set<string>(
@@ -107,6 +94,10 @@ export function FontPicker({
 
   function selectFont(nextValue: string) {
     onValueChange(nextValue);
+    if (nextValue === SYSTEM_FONT_VALUE) {
+      void requestSystemFonts();
+      return;
+    }
     setOpen(false);
     setQuery("");
   }
@@ -116,6 +107,9 @@ export function FontPicker({
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
+        if (next && value === SYSTEM_FONT_VALUE) {
+          void requestSystemFonts();
+        }
         if (!next) setQuery("");
       }}
     >
@@ -194,11 +188,17 @@ export function FontPicker({
               );
             })}
 
-            <div className="px-2 pb-1 pt-3 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              فونت‌های نصب‌شده
-            </div>
+            {hasRequestedSystemFonts ? (
+              <div className="px-2 pb-1 pt-3 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                فونت‌های نصب‌شده
+              </div>
+            ) : null}
 
-            {loading ? (
+            {!hasRequestedSystemFonts ? (
+              <div className="px-3 py-8 text-center text-xs leading-5 text-muted-foreground">
+                برای مشاهده فونت‌های نصب‌شده، ابتدا «فونت سیستم» را انتخاب کنید.
+              </div>
+            ) : loading ? (
               <div className="px-3 py-8 text-center text-xs text-muted-foreground">
                 در حال خواندن فونت‌های سیستم...
               </div>
@@ -240,7 +240,9 @@ export function FontPicker({
         </ScrollArea>
 
         <div className="border-t border-border/60 px-3 py-2 text-xs text-muted-foreground">
-          {loading
+          {!hasRequestedSystemFonts
+            ? "وزیرمتن بدون خواندن فونت‌های ویندوز استفاده می‌شود"
+            : loading
             ? "در حال بارگذاری..."
             : `${installedFonts.length.toLocaleString("fa-IR")} فونت نصب‌شده`}
         </div>

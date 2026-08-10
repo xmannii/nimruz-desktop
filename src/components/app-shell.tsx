@@ -20,6 +20,7 @@ import { useWorkspaces, type WorkspaceInput } from "@/hooks/use-workspaces";
 import { APP_HEADER_HEIGHT } from "@/lib/branding";
 import type { ChatUIMessage } from "@/lib/chat/message";
 import type { CompanionPromptRequest } from "@/lib/companion";
+import type { OpenFolderRequest } from "@/lib/desktop-api";
 import { playCompletionDing } from "@/lib/notifications/sound";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
 import {
@@ -169,6 +170,45 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     dismiss: dismissUpdate,
     openDownload: openUpdateDownload,
   } = useAppUpdate();
+
+  const handleOpenFolderRequest = useCallback(
+    (request: OpenFolderRequest) => {
+      const existing = request.workspaceId
+        ? workspaces.find((workspace) => workspace.id === request.workspaceId)
+        : null;
+      if (existing) {
+        setActiveWorkspaceId(existing.id);
+        void navigate({
+          to: "/workspace/$workspaceId",
+          params: { workspaceId: existing.id },
+        });
+        return;
+      }
+
+      try {
+        const workspace = createWorkspace({
+          title: request.title,
+          description: "بازشده از Windows Explorer",
+          primaryFolderPath: request.path,
+        });
+        void navigate({
+          to: "/workspace/$workspaceId",
+          params: { workspaceId: workspace.id },
+        });
+      } catch (error) {
+        console.error("Failed to open the Explorer folder in Nimruz:", error);
+      }
+    },
+    [createWorkspace, navigate, setActiveWorkspaceId, workspaces]
+  );
+
+  useEffect(() => {
+    if (!areWorkspacesHydrated) return;
+    const unsubscribe =
+      window.desktop.shellIntegration.onOpenFolder(handleOpenFolderRequest);
+    void window.desktop.shellIntegration.readyForOpenFolder();
+    return unsubscribe;
+  }, [areWorkspacesHydrated, handleOpenFolderRequest]);
 
   useEffect(() => {
     let cancelled = false;

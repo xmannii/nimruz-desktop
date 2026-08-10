@@ -6,6 +6,7 @@ import {
   DEFAULT_MICROPHONE_ID,
   openMicrophoneStream,
 } from "@/lib/speech/microphone";
+import { showMicrophonePermissionDeniedToast } from "@/lib/speech/microphone-permission";
 import {
   resamplePcm,
   SHENAVA_MODELS,
@@ -173,7 +174,7 @@ export function useShenavaSpeechInput(
       }
       if (context) void context.close().catch(() => undefined);
       if (error instanceof DOMException && error.name === "NotAllowedError") {
-        toast.error("دسترسی میکروفن رد شد. آن را در تنظیمات سیستم فعال کنید.");
+        showMicrophonePermissionDeniedToast();
       } else if (
         error instanceof DOMException &&
         (error.name === "NotFoundError" ||

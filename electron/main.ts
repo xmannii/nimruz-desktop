@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  dialog,
   nativeImage,
   Notification,
   session,
@@ -44,11 +45,23 @@ import {
 } from "@/lib/branding";
 import { HOME_WORKSPACE_ID } from "@/lib/workspace";
 import type { SkillDocument } from "@/lib/skills";
+import type { OpenFolderRequest } from "@/lib/desktop-api";
+import {
+  parseOpenFolderArgument,
+  registerWindowsFolderContextMenu,
+  resolveOpenFolderPath,
+} from "./windows-shell-integration";
 
 app.setName(APP_NAME);
 if (process.platform === "win32") {
   app.setAppUserModelId("dev.nimruz.desktop");
 }
+
+const initialOpenFolderPath = parseOpenFolderArgument(process.argv);
+const hasSingleInstanceLock = app.requestSingleInstanceLock(
+  initialOpenFolderPath ? { openFolderPath: initialOpenFolderPath } : {}
+);
+if (!hasSingleInstanceLock) app.quit();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -84,6 +97,71 @@ let telegram: TelegramService | null = null;
 let rendererUrl = "";
 const activeNotifications = new Set<Notification>();
 let isQuitting = false;
+let closeDecisionInProgress = false;
+let openFolderRendererReady = false;
+const pendingOpenFolderPaths: string[] = [];
+
+function presentMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function buildOpenFolderRequest(folderPath: string): OpenFolderRequest | null {
+  const canonicalPath = resolveOpenFolderPath(folderPath);
+  if (!canonicalPath || !database) return null;
+  const normalize = (value: string) =>
+    process.platform === "win32" ? value.toLocaleLowerCase() : value;
+  const root = database
+    .loadWorkspaceRoots()
+    .find((candidate) => normalize(candidate.path) === normalize(canonicalPath));
+  return {
+    path: canonicalPath,
+    title: path.basename(canonicalPath) || canonicalPath,
+    workspaceId: root?.workspaceId ?? null,
+  };
+}
+
+function flushOpenFolderRequests() {
+  if (
+    !openFolderRendererReady ||
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    !database
+  ) {
+    return;
+  }
+
+  for (const folderPath of pendingOpenFolderPaths.splice(0)) {
+    const request = buildOpenFolderRequest(folderPath);
+    if (request) mainWindow.webContents.send("app:open-folder", request);
+  }
+}
+
+function queueOpenFolder(folderPath: string | null) {
+  if (!folderPath) return;
+  const canonicalPath = resolveOpenFolderPath(folderPath);
+  if (!canonicalPath || pendingOpenFolderPaths.includes(canonicalPath)) return;
+  pendingOpenFolderPaths.push(canonicalPath);
+  presentMainWindow();
+  flushOpenFolderRequests();
+}
+
+if (hasSingleInstanceLock) {
+  queueOpenFolder(initialOpenFolderPath);
+  app.on("second-instance", (_event, argv, _workingDirectory, data) => {
+    const fromData =
+      data &&
+      typeof data === "object" &&
+      "openFolderPath" in data &&
+      typeof data.openFolderPath === "string"
+        ? data.openFolderPath
+        : null;
+    queueOpenFolder(fromData ?? parseOpenFolderArgument(argv));
+    presentMainWindow();
+  });
+}
 
 function presentNativeNotification(
   payload: NativeNotificationPayload,
@@ -180,6 +258,9 @@ async function createWindow() {
   };
   mainWindow.webContents.on("will-navigate", guardNavigation);
   mainWindow.webContents.on("will-redirect", guardNavigation);
+  mainWindow.webContents.on("did-start-loading", () => {
+    openFolderRendererReady = false;
+  });
 
   // Open external links in the user's browser, not inside the app.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -196,15 +277,42 @@ async function createWindow() {
   mainWindow.on("close", (event) => {
     if (isQuitting) return;
     event.preventDefault();
-    mainWindow?.hide();
+    if (closeDecisionInProgress || !mainWindow) return;
+    closeDecisionInProgress = true;
+    const window = mainWindow;
+    void dialog
+      .showMessageBox(window, {
+        type: "question",
+        title: "بستن نیمروز",
+        message: "می‌خواهید نیمروز در نوار سیستم بماند یا کامل بسته شود؟",
+        detail:
+          "با ماندن در نوار سیستم، دستیار سریع و میانبرهای سراسری همچنان فعال می‌مانند.",
+        buttons: ["ماندن در نوار سیستم", "خروج کامل", "لغو"],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      })
+      .then(({ response }) => {
+        if (response === 0) {
+          window.hide();
+        } else if (response === 1) {
+          isQuitting = true;
+          app.quit();
+        }
+      })
+      .finally(() => {
+        closeDecisionInProgress = false;
+      });
   });
 
   mainWindow.on("closed", () => {
+    openFolderRendererReady = false;
     mainWindow = null;
   });
 }
 
 app.whenReady().then(async () => {
+  if (!hasSingleInstanceLock) return;
   const userDataPath = app.getPath("userData");
   database = new AppDatabase(path.join(userDataPath, DATABASE_FILE));
   const credentials = new CredentialService(database);
@@ -238,6 +346,11 @@ app.whenReady().then(async () => {
     notificationService?.handleShenavaStatus(status)
   );
   database.ensureHomeWorkspace();
+  if (process.platform === "win32" && app.isPackaged) {
+    void registerWindowsFolderContextMenu(process.execPath).catch((error) => {
+      console.warn("Failed to register the Windows folder context menu:", error);
+    });
+  }
   workspaceFiles.ensureManagedRoot(HOME_WORKSPACE_ID);
   const sessionToken = randomBytes(32).toString("base64url");
 
@@ -304,6 +417,10 @@ app.whenReady().then(async () => {
     getMainWindow: () => mainWindow,
     getCompanionWindow: () => companion?.getWindow() ?? null,
     getRendererUrl: () => rendererUrl,
+    onOpenFolderReady: () => {
+      openFolderRendererReady = true;
+      flushOpenFolderRequests();
+    },
   });
   await telegram.initialize();
 

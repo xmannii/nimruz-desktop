@@ -32,6 +32,7 @@ export function useMicrophoneLevel() {
   const [level, setLevel] = useState(0);
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const sessionRef = useRef<PreviewSession | null>(null);
 
   const stop = useCallback(() => {
@@ -41,6 +42,7 @@ export function useMicrophoneLevel() {
     setIsActive(false);
     setLevel(0);
     setError(null);
+    setPermissionDenied(false);
   }, []);
 
   const start = useCallback(async () => {
@@ -71,6 +73,7 @@ export function useMicrophoneLevel() {
       };
       sessionRef.current = session;
       setError(null);
+      setPermissionDenied(false);
       setIsActive(true);
 
       let lastUpdate = 0;
@@ -95,6 +98,7 @@ export function useMicrophoneLevel() {
       for (const track of stream?.getTracks() ?? []) track.stop();
       if (context) void context.close().catch(() => undefined);
       if (cause instanceof DOMException && cause.name === "NotAllowedError") {
+        setPermissionDenied(true);
         setError("دسترسی میکروفن رد شد. آن را در تنظیمات سیستم فعال کنید.");
       } else if (
         cause instanceof DOMException &&
@@ -104,6 +108,7 @@ export function useMicrophoneLevel() {
         setSelectedMicrophoneId(DEFAULT_MICROPHONE_ID);
         setError("میکروفن انتخاب‌شده دیگر در دسترس نیست.");
       } else {
+        setPermissionDenied(false);
         setError("آزمایش میکروفن ناموفق بود.");
       }
     }
@@ -116,5 +121,5 @@ export function useMicrophoneLevel() {
 
   useEffect(() => stop, [stop]);
 
-  return { level, isActive, error, start, stop };
+  return { level, isActive, error, permissionDenied, start, stop };
 }

@@ -3,7 +3,11 @@
 import { SettingsSection } from "@/components/settings/settings-section";
 import { ShenavaDownloadDialog } from "@/components/speech/shenava-download-dialog";
 import { useSpeech } from "@/components/speech/speech-provider";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,7 +47,9 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import { useMicrophoneLevel } from "@/hooks/use-microphone-level";
 import { useShenavaModel } from "@/hooks/use-shenava-model";
+import type { MicrophoneAccessStatus } from "@/lib/desktop-api";
 import { DEFAULT_MICROPHONE_ID } from "@/lib/speech/microphone";
+import { openMicrophonePrivacySettings } from "@/lib/speech/microphone-permission";
 import {
   formatBytes,
   SHENAVA_MODEL_KEYS,
@@ -63,7 +69,7 @@ import {
   Trash2Icon,
   Volume2Icon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 function ModelStatusBadge({
@@ -94,6 +100,32 @@ function MicrophoneSettingsSection() {
     isLiveRecording,
   } = useSpeech();
   const preview = useMicrophoneLevel();
+  const [accessStatus, setAccessStatus] =
+    useState<MicrophoneAccessStatus>("unknown");
+  const microphonePermissionDenied =
+    preview.permissionDenied ||
+    accessStatus === "denied" ||
+    accessStatus === "restricted";
+
+  useEffect(() => {
+    let active = true;
+    const refreshAccessStatus = () => {
+      void window.desktop.privacy
+        .getMicrophoneAccessStatus()
+        .then((status) => {
+          if (active) setAccessStatus(status);
+        })
+        .catch(() => {
+          if (active) setAccessStatus("unknown");
+        });
+    };
+    refreshAccessStatus();
+    window.addEventListener("focus", refreshAccessStatus);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", refreshAccessStatus);
+    };
+  }, []);
   const selectableMicrophones = microphones.filter(
     (device) =>
       device.deviceId &&
@@ -171,7 +203,7 @@ function MicrophoneSettingsSection() {
             </Button>
           </div>
 
-          {preview.isActive || preview.error ? (
+          {preview.isActive || preview.error || microphonePermissionDenied ? (
             <div className="flex flex-col gap-2">
               {preview.isActive ? (
                 <div className="flex items-center gap-3">
@@ -189,11 +221,27 @@ function MicrophoneSettingsSection() {
                   </span>
                 </div>
               ) : null}
-              {preview.error ? (
+              {preview.error || microphonePermissionDenied ? (
                 <Alert variant="destructive">
                   <ShieldAlertIcon />
                   <AlertTitle>میکروفن آماده نیست</AlertTitle>
-                  <AlertDescription>{preview.error}</AlertDescription>
+                  <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+                    <span>
+                      {preview.error ??
+                        "دسترسی میکروفن در تنظیمات حریم خصوصی سیستم غیرفعال است."}
+                    </span>
+                    {microphonePermissionDenied ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void openMicrophonePrivacySettings()}
+                      >
+                        <ExternalLinkIcon />
+                        تنظیمات
+                      </Button>
+                    ) : null}
+                  </AlertDescription>
                 </Alert>
               ) : null}
             </div>

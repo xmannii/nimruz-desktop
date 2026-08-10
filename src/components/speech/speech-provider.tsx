@@ -14,6 +14,7 @@ import {
   readPreferredMicrophoneId,
   savePreferredMicrophoneId,
 } from "@/lib/speech/microphone";
+import { showMicrophonePermissionDeniedToast } from "@/lib/speech/microphone-permission";
 import {
   resamplePcm,
   SHENAVA_SAMPLE_RATE,
@@ -423,7 +424,7 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         for (const track of stream?.getTracks() ?? []) track.stop();
         if (error instanceof DOMException && error.name === "NotAllowedError") {
-          toast.error("دسترسی میکروفن رد شد. آن را در تنظیمات سیستم فعال کنید.");
+          showMicrophonePermissionDeniedToast();
         } else if (
           error instanceof DOMException &&
           (error.name === "NotFoundError" ||

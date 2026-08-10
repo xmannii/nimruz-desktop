@@ -229,15 +229,30 @@ async function listFontsViaLocalAccessApi(): Promise<string[]> {
   }
 }
 
-export async function loadSystemFonts(): Promise<string[]> {
-  try {
-    const fromDesktop = await window.desktop.fonts?.list?.();
-    if (Array.isArray(fromDesktop) && fromDesktop.length > 0) {
-      return fromDesktop;
-    }
-  } catch (error) {
-    console.error("Failed to load fonts via desktop API:", error);
-  }
+let cachedSystemFonts: string[] | null = null;
+let systemFontsRequest: Promise<string[]> | null = null;
 
-  return listFontsViaLocalAccessApi();
+export async function loadSystemFonts(): Promise<string[]> {
+  if (cachedSystemFonts) return cachedSystemFonts;
+  if (systemFontsRequest) return systemFontsRequest;
+
+  systemFontsRequest = (async () => {
+    try {
+      const fromDesktop = await window.desktop.fonts?.list?.();
+      if (Array.isArray(fromDesktop) && fromDesktop.length > 0) {
+        cachedSystemFonts = fromDesktop;
+        return fromDesktop;
+      }
+    } catch (error) {
+      console.error("Failed to load fonts via desktop API:", error);
+    }
+
+    const localFonts = await listFontsViaLocalAccessApi();
+    cachedSystemFonts = localFonts;
+    return localFonts;
+  })().finally(() => {
+    systemFontsRequest = null;
+  });
+
+  return systemFontsRequest;
 }
