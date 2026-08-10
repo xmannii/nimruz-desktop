@@ -7,6 +7,7 @@ export type CompanionShortcutSettings = {
   accelerator: string;
   microphoneEnabled: boolean;
   microphoneAccelerator: string;
+  alwaysOnTop: boolean;
 };
 
 export type CompanionShortcutState =
@@ -25,6 +26,7 @@ export const DEFAULT_COMPANION_SHORTCUT_SETTINGS: CompanionShortcutSettings = {
   accelerator: DEFAULT_COMPANION_SHORTCUT,
   microphoneEnabled: true,
   microphoneAccelerator: DEFAULT_COMPANION_MICROPHONE_SHORTCUT,
+  alwaysOnTop: false,
 };
 
 const MODIFIERS = new Set([
@@ -107,6 +109,10 @@ export function sanitizeCompanionShortcutSettings(
     )
       ? settings.microphoneAccelerator
       : DEFAULT_COMPANION_SHORTCUT_SETTINGS.microphoneAccelerator,
+    alwaysOnTop:
+      typeof settings.alwaysOnTop === "boolean"
+        ? settings.alwaysOnTop
+        : DEFAULT_COMPANION_SHORTCUT_SETTINGS.alwaysOnTop,
   };
 }
 

@@ -20,6 +20,7 @@ test("sanitizes persisted companion shortcut settings", () => {
       accelerator: "Command+Shift+K",
       microphoneEnabled: true,
       microphoneAccelerator: "CommandOrControl+Shift+M",
+      alwaysOnTop: false,
     }
   );
   assert.deepEqual(
@@ -34,7 +35,12 @@ test("sanitizes persisted companion shortcut settings", () => {
       accelerator: "Command+Shift+K",
       microphoneEnabled: false,
       microphoneAccelerator: "Command+Shift+R",
+      alwaysOnTop: false,
     }
+  );
+  assert.equal(
+    sanitizeCompanionShortcutSettings({ alwaysOnTop: true }).alwaysOnTop,
+    true
   );
   assert.equal(isValidCompanionAccelerator("Shift+K"), false);
   assert.equal(isValidCompanionAccelerator("Command+Shift+K"), true);

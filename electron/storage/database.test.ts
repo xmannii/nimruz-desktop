@@ -103,6 +103,7 @@ test("persists chats, projects, settings, memories, and credentials", async () =
       accelerator: "Command+Shift+K",
       microphoneEnabled: true,
       microphoneAccelerator: "Command+Shift+M",
+      alwaysOnTop: true,
     });
     database.saveTelegramSettings({
       ...DEFAULT_TELEGRAM_SETTINGS,
@@ -137,6 +138,7 @@ test("persists chats, projects, settings, memories, and credentials", async () =
       accelerator: "Command+Shift+K",
       microphoneEnabled: true,
       microphoneAccelerator: "Command+Shift+M",
+      alwaysOnTop: true,
     });
     assert.deepEqual(database.loadTelegramSettings(), {
       ...DEFAULT_TELEGRAM_SETTINGS,

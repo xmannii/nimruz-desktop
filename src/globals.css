@@ -96,6 +96,18 @@
   :where(.streamdown) .katex-display {
     text-align: center;
   }
+
+  /*
+   * Streamdown positions table menus with a physical `right: 0`. In an RTL
+   * document, the toolbar's flex direction otherwise puts those controls on
+   * the left edge, so the menus open outside scroll containers and get
+   * clipped. Keep only the table controls LTR; table content remains RTL.
+   */
+  [data-streamdown="table-wrapper"] > div:first-child:not(:last-child),
+  [data-streamdown="table-fullscreen"] > div > div:first-child {
+    direction: ltr;
+    unicode-bidi: isolate;
+  }
 }
 
 @layer utilities {

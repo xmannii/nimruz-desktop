@@ -3,6 +3,7 @@ import type { CodexAccountStatus } from "@/lib/codex";
 import type {
   DesktopAPI,
   NotificationOpenChatPayload,
+  OpenFolderRequest,
   WindowState,
 } from "@/lib/desktop-api";
 import type {
@@ -39,6 +40,23 @@ const desktopApi: DesktopAPI = {
       return () => {
         ipcRenderer.removeListener("window:state-changed", handler);
       };
+    },
+  },
+  privacy: {
+    getMicrophoneAccessStatus: () =>
+      ipcRenderer.invoke("privacy:get-microphone-access-status"),
+    openMicrophoneSettings: () =>
+      ipcRenderer.invoke("privacy:open-microphone-settings"),
+  },
+  shellIntegration: {
+    readyForOpenFolder: () => ipcRenderer.invoke("app:open-folder-ready"),
+    onOpenFolder: (callback) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        request: OpenFolderRequest
+      ) => callback(request);
+      ipcRenderer.on("app:open-folder", handler);
+      return () => ipcRenderer.removeListener("app:open-folder", handler);
     },
   },
   notifications: {

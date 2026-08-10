@@ -146,7 +146,7 @@ export class CompanionController {
       minimizable: false,
       fullscreenable: false,
       skipTaskbar: true,
-      alwaysOnTop: true,
+      alwaysOnTop: false,
       title: `${APP_NAME_FA} — دستیار سریع`,
       backgroundColor: "#181818",
       roundedCorners: true,
@@ -159,8 +159,6 @@ export class CompanionController {
       },
     });
 
-    window.setAlwaysOnTop(true, "floating");
-    window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window.webContents.on("before-input-event", (event, input) => {
       if (input.key === "Escape" && input.type === "keyDown") {
         event.preventDefault();
@@ -182,7 +180,11 @@ export class CompanionController {
       return { action: "deny" };
     });
     window.on("blur", () => {
-      if (!this.captureInProgress && !window.webContents.isDevToolsOpened()) {
+      if (
+        !this.shortcutStatus.settings.alwaysOnTop &&
+        !this.captureInProgress &&
+        !window.webContents.isDevToolsOpened()
+      ) {
         this.hide();
       }
     });
@@ -253,7 +255,17 @@ export class CompanionController {
       }
     );
     this.updateShortcutStatus({ settings, state, microphoneState });
+    this.applyWindowBehavior(settings);
     return this.shortcutStatus;
+  }
+
+  private applyWindowBehavior(settings: CompanionShortcutSettings) {
+    const window = this.window;
+    if (!window || window.isDestroyed()) return;
+    window.setAlwaysOnTop(settings.alwaysOnTop, "floating");
+    window.setVisibleOnAllWorkspaces(settings.alwaysOnTop, {
+      visibleOnFullScreen: settings.alwaysOnTop,
+    });
   }
 
   private registerGlobalShortcut(

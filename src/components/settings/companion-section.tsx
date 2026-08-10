@@ -25,6 +25,7 @@ import {
   AlertTriangleIcon,
   CheckCircle2Icon,
   CommandIcon,
+  PinIcon,
   RotateCcwIcon,
 } from "lucide-react";
 import { useEffect, useState, type KeyboardEvent } from "react";
@@ -214,6 +215,29 @@ export function CompanionSettingsSection() {
             </Button>
           </Field>
 
+          <Field className="rounded-2xl border border-border/70 bg-background p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <FieldContent>
+                <FieldTitle className="flex items-center gap-2">
+                  <PinIcon className="size-4" />
+                  همیشه روی صفحه (Always on top)
+                </FieldTitle>
+                <FieldDescription>
+                  با کلیک بیرون از دستیار، پنجره باز و بالاتر از پنجره‌های دیگر
+                  باقی می‌ماند.
+                </FieldDescription>
+              </FieldContent>
+              <Switch
+                checked={settings.alwaysOnTop}
+                disabled={!status || isSaving}
+                aria-label="همیشه روی صفحه نگه‌داشتن دستیار سریع"
+                onCheckedChange={(alwaysOnTop) =>
+                  void saveSettings({ ...settings, alwaysOnTop })
+                }
+              />
+            </div>
+          </Field>
+
           {status?.state === "unavailable" ||
           status?.microphoneState === "unavailable" ? (
             <Alert variant="destructive">
@@ -245,7 +269,7 @@ export function CompanionSettingsSection() {
               onClick={() => void saveSettings(DEFAULT_COMPANION_SHORTCUT_SETTINGS)}
             >
               <RotateCcwIcon />
-              بازگردانی میانبر پیش‌فرض
+              بازگردانی تنظیمات پیش‌فرض
             </Button>
           </div>
         </FieldGroup>
