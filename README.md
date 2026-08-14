@@ -51,6 +51,7 @@ The important part is the boundary: Nimruz scopes tools to the selected workspac
 Speak once and keep moving. Download a Shenava speech model, select it in **Settings → Speech**, and use the microphone in chat or the dedicated transcription page.
 
 - Persian speech recognition runs locally on the device.
+- Say **“Hey Nimruz”** to start Shenava in the focused chat, or open the Companion microphone when Nimruz is running in the tray.
 - Record from the microphone or transcribe an audio file.
 - Keep raw and corrected text side by side, then export the result.
 - Use the same local transcription pipeline for Telegram voice notes.
@@ -76,7 +77,7 @@ The app remains the runtime: Nimruz must be running for the bot to respond, and 
 - **Skills and experts** — load `SKILL.md` packs on demand and call reusable specialists with `/`.
 - **Memories and personalization** — save durable context and control the assistant's response style.
 - **Web research** — search the web and read public pages through SSRF-safe tools.
-- **Companion window** — open a small always-available chat with a global shortcut.
+- **Companion window** — open a small always-available chat with a global shortcut or the local “Hey Nimruz” wake phrase.
 - **Persian-first UI** — RTL chat, Persian typography, light/dark/system themes, and the Nimruz color theme.
 
 ## 📸 Screenshots
@@ -169,6 +170,8 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 ### Turn on voice input
 
 Open **Settings → Speech**, download a Shenava model, select it, and then use the microphone button in the chat composer. For longer recordings or files, open the **Transcribe** page.
+
+To use hands-free activation, open **Settings → Companion → Hey Nimruz**, grant microphone access, and enable the wake phrase. Detection runs locally and keeps working while Nimruz is open or hidden in the system tray; fully quitting the app stops listening.
 
 ### Connect Telegram
 

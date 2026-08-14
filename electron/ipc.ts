@@ -51,6 +51,8 @@ import { AppDatabase } from "./storage/database";
 import { SkillStore } from "./skills/store";
 import type { ShenavaService } from "./shenava/service";
 import type { ShenavaModelKey } from "@/lib/speech/shenava";
+import type { WakeWordService } from "./wake-word/service";
+import { isWakeWordAudioPayload } from "@/lib/speech/wake-word";
 import { registerWindowControlHandlers } from "./window-controls";
 import { isTrustedRendererUrl } from "./renderer-security";
 import {
@@ -138,6 +140,7 @@ export function registerIpcHandlers(options: {
   workspaceFiles: WorkspaceFilesStore;
   workspaceEvents: WorkspaceEventBus;
   shenava: ShenavaService;
+  wakeWord: WakeWordService;
   telegram: TelegramService;
   sessionToken: string;
   getMainWindow: () => import("electron").BrowserWindow | null;
@@ -153,6 +156,7 @@ export function registerIpcHandlers(options: {
     workspaceFiles,
     workspaceEvents,
     shenava,
+    wakeWord,
     telegram,
     sessionToken,
     getMainWindow,
@@ -223,6 +227,34 @@ export function registerIpcHandlers(options: {
       }
     }
     return shenava.transcribe(samples);
+  });
+
+  handle("speech:wake-word:status", () => wakeWord.getStatus());
+  handle("speech:wake-word:save-settings", (value: unknown) =>
+    wakeWord.saveSettings(value)
+  );
+  handle("speech:wake-word:audio", (audioBuffer: unknown) => {
+    if (!isWakeWordAudioPayload(audioBuffer)) {
+      throw new Error("Invalid wake-word audio payload.");
+    }
+    const samples = new Float32Array(audioBuffer);
+    for (const sample of samples) {
+      if (!Number.isFinite(sample) || sample < -1 || sample > 1) {
+        throw new Error("Invalid wake-word audio sample.");
+      }
+    }
+    wakeWord.processAudio(audioBuffer);
+  });
+  handle("speech:wake-word:capture-error", (error: unknown) => {
+    const message =
+      typeof error === "string" ? error.trim().slice(0, 500) : "";
+    wakeWord.reportCaptureError(message);
+  });
+  handle("speech:wake-word:pause-for-speech", () => {
+    wakeWord.pauseForSpeech();
+  });
+  handle("speech:wake-word:resume-after-speech", () => {
+    wakeWord.resumeAfterSpeech();
   });
 
   shenava.onStatus((status) => {

@@ -40,6 +40,11 @@ import {
   type CompanionShortcutSettings,
 } from "@/lib/settings/companion";
 import {
+  DEFAULT_WAKE_WORD_SETTINGS,
+  sanitizeWakeWordSettings,
+  type WakeWordSettings,
+} from "@/lib/speech/wake-word";
+import {
   DEFAULT_PERSONALIZATION_SETTINGS,
   sanitizePersonalizationSettings,
   type PersonalizationSettings,
@@ -1897,6 +1902,34 @@ export class AppDatabase {
       .prepare(
         `INSERT INTO settings (key, value_json, updated_at)
          VALUES ('companion-shortcut', ?, ?)
+         ON CONFLICT(key) DO UPDATE SET
+           value_json = excluded.value_json,
+           updated_at = excluded.updated_at`
+      )
+      .run(JSON.stringify(settings), Date.now());
+    return settings;
+  }
+
+  loadWakeWordSettings(): WakeWordSettings {
+    const row = this.database
+      .prepare("SELECT value_json FROM settings WHERE key = ?")
+      .get("wake-word");
+    if (typeof row?.value_json !== "string") {
+      return DEFAULT_WAKE_WORD_SETTINGS;
+    }
+    try {
+      return sanitizeWakeWordSettings(JSON.parse(row.value_json));
+    } catch {
+      return DEFAULT_WAKE_WORD_SETTINGS;
+    }
+  }
+
+  saveWakeWordSettings(value: unknown): WakeWordSettings {
+    const settings = sanitizeWakeWordSettings(value);
+    this.database
+      .prepare(
+        `INSERT INTO settings (key, value_json, updated_at)
+         VALUES ('wake-word', ?, ?)
          ON CONFLICT(key) DO UPDATE SET
            value_json = excluded.value_json,
            updated_at = excluded.updated_at`

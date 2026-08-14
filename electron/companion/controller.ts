@@ -119,6 +119,15 @@ export class CompanionController {
     }
   }
 
+  activateMicrophone() {
+    this.show("cursor");
+    setTimeout(() => {
+      if (this.window && !this.window.isDestroyed()) {
+        this.window.webContents.send("companion:toggle-microphone");
+      }
+    }, 80);
+  }
+
   dispose() {
     for (const channel of this.channels) ipcMain.removeHandler(channel);
     globalShortcut.unregister(this.shortcutStatus.settings.accelerator);
@@ -156,6 +165,7 @@ export class CompanionController {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        backgroundThrottling: false,
       },
     });
 
@@ -245,14 +255,7 @@ export class CompanionController {
     const microphoneState = this.registerGlobalShortcut(
       settings.microphoneEnabled,
       settings.microphoneAccelerator,
-      () => {
-        this.show("cursor");
-        setTimeout(() => {
-          if (this.window && !this.window.isDestroyed()) {
-            this.window.webContents.send("companion:toggle-microphone");
-          }
-        }, 80);
-      }
+      () => this.activateMicrophone()
     );
     this.updateShortcutStatus({ settings, state, microphoneState });
     this.applyWindowBehavior(settings);

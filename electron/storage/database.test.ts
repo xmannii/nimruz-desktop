@@ -105,6 +105,7 @@ test("persists chats, projects, settings, memories, and credentials", async () =
       microphoneAccelerator: "Command+Shift+M",
       alwaysOnTop: true,
     });
+    database.saveWakeWordSettings({ enabled: true, threshold: 0.81 });
     database.saveTelegramSettings({
       ...DEFAULT_TELEGRAM_SETTINGS,
       enabled: true,
@@ -139,6 +140,10 @@ test("persists chats, projects, settings, memories, and credentials", async () =
       microphoneEnabled: true,
       microphoneAccelerator: "Command+Shift+M",
       alwaysOnTop: true,
+    });
+    assert.deepEqual(database.loadWakeWordSettings(), {
+      enabled: true,
+      threshold: 0.81,
     });
     assert.deepEqual(database.loadTelegramSettings(), {
       ...DEFAULT_TELEGRAM_SETTINGS,

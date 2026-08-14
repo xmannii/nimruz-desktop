@@ -1,5 +1,6 @@
 "use client";
 
+import { useSpeech } from "@/components/speech/speech-provider";
 import { SettingsSection } from "@/components/settings/settings-section";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -13,7 +14,15 @@ import {
   FieldTitle,
 } from "@/components/ui/field";
 import { Kbd } from "@/components/ui/kbd";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
+import { openMicrophoneStream } from "@/lib/speech/microphone";
+import { showMicrophonePermissionDeniedToast } from "@/lib/speech/microphone-permission";
+import type {
+  WakeWordPhase,
+  WakeWordSettings,
+  WakeWordStatus,
+} from "@/lib/speech/wake-word";
 import {
   DEFAULT_COMPANION_SHORTCUT_SETTINGS,
   formatCompanionAccelerator,
@@ -23,6 +32,7 @@ import {
 } from "@/lib/settings/companion";
 import {
   AlertTriangleIcon,
+  AudioLinesIcon,
   CheckCircle2Icon,
   CommandIcon,
   PinIcon,
@@ -121,6 +131,7 @@ export function CompanionSettingsSection() {
 
   return (
     <div className="flex flex-col gap-10">
+      <WakeWordSettingsSection />
       <SettingsSection
         title="دستیار سریع"
         description="دستیار جمع‌وجور نیمروز را از هر جای macOS یا Windows با یک میانبر سراسری باز کنید."
@@ -275,5 +286,164 @@ export function CompanionSettingsSection() {
         </FieldGroup>
       </SettingsSection>
     </div>
+  );
+}
+
+function WakeWordSettingsSection() {
+  const { selectedMicrophoneId, refreshMicrophones } = useSpeech();
+  const [status, setStatus] = useState<WakeWordStatus | null>(null);
+  const [thresholdDraft, setThresholdDraft] = useState<number | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void window.desktop.speech.wakeWord.getStatus().then((next) => {
+      if (!active) return;
+      setStatus(next);
+      setThresholdDraft((current) => current ?? next.settings.threshold * 100);
+    });
+    const unsubscribe = window.desktop.speech.wakeWord.onStatusChange((next) => {
+      if (!active) return;
+      setStatus(next);
+      setThresholdDraft((current) => current ?? next.settings.threshold * 100);
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  async function saveWakeWordSettings(settings: WakeWordSettings) {
+    setIsSaving(true);
+    try {
+      const next = await window.desktop.speech.wakeWord.saveSettings(settings);
+      setStatus(next);
+      setThresholdDraft(next.settings.threshold * 100);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "ذخیره تنظیمات «هی نیمروز» ناموفق بود."
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function setEnabled(enabled: boolean) {
+    if (!status) return;
+    if (enabled) {
+      try {
+        const stream = await openMicrophoneStream(selectedMicrophoneId);
+        for (const track of stream.getTracks()) track.stop();
+        void refreshMicrophones().catch(() => undefined);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "NotAllowedError") {
+          showMicrophonePermissionDeniedToast();
+        } else {
+          toast.error("میکروفن انتخاب‌شده در دسترس نیست.");
+        }
+        return;
+      }
+    }
+    await saveWakeWordSettings({ ...status.settings, enabled });
+  }
+
+  function phaseBadge(phase: WakeWordPhase | undefined) {
+    if (phase === "listening") {
+      return <Badge variant="secondary">در حال شنیدن</Badge>;
+    }
+    if (phase === "loading") {
+      return <Badge variant="outline">در حال آماده‌سازی</Badge>;
+    }
+    if (phase === "paused") {
+      return <Badge variant="outline">موقتاً متوقف</Badge>;
+    }
+    if (phase === "error") {
+      return <Badge variant="destructive">خطا</Badge>;
+    }
+    return <Badge variant="outline">غیرفعال</Badge>;
+  }
+
+  const threshold = thresholdDraft ?? 73;
+
+  return (
+    <SettingsSection
+      title="هی نیمروز"
+      description="با گفتن «هی نیمروز» شنوا را بدون لمس برنامه آماده کنید. تشخیص کاملاً روی دستگاه انجام می‌شود."
+      icon={AudioLinesIcon}
+    >
+      <FieldGroup className="gap-4">
+        <Field className="rounded-2xl border border-border/70 bg-background p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <FieldContent>
+              <FieldTitle>فعال‌سازی با صدا</FieldTitle>
+              <FieldDescription>
+                وقتی نیمروز باز است، ضبط شنوا را همان‌جا شروع می‌کند؛ در غیر این
+                صورت دستیار سریع را باز می‌کند و شروع به ضبط می‌کند.
+              </FieldDescription>
+            </FieldContent>
+            <div className="flex items-center gap-2">
+              {phaseBadge(status?.phase)}
+              <Switch
+                checked={status?.settings.enabled ?? false}
+                disabled={!status || isSaving}
+                aria-label="فعال‌کردن تشخیص هی نیمروز"
+                onCheckedChange={(enabled) => void setEnabled(enabled)}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 rounded-xl bg-muted/60 p-3">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <FieldLabel htmlFor="wake-word-threshold">حساسیت تشخیص</FieldLabel>
+              <span className="tabular-nums text-muted-foreground">
+                {Math.round(threshold).toLocaleString("fa-IR")}٪
+              </span>
+            </div>
+            <Slider
+              id="wake-word-threshold"
+              min={50}
+              max={95}
+              step={1}
+              value={threshold}
+              disabled={!status || isSaving}
+              aria-label="حساسیت تشخیص هی نیمروز"
+              onValueChange={(value) => {
+                if (typeof value === "number") setThresholdDraft(value);
+              }}
+              onValueCommitted={(value) => {
+                if (!status || typeof value !== "number") return;
+                void saveWakeWordSettings({
+                  ...status.settings,
+                  threshold: value / 100,
+                });
+              }}
+            />
+            <p className="text-xs leading-5 text-muted-foreground">
+              مقدار بالاتر، فعال‌شدن اشتباهی را کمتر می‌کند. مقدار پیشنهادی ۷۳٪
+              است.
+            </p>
+          </div>
+        </Field>
+
+        {status?.error ? (
+          <Alert variant="destructive">
+            <AlertTriangleIcon />
+            <AlertTitle>تشخیص «هی نیمروز» متوقف شد</AlertTitle>
+            <AlertDescription>{status.error}</AlertDescription>
+          </Alert>
+        ) : (
+          <Alert>
+            <CheckCircle2Icon />
+            <AlertTitle>خصوصی و آفلاین</AlertTitle>
+            <AlertDescription>
+              صدا فقط در حافظه کوتاه‌مدت پردازش می‌شود و هیچ فایل صوتی ذخیره یا
+              ارسال نمی‌شود.
+            </AlertDescription>
+          </Alert>
+        )}
+      </FieldGroup>
+    </SettingsSection>
   );
 }

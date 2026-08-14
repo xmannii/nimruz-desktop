@@ -27,6 +27,7 @@ import { startServer } from "./server";
 import { SkillStore } from "./skills/store";
 import { AppDatabase } from "./storage/database";
 import { ShenavaService } from "./shenava/service";
+import { WakeWordService } from "./wake-word/service";
 import {
   DesktopNotificationService,
   type NativeNotificationPayload,
@@ -91,6 +92,7 @@ let localServer: http.Server | null = null;
 let database: AppDatabase | null = null;
 let codex: CodexService | null = null;
 let shenava: ShenavaService | null = null;
+let wakeWord: WakeWordService | null = null;
 let notificationService: DesktopNotificationService | null = null;
 let companion: CompanionController | null = null;
 let telegram: TelegramService | null = null;
@@ -106,6 +108,21 @@ function presentMainWindow() {
   if (mainWindow.isMinimized()) mainWindow.restore();
   mainWindow.show();
   mainWindow.focus();
+}
+
+function resolveUnpackedWorkerPath(fileName: string) {
+  const bundled = path.join(__dirname, fileName);
+  const unpacked = bundled.replace(
+    `${path.sep}app.asar${path.sep}`,
+    `${path.sep}app.asar.unpacked${path.sep}`
+  );
+  return unpacked !== bundled && existsSync(unpacked) ? unpacked : bundled;
+}
+
+function resolveWakeWordResourcePath(fileName: string) {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, "wakeword", fileName)
+    : path.join(app.getAppPath(), "assets", "wakeword", fileName);
 }
 
 function buildOpenFolderRequest(folderPath: string): OpenFolderRequest | null {
@@ -177,12 +194,7 @@ function presentNativeNotification(
 }
 
 function resolveShenavaWorkerPath() {
-  const bundled = path.join(__dirname, "shenava-worker.cjs");
-  const unpacked = bundled.replace(
-    `${path.sep}app.asar${path.sep}`,
-    `${path.sep}app.asar.unpacked${path.sep}`
-  );
-  return unpacked !== bundled && existsSync(unpacked) ? unpacked : bundled;
+  return resolveUnpackedWorkerPath("shenava-worker.cjs");
 }
 
 async function createWindow() {
@@ -333,6 +345,19 @@ app.whenReady().then(async () => {
     userDataPath,
     workerScript: resolveShenavaWorkerPath(),
   });
+  wakeWord = new WakeWordService({
+    workerScript: resolveUnpackedWorkerPath("wake-word-worker.cjs"),
+    resources: {
+      melModelPath: resolveWakeWordResourcePath("melspectrogram.onnx"),
+      embeddingModelPath: resolveWakeWordResourcePath("embedding_model.onnx"),
+      classifierModelPath: resolveWakeWordResourcePath("hey_nimruz.onnx"),
+    },
+    loadSettings: () => database!.loadWakeWordSettings(),
+    saveSettings: (value) => database!.saveWakeWordSettings(value),
+    getMainWindow: () => mainWindow,
+    getCompanionWindow: () => companion?.getWindow() ?? null,
+    activateCompanionMicrophone: () => companion?.activateMicrophone(),
+  });
   notificationService = new DesktopNotificationService({
     database,
     getWindow: () => mainWindow,
@@ -412,6 +437,7 @@ app.whenReady().then(async () => {
     workspaceFiles,
     workspaceEvents,
     shenava,
+    wakeWord,
     telegram,
     sessionToken,
     getMainWindow: () => mainWindow,
@@ -461,6 +487,7 @@ app.whenReady().then(async () => {
     },
   });
   await companion.initialize();
+  wakeWord.initialize();
 
   app.on("activate", () => {
     if (!mainWindow || mainWindow.isDestroyed()) {
@@ -475,6 +502,7 @@ app.whenReady().then(async () => {
 
 app.on("before-quit", () => {
   isQuitting = true;
+  wakeWord?.dispose();
   companion?.dispose();
   telegram?.dispose();
   shenava?.cancelDownload();
@@ -485,6 +513,7 @@ app.on("before-quit", () => {
   database = null;
   codex = null;
   shenava = null;
+  wakeWord = null;
   telegram = null;
   notificationService = null;
   activeNotifications.clear();

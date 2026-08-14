@@ -190,6 +190,12 @@ export function ChatComposer({
   );
   const hasExpertPicker = expertSuggestions.length > 0;
 
+  useEffect(() => {
+    return window.desktop.speech.wakeWord.onActivate(() => {
+      if (!isBusy && !pendingQuestion) void speechInput.handleMicrophone();
+    });
+  }, [isBusy, pendingQuestion, speechInput.handleMicrophone]);
+
   const mentionQuery = canUseWorkspaceContext ? getMentionQuery(text) : null;
   const hasMentionPicker = mentionQuery !== null && mentionEntries.length > 0;
   const mentions = useMemo(() => parseMentions(text), [text]);

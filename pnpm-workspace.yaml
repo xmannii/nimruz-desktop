@@ -5,3 +5,4 @@ allowBuilds:
   electron: true
   electron-winstaller: true
   esbuild: true
+  onnxruntime-node: true

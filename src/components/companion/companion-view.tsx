@@ -49,6 +49,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useShenavaSpeechInput } from "@/hooks/use-shenava-speech-input";
+import { useWakeWordCapture } from "@/hooks/use-wake-word-capture";
 import { useModelCatalog } from "@/hooks/use-model-catalog";
 import { useWorkspaces } from "@/hooks/use-workspaces";
 import {
@@ -118,6 +119,7 @@ function formatRecordingDuration(seconds: number) {
 }
 
 export function CompanionView() {
+  useWakeWordCapture();
   const {
     defaultRef,
     enabledGroups,

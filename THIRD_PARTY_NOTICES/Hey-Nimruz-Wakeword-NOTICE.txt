@@ -1,0 +1,17 @@
+Hey Nimruz Wake Word model
+Copyright (c) xmanii
+
+This product includes the hey_nimruz.onnx model from
+xmanii/hey-nimruz-wakeword, licensed under the Apache License, Version 2.0.
+
+Source: https://huggingface.co/xmanii/hey-nimruz-wakeword
+Revision: e343ad0d8165c0c7c8490a2b9339e7864992dcce
+License: https://www.apache.org/licenses/LICENSE-2.0
+
+This product also includes the melspectrogram.onnx and embedding_model.onnx
+feature-extraction models from LiveKit WakeWord, licensed under the Apache
+License, Version 2.0.
+
+Source: https://github.com/livekit/livekit-wakeword
+Revision: 95448a7559c453fcd87645bd67b247ffb45f85b0
+License: https://www.apache.org/licenses/LICENSE-2.0
