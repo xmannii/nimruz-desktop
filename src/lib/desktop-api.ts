@@ -42,6 +42,11 @@ import type {
   ShenavaTranscription,
 } from "@/lib/speech/shenava";
 import type {
+  WakeWordActivation,
+  WakeWordSettings,
+  WakeWordStatus,
+} from "@/lib/speech/wake-word";
+import type {
   AgentRun,
   AgentRunStep,
   ApprovalRecord,
@@ -234,6 +239,20 @@ export type DesktopAPI = {
       transcribe: (audioBuffer: ArrayBuffer) => Promise<ShenavaTranscription>;
       onStatusChange: (
         callback: (status: ShenavaStatus) => void
+      ) => () => void;
+    };
+    wakeWord: {
+      getStatus: () => Promise<WakeWordStatus>;
+      saveSettings: (settings: WakeWordSettings) => Promise<WakeWordStatus>;
+      processAudio: (audioBuffer: ArrayBuffer) => Promise<void>;
+      reportCaptureError: (error: string) => Promise<void>;
+      pauseForSpeech: () => Promise<void>;
+      resumeAfterSpeech: () => Promise<void>;
+      onStatusChange: (
+        callback: (status: WakeWordStatus) => void
+      ) => () => void;
+      onActivate: (
+        callback: (activation: WakeWordActivation) => void
       ) => () => void;
     };
   };

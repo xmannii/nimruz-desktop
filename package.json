@@ -1,6 +1,6 @@
 {
   "name": "nimruz-desktop",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "Nimruz — Persian desktop AI workspace agent with Codex",
   "license": "MIT",
   "engines": {
@@ -72,6 +72,7 @@
     "nanoid": "^6.0.0",
     "next-themes": "^0.4.6",
     "ogg-opus-decoder": "1.7.3",
+    "onnxruntime-node": "^1.27.0",
     "pdfjs-dist": "^6.1.200",
     "react": "19.2.4",
     "react-day-picker": "^10.0.1",
@@ -111,11 +112,15 @@
   "build": {
     "appId": "dev.nimruz.desktop",
     "productName": "Nimruz",
+    "afterPack": "scripts/after-pack.mjs",
     "asar": true,
     "asarUnpack": [
       "node_modules/@openai/codex-*/vendor/**/*",
+      "node_modules/onnxruntime-common/**/*",
+      "node_modules/onnxruntime-node/**/*",
       "node_modules/sherpa-onnx/**/*",
-      "dist-electron/shenava-worker.cjs"
+      "dist-electron/shenava-worker.cjs",
+      "dist-electron/wake-word-worker.cjs"
     ],
     "extraResources": [
       {
@@ -125,6 +130,10 @@
       {
         "from": "THIRD_PARTY_NOTICES",
         "to": "THIRD_PARTY_NOTICES"
+      },
+      {
+        "from": "assets/wakeword",
+        "to": "wakeword"
       }
     ],
     "icon": "assets/icon.png",
@@ -132,6 +141,7 @@
       "dist/**",
       "dist-electron/**",
       "assets/**",
+      "!assets/wakeword/**",
       "package.json"
     ],
     "directories": {

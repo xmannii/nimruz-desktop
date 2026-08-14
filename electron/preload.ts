@@ -13,6 +13,10 @@ import type {
   CompanionSubmissionStatus,
 } from "@/lib/companion";
 import type { CompanionShortcutStatus } from "@/lib/settings/companion";
+import type {
+  WakeWordActivation,
+  WakeWordStatus,
+} from "@/lib/speech/wake-word";
 import {
   NOTIFICATION_OPEN_CHAT_CHANNEL,
   NOTIFICATION_PLAY_SOUND_CHANNEL,
@@ -257,6 +261,42 @@ const desktopApi: DesktopAPI = {
             "speech:shenava:status-changed",
             handler
           );
+        };
+      },
+    },
+    wakeWord: {
+      getStatus: () => ipcRenderer.invoke("speech:wake-word:status"),
+      saveSettings: (settings) =>
+        ipcRenderer.invoke("speech:wake-word:save-settings", settings),
+      processAudio: (audioBuffer) =>
+        ipcRenderer.invoke("speech:wake-word:audio", audioBuffer),
+      reportCaptureError: (error) =>
+        ipcRenderer.invoke("speech:wake-word:capture-error", error),
+      pauseForSpeech: () =>
+        ipcRenderer.invoke("speech:wake-word:pause-for-speech"),
+      resumeAfterSpeech: () =>
+        ipcRenderer.invoke("speech:wake-word:resume-after-speech"),
+      onStatusChange: (callback) => {
+        const handler = (
+          _event: Electron.IpcRendererEvent,
+          status: WakeWordStatus
+        ) => callback(status);
+        ipcRenderer.on("speech:wake-word:status-changed", handler);
+        return () => {
+          ipcRenderer.removeListener(
+            "speech:wake-word:status-changed",
+            handler
+          );
+        };
+      },
+      onActivate: (callback) => {
+        const handler = (
+          _event: Electron.IpcRendererEvent,
+          activation: WakeWordActivation
+        ) => callback(activation);
+        ipcRenderer.on("speech:wake-word:activate", handler);
+        return () => {
+          ipcRenderer.removeListener("speech:wake-word:activate", handler);
         };
       },
     },

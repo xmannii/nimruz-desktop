@@ -91,14 +91,14 @@ export function useShenavaSpeechInput(
     setRecordingSeconds(0);
     releaseSession(session);
 
-    const captured = mergeChunks(session.chunks);
-    if (captured.length < session.sampleRate / 5) {
-      toast.info("صدای کافی ضبط نشد. دوباره تلاش کنید.");
-      return;
-    }
-
-    setIsTranscribing(true);
     try {
+      const captured = mergeChunks(session.chunks);
+      if (captured.length < session.sampleRate / 5) {
+        toast.info("صدای کافی ضبط نشد. دوباره تلاش کنید.");
+        return;
+      }
+
+      setIsTranscribing(true);
       const samples = resamplePcm(
         captured,
         session.sampleRate,
@@ -119,6 +119,7 @@ export function useShenavaSpeechInput(
       toast.error("تبدیل گفتار به متن ناموفق بود.");
     } finally {
       setIsTranscribing(false);
+      void window.desktop.speech.wakeWord.resumeAfterSpeech();
     }
   }, [showTranscriptionSuccessToast]);
 
@@ -133,6 +134,7 @@ export function useShenavaSpeechInput(
     let context: AudioContext | null = null;
     startPendingRef.current = true;
     try {
+      await window.desktop.speech.wakeWord.pauseForSpeech();
       stream = await openMicrophoneStream(selectedMicrophoneId);
       void refreshMicrophones().catch(() => undefined);
       context = new AudioContext();
@@ -185,6 +187,7 @@ export function useShenavaSpeechInput(
       } else {
         toast.error("شروع ضبط صدا ناموفق بود.");
       }
+      void window.desktop.speech.wakeWord.resumeAfterSpeech();
     } finally {
       startPendingRef.current = false;
     }
@@ -202,6 +205,7 @@ export function useShenavaSpeechInput(
     releaseSession(session);
     setRecordingSeconds(0);
     setIsRecording(false);
+    void window.desktop.speech.wakeWord.resumeAfterSpeech();
   }, []);
 
   useEffect(() => {
@@ -251,6 +255,7 @@ export function useShenavaSpeechInput(
       await startRecording();
     } else {
       setDownloadDialogOpen(true);
+      void window.desktop.speech.wakeWord.resumeAfterSpeech();
     }
   }, [finishRecording, isTranscribing, model, startRecording]);
 
@@ -309,7 +314,10 @@ export function useShenavaSpeechInput(
   useEffect(
     () => () => {
       const session = recordingRef.current;
-      if (session) releaseSession(session);
+      if (session) {
+        releaseSession(session);
+        void window.desktop.speech.wakeWord.resumeAfterSpeech();
+      }
       recordingRef.current = null;
     },
     []
