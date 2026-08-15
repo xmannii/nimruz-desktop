@@ -888,8 +888,12 @@ export function ChatSession({
     setSelectedExpertSlug(null);
   }
 
-  function handleSubmit() {
-    void submitMessage();
+  function handleSubmit(textOverride?: string) {
+    void submitMessage(
+      textOverride === undefined
+        ? undefined
+        : { text: textOverride, attachments }
+    );
   }
 
   useEffect(() => {
