@@ -51,7 +51,7 @@ The important part is the boundary: Nimruz scopes tools to the selected workspac
 Speak once and keep moving. Download a Shenava speech model, select it in **Settings → Speech**, and use the microphone in chat or the dedicated transcription page.
 
 - Persian speech recognition runs locally on the device.
-- Say **“Hey Nimruz”** to start Shenava in the focused chat, or open the Companion microphone when Nimruz is running in the tray.
+- Say **“Hey Nimruz”** to start Shenava in the focused chat, or open the Companion microphone when Nimruz is running in the tray. After you speak, a short silence transcribes and sends the message.
 - Record from the microphone or transcribe an audio file.
 - Keep raw and corrected text side by side, then export the result.
 - Use the same local transcription pipeline for Telegram voice notes.

@@ -380,7 +380,8 @@ function WakeWordSettingsSection() {
               <FieldTitle>فعال‌سازی با صدا</FieldTitle>
               <FieldDescription>
                 وقتی نیمروز باز است، ضبط شنوا را همان‌جا شروع می‌کند؛ در غیر این
-                صورت دستیار سریع را باز می‌کند و شروع به ضبط می‌کند.
+                صورت دستیار سریع را باز می‌کند و شروع به ضبط می‌کند. بعد از
+                حرف‌زدن، کمی سکوت پیام را ارسال می‌کند.
               </FieldDescription>
             </FieldContent>
             <div className="flex items-center gap-2">
