@@ -13,6 +13,12 @@ import {
   SHENAVA_SAMPLE_RATE,
   type ShenavaModelKey,
 } from "@/lib/speech/shenava";
+import {
+  advanceSilenceEndpoint,
+  createSilenceEndpointState,
+  pcmRms,
+  type SilenceEndpointState,
+} from "@/lib/speech/silence-endpoint";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -28,6 +34,17 @@ type RecordingSession = {
   sampleRate: number;
   timer: number;
   elapsedTimer: number;
+  autoSend: boolean;
+  endpoint: SilenceEndpointState;
+  ending: boolean;
+};
+
+export type SpeechTranscriptMeta = {
+  shouldSend: boolean;
+};
+
+export type StartSpeechInputOptions = {
+  autoSend?: boolean;
 };
 
 function releaseSession(session: RecordingSession) {
@@ -59,7 +76,7 @@ type ShenavaSpeechInputOptions = {
 };
 
 export function useShenavaSpeechInput(
-  onTranscript: (transcript: string) => void,
+  onTranscript: (transcript: string, meta: SpeechTranscriptMeta) => void,
   options: ShenavaSpeechInputOptions = {}
 ) {
   const showTranscriptionSuccessToast =
@@ -111,8 +128,10 @@ export function useShenavaSpeechInput(
         toast.info("گفتار قابل‌تشخیصی شنیده نشد.");
         return;
       }
-      transcriptCallbackRef.current(result.text);
-      if (showTranscriptionSuccessToast) {
+      transcriptCallbackRef.current(result.text, {
+        shouldSend: session.autoSend,
+      });
+      if (showTranscriptionSuccessToast && !session.autoSend) {
         toast.success("گفتار به متن تبدیل شد.");
       }
     } catch {
@@ -123,7 +142,17 @@ export function useShenavaSpeechInput(
     }
   }, [showTranscriptionSuccessToast]);
 
-  const startRecording = useCallback(async () => {
+  const cancelRecording = useCallback(() => {
+    const session = recordingRef.current;
+    if (!session) return;
+    recordingRef.current = null;
+    releaseSession(session);
+    setRecordingSeconds(0);
+    setIsRecording(false);
+    void window.desktop.speech.wakeWord.resumeAfterSpeech();
+  }, []);
+
+  const startRecording = useCallback(async (autoSend = false) => {
     if (startPendingRef.current) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       toast.error("میکروفن در این دستگاه در دسترس نیست.");
@@ -143,30 +172,57 @@ export function useShenavaSpeechInput(
       const processor = context.createScriptProcessor(4096, 1, 1);
       const output = context.createGain();
       output.gain.value = 0;
-      const chunks: Float32Array[] = [];
-
-      processor.onaudioprocess = (event) => {
-        chunks.push(event.inputBuffer.getChannelData(0).slice());
-      };
-      source.connect(processor);
-      processor.connect(output);
-      output.connect(context.destination);
-
       const session: RecordingSession = {
         context,
         stream,
         source,
         processor,
         output,
-        chunks,
+        chunks: [],
         sampleRate: context.sampleRate,
-        timer: window.setTimeout(() => {
-          void finishRecording();
-        }, MAX_RECORDING_MS),
-        elapsedTimer: window.setInterval(() => {
-          setRecordingSeconds((seconds) => seconds + 1);
-        }, 1_000),
+        timer: 0,
+        elapsedTimer: 0,
+        autoSend,
+        endpoint: createSilenceEndpointState(),
+        ending: false,
       };
+
+      processor.onaudioprocess = (event) => {
+        const frame = event.inputBuffer.getChannelData(0).slice();
+        session.chunks.push(frame);
+        if (recordingRef.current !== session || session.ending) return;
+        const decision = advanceSilenceEndpoint(
+          session.endpoint,
+          pcmRms(frame),
+          (frame.length / session.sampleRate) * 1_000
+        );
+        if (decision === "end") {
+          session.ending = true;
+          window.setTimeout(() => {
+            if (recordingRef.current !== session) return;
+            void finishRecording();
+          }, 0);
+          return;
+        }
+        if (decision === "timeout") {
+          session.ending = true;
+          window.setTimeout(() => {
+            if (recordingRef.current !== session) return;
+            cancelRecording();
+            toast.info("صدایی شنیده نشد.");
+          }, 0);
+        }
+      };
+      source.connect(processor);
+      processor.connect(output);
+      output.connect(context.destination);
+
+      session.timer = window.setTimeout(() => {
+        void finishRecording();
+      }, MAX_RECORDING_MS);
+      session.elapsedTimer = window.setInterval(() => {
+        setRecordingSeconds((seconds) => seconds + 1);
+      }, 1_000);
       recordingRef.current = session;
       setRecordingSeconds(0);
       setIsRecording(true);
@@ -192,21 +248,12 @@ export function useShenavaSpeechInput(
       startPendingRef.current = false;
     }
   }, [
+    cancelRecording,
     finishRecording,
     refreshMicrophones,
     selectedMicrophoneId,
     setSelectedMicrophoneId,
   ]);
-
-  const cancelRecording = useCallback(() => {
-    const session = recordingRef.current;
-    if (!session) return;
-    recordingRef.current = null;
-    releaseSession(session);
-    setRecordingSeconds(0);
-    setIsRecording(false);
-    void window.desktop.speech.wakeWord.resumeAfterSpeech();
-  }, []);
 
   useEffect(() => {
     if (!isRecording || enableSpaceShortcut) return;
@@ -239,7 +286,9 @@ export function useShenavaSpeechInput(
     return () => window.removeEventListener("keydown", handleRecordingShortcut);
   }, [enableSpaceShortcut, finishRecording, isRecording]);
 
-  const handleMicrophone = useCallback(async () => {
+  const handleMicrophone = useCallback(async (
+    startOptions: StartSpeechInputOptions = {}
+  ) => {
     if (isTranscribing) return;
     if (recordingRef.current) {
       await finishRecording();
@@ -252,7 +301,7 @@ export function useShenavaSpeechInput(
     }
 
     if (status.models[status.activeModelKey].installed) {
-      await startRecording();
+      await startRecording(startOptions.autoSend === true);
     } else {
       setDownloadDialogOpen(true);
       void window.desktop.speech.wakeWord.resumeAfterSpeech();

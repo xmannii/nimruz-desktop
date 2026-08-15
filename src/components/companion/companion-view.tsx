@@ -156,11 +156,14 @@ export function CompanionView() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const microphoneButtonRef = useRef<HTMLButtonElement>(null);
   const speech = useShenavaSpeechInput(
-    (transcript) => {
-      setText((current) => {
-        const prefix = current.trimEnd();
-        return prefix ? `${prefix} ${transcript}` : transcript;
-      });
+    (transcript, { shouldSend }) => {
+      const prefix = text.trimEnd();
+      const next = prefix ? `${prefix} ${transcript}` : transcript;
+      if (shouldSend) {
+        void submit(next);
+        return;
+      }
+      setText(next);
       window.setTimeout(() => textareaRef.current?.focus(), 0);
     },
     {
@@ -219,7 +222,7 @@ export function CompanionView() {
 
   useEffect(() => {
     return window.desktop.companion.onToggleMicrophone(() => {
-      if (!isBusy) void speech.handleMicrophone();
+      if (!isBusy) void speech.handleMicrophone({ autoSend: true });
     });
   }, [isBusy, speech.handleMicrophone]);
 
@@ -341,8 +344,8 @@ export function CompanionView() {
     void window.desktop.companion.openScreenCaptureSettings();
   }
 
-  async function submit() {
-    const prompt = text.trim();
+  async function submit(promptOverride?: string) {
+    const prompt = (promptOverride ?? text).trim();
     if ((!prompt && !screenshot) || isBusy) return;
     ignoredChatIdRef.current = null;
     setPhase("submitting");
@@ -713,7 +716,7 @@ export function CompanionView() {
             <div className="flex min-h-10 flex-col items-center justify-center gap-1">
               <p className="text-sm font-medium">
                 {speech.isRecording
-                  ? "در حال شنیدن… برای پایان Space را بزنید"
+                  ? "در حال شنیدن… با کمی سکوت تمام می‌شود"
                   : speech.isTranscribing
                     ? "در حال تبدیل صدا به متن…"
                     : "برای صحبت Space را بزنید"}

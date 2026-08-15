@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Kbd } from "@/components/ui/kbd";
 import { Trash2Icon } from "lucide-react";
 
 const WAVE_HEIGHTS = [
@@ -66,8 +65,7 @@ export function ShenavaRecordingBar({
         dir="rtl"
         className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground"
       >
-        <span>برای پایان</span>
-        <Kbd>Space</Kbd>
+        <span>با کمی سکوت تمام می‌شود</span>
       </span>
     </div>
   );

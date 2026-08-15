@@ -106,7 +106,7 @@ type ChatComposerProps = {
   selectedExpertSlug: string | null;
   onSelectedExpertChange: (slug: string | null) => void;
   status: ChatStatus;
-  onSubmit: () => void;
+  onSubmit: (textOverride?: string) => void;
   onStop: () => void;
   centered?: boolean;
   messages?: ChatUIMessage[];
@@ -158,13 +158,18 @@ export function ChatComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const collapsedWidthRef = useRef<number | null>(null);
-  const speechInput = useShenavaSpeechInput((transcript) => {
+  const isBusy = status === "submitted" || status === "streaming";
+  const speechInput = useShenavaSpeechInput((transcript, { shouldSend }) => {
     const current = text.trimEnd();
-    onTextChange(current ? `${current} ${transcript}` : transcript);
+    const next = current ? `${current} ${transcript}` : transcript;
+    onTextChange(next);
+    if (shouldSend && !isBusy && !pendingQuestion) {
+      setAddMenuOpen(false);
+      onSubmit(next);
+      return;
+    }
     focusComposer();
   });
-
-  const isBusy = status === "submitted" || status === "streaming";
   const isChatMode = agentMode === "chat";
   const modelConfig = resolveModel(model);
   const isCodexProvider = model.providerId === CODEX_PROVIDER_ID;
@@ -192,7 +197,9 @@ export function ChatComposer({
 
   useEffect(() => {
     return window.desktop.speech.wakeWord.onActivate(() => {
-      if (!isBusy && !pendingQuestion) void speechInput.handleMicrophone();
+      if (!isBusy && !pendingQuestion) {
+        void speechInput.handleMicrophone({ autoSend: true });
+      }
     });
   }, [isBusy, pendingQuestion, speechInput.handleMicrophone]);
 
