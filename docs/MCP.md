@@ -20,6 +20,22 @@ Save the server and use **Test connection**. A successful test reports the
 number of tools returned by the server. Enabling a server makes its tools
 available to new General/Agent-mode turns in that workspace.
 
+### Optional hosted web search
+
+To opt in to hosted web search and URL retrieval, add a server under **Settings
+→ MCP servers** for the workspace where you want to use it:
+
+- **Name:** `Parallel Search`
+- **Transport:** **HTTP**
+- **URL:** `https://search.parallel.ai/mcp`
+
+This no-key option needs no headers. It is not installed, enabled, selected, or
+made the default automatically: you explicitly choose the workspace and server,
+and every tool call still requires explicit approval. When you use its tools,
+user-provided search objectives, search queries, and requested URLs are sent to
+Parallel. See the [Parallel Search MCP documentation](https://docs.parallel.ai/integrations/mcp/search-mcp)
+for service details.
+
 ## Choose servers for one chat
 
 Open the **+** menu in the message composer to see the MCP servers configured
