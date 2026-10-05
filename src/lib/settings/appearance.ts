@@ -18,13 +18,18 @@ export type ColorTheme = (typeof COLOR_THEMES)[number];
 export const FONT_SIZES = ["small", "medium", "large", "x-large"] as const;
 export type FontSize = (typeof FONT_SIZES)[number];
 
+export const THEME_MODES = ["light", "dark", "system"] as const;
+export type ThemeMode = (typeof THEME_MODES)[number];
+
 export type AppearanceSettings = {
+  themeMode: ThemeMode;
   fontFamily: string;
   fontSize: FontSize;
   colorTheme: ColorTheme;
 };
 
 export const DEFAULT_APPEARANCE_SETTINGS: AppearanceSettings = {
+  themeMode: "light",
   fontFamily: DEFAULT_FONT_FAMILY,
   fontSize: "medium",
   colorTheme: "default",
@@ -137,6 +142,7 @@ const LEGACY_FONT_MAP: Record<string, string> = {
   system: SYSTEM_FONT_VALUE,
 };
 
+const THEME_MODE_SET = new Set<string>(THEME_MODES);
 const COLOR_THEME_SET = new Set<string>(COLOR_THEMES);
 const FONT_SIZE_SET = new Set<string>(FONT_SIZES);
 const MAX_FONT_FAMILY_LENGTH = 120;
@@ -185,6 +191,11 @@ export function sanitizeAppearanceSettings(value: unknown): AppearanceSettings {
       : {};
 
   return {
+    themeMode:
+      typeof settings.themeMode === "string" &&
+      THEME_MODE_SET.has(settings.themeMode)
+        ? (settings.themeMode as ThemeMode)
+        : DEFAULT_APPEARANCE_SETTINGS.themeMode,
     fontFamily: sanitizeFontFamily(settings.fontFamily),
     fontSize: sanitizeFontSize(settings.fontSize),
     colorTheme:

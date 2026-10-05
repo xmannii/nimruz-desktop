@@ -2,11 +2,13 @@
 
 import { Button } from "@/components/ui/button";
 import { MoonIcon, SunIcon } from "lucide-react";
+import { useAppearanceSettings } from "@/hooks/use-appearance-settings";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
 export function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme();
+  const { resolvedTheme } = useTheme();
+  const { setThemeMode } = useAppearanceSettings();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -21,7 +23,7 @@ export function ThemeToggle() {
       className="h-8 gap-1.5 px-2.5 text-xs"
       aria-label={isDark ? "تم روشن" : "تم تیره"}
       disabled={!mounted}
-      onClick={() => setTheme(isDark ? "light" : "dark")}
+      onClick={() => setThemeMode(isDark ? "light" : "dark")}
     >
       {isDark ? (
         <>

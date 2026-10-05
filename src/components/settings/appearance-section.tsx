@@ -44,8 +44,9 @@ const THEME_OPTIONS = [
 ] as const;
 
 export function AppearanceSettingsSection() {
-  const { theme, setTheme } = useTheme();
-  const { appearance, isHydrated, updateAppearance } = useAppearanceSettings();
+  const { theme } = useTheme();
+  const { appearance, isHydrated, updateAppearance, setThemeMode } =
+    useAppearanceSettings();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -77,7 +78,7 @@ export function AppearanceSettingsSection() {
                 type="button"
                 disabled={!mounted}
                 aria-pressed={isSelected}
-                onClick={() => setTheme(option.value)}
+                onClick={() => setThemeMode(option.value)}
                 className={cn(
                   "rounded-2xl border px-3.5 py-3 text-right transition-colors",
                   isSelected

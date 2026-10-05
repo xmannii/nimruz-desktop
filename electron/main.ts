@@ -20,6 +20,7 @@ import { CodexService } from "./codex/service";
 import { CompanionController } from "./companion/controller";
 import { registerIpcHandlers } from "./ipc";
 import {
+  isAllowedRendererPermission,
   isSafeExternalHttpUrl,
   isTrustedRendererUrl,
 } from "./renderer-security";
@@ -228,11 +229,9 @@ async function createWindow() {
         permission === "media" && "mediaTypes" in details
           ? (details.mediaTypes ?? [])
           : [];
-      const audioOnly =
-        permission === "media" &&
-        mediaTypes.includes("audio") &&
-        !mediaTypes.includes("video");
-      callback(Boolean(trusted && audioOnly));
+      callback(
+        Boolean(trusted && isAllowedRendererPermission(permission, mediaTypes))
+      );
     }
   );
   mainWindow.webContents.session.setPermissionCheckHandler(
@@ -241,11 +240,13 @@ async function createWindow() {
         (webContents === mainWindow?.webContents ||
           webContents === companion?.getWindow()?.webContents) &&
         isTrustedRendererUrl(requestingOrigin, rendererUrl);
-      const audioOnly =
-        permission === "media" &&
-        "mediaType" in details &&
-        details.mediaType === "audio";
-      return Boolean(trusted && audioOnly);
+      const mediaTypes =
+        permission === "media" && "mediaType" in details && details.mediaType
+          ? [details.mediaType]
+          : [];
+      return Boolean(
+        trusted && isAllowedRendererPermission(permission, mediaTypes)
+      );
     }
   );
 

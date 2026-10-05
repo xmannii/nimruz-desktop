@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  isAllowedRendererPermission,
   isSafeExternalHttpUrl,
   isTrustedRendererUrl,
 } from "./renderer-security";
@@ -25,4 +26,14 @@ test("only opens credential-free HTTP(S) URLs externally", () => {
   assert.equal(isSafeExternalHttpUrl("javascript:alert(1)"), false);
   assert.equal(isSafeExternalHttpUrl("https://user:pass@example.com/"), false);
   assert.equal(isSafeExternalHttpUrl("not a url"), false);
+});
+
+test("grants clipboard writes and audio-only capture to the renderer", () => {
+  assert.equal(isAllowedRendererPermission("clipboard-sanitized-write"), true);
+  assert.equal(isAllowedRendererPermission("clipboard-read"), false);
+  assert.equal(isAllowedRendererPermission("media", ["audio"]), true);
+  assert.equal(isAllowedRendererPermission("media", ["audio", "video"]), false);
+  assert.equal(isAllowedRendererPermission("media", ["video"]), false);
+  assert.equal(isAllowedRendererPermission("media"), false);
+  assert.equal(isAllowedRendererPermission("geolocation"), false);
 });

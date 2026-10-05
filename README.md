@@ -42,7 +42,7 @@ Nimruz turns a conversation into a place where work can actually happen.
 - Run shell commands, web searches, and workspace MCP tools; sensitive operations remain approval-gated.
 - Break down longer work into plans, tasks, and independent subagents.
 - Follow every run in a tool timeline, with files, artifacts, tasks, and activity in the side panel.
-- Attach files and artifacts to a prompt, or mention them with `@`.
+- Attach files and artifacts to a prompt, paste screenshots straight from the clipboard, or mention files with `@`.
 
 The important part is the boundary: Nimruz scopes tools to the selected workspace and keeps risky actions visible before they run.
 

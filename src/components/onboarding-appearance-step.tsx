@@ -20,8 +20,9 @@ const MODE_OPTIONS = [
 ] as const;
 
 export function OnboardingAppearanceStep() {
-  const { theme, setTheme } = useTheme();
-  const { appearance, isHydrated, updateAppearance } = useAppearanceSettings();
+  const { theme } = useTheme();
+  const { appearance, isHydrated, updateAppearance, setThemeMode } =
+    useAppearanceSettings();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -43,7 +44,7 @@ export function OnboardingAppearanceStep() {
                 type="button"
                 disabled={!mounted}
                 aria-pressed={isSelected}
-                onClick={() => setTheme(option.value)}
+                onClick={() => setThemeMode(option.value)}
                 className={cn(
                   "flex flex-col items-center gap-1.5 rounded-xl border px-2 py-2.5 text-xs transition-colors",
                   isSelected
