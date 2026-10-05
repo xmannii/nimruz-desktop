@@ -4,6 +4,7 @@ import { NimruzLogo } from "@/components/logo";
 import { ShenavaDownloadIndicator } from "@/components/speech/shenava-download-indicator";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
+import { useAppearanceSettings } from "@/hooks/use-appearance-settings";
 import type { WindowState } from "@/lib/desktop-api";
 import { APP_NAME_FA } from "@/lib/branding";
 import { cn } from "@/lib/utils";
@@ -133,7 +134,8 @@ function TitleBarIconButton({
 }
 
 function ThemeTitleBarButton() {
-  const { resolvedTheme, setTheme } = useTheme();
+  const { resolvedTheme } = useTheme();
+  const { setThemeMode } = useAppearanceSettings();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
@@ -143,7 +145,7 @@ function ThemeTitleBarButton() {
   return (
     <TitleBarIconButton
       label={isDark ? "تم روشن" : "تم تیره"}
-      onClick={() => setTheme(isDark ? "light" : "dark")}
+      onClick={() => setThemeMode(isDark ? "light" : "dark")}
       className={!mounted ? "opacity-50" : undefined}
     >
       {isDark ? <SunIcon /> : <MoonIcon />}
