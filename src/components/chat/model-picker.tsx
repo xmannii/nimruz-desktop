@@ -3,6 +3,7 @@
 import { useAppShell } from "@/components/app-shell-context";
 import { Anthropic, DeepSeek, OpenAI } from "@/components/provider-logos";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Popover,
   PopoverContent,
@@ -11,10 +12,16 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { ModelConfig, ProviderModelRef } from "@/lib/models/catalog";
 import { formatModelPrice, formatTokenCount } from "@/lib/models";
+import { filterModelGroups } from "@/lib/models/model-search";
 import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
-import { CheckIcon, ChevronDownIcon, Settings2Icon } from "lucide-react";
-import { useMemo, useState } from "react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  SearchIcon,
+  Settings2Icon,
+} from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 
 type ModelPickerProps = {
   value: ProviderModelRef;
@@ -75,13 +82,31 @@ export function ModelPicker({
   compact = false,
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const { enabledModelGroups, resolveModel } = useAppShell();
   const selected = resolveModel(value);
 
-  const groups = useMemo(() => enabledModelGroups, [enabledModelGroups]);
+  const groups = useMemo(
+    () => filterModelGroups(enabledModelGroups, query),
+    [enabledModelGroups, query]
+  );
+
+  function handleOpenChange(nextOpen: boolean) {
+    setOpen(nextOpen);
+    if (!nextOpen) setQuery("");
+  }
+
+  function selectModel(model: ModelConfig) {
+    onValueChange({
+      providerId: model.providerId,
+      modelId: model.modelId,
+    });
+    handleOpenChange(false);
+  }
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger
         disabled={disabled}
         title={compact ? selected?.fullName : undefined}
@@ -115,6 +140,7 @@ export function ModelPicker({
         align="start"
         side="top"
         sideOffset={8}
+        initialFocus={searchInputRef}
         className="w-[min(20rem,calc(100vw-2rem))] gap-0 overflow-hidden rounded-xl p-0"
       >
         <div
@@ -127,11 +153,39 @@ export function ModelPicker({
           </span>
         </div>
 
+        {enabledModelGroups.length > 0 ? (
+          <div className="relative border-b border-border/60 p-1.5" dir="rtl">
+            <SearchIcon className="pointer-events-none absolute inset-y-0 start-4 my-auto size-3.5 text-muted-foreground" />
+            <Input
+              type="search"
+              name="model-picker-search"
+              ref={searchInputRef}
+              autoComplete="off"
+              aria-label="جستجو در مدل‌ها"
+              placeholder="جستجوی مدل…"
+              value={query}
+              className="h-8 ps-8 text-xs md:text-xs"
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter") return;
+                const first = groups[0]?.models[0];
+                if (!first) return;
+                event.preventDefault();
+                selectModel(first);
+              }}
+            />
+          </div>
+        ) : null}
+
         <ScrollArea className="h-64" dir="ltr">
           <div className="flex flex-col gap-1 p-1.5" dir="ltr">
-            {groups.length === 0 ? (
+            {enabledModelGroups.length === 0 ? (
               <div className="px-3 py-8 text-center text-xs text-muted-foreground" dir="rtl">
                 مدلی فعال نیست. از تنظیمات مدل‌ها یکی را فعال کنید.
+              </div>
+            ) : groups.length === 0 ? (
+              <div className="px-3 py-8 text-center text-xs text-muted-foreground" dir="rtl">
+                مدلی با این عبارت پیدا نشد.
               </div>
             ) : (
               groups.map((group) => (
@@ -152,13 +206,7 @@ export function ModelPicker({
                           "mb-0.5 h-auto w-full justify-start gap-2.5 rounded-lg px-2 py-2 text-left whitespace-normal",
                           isSelected && "bg-muted"
                         )}
-                        onClick={() => {
-                          onValueChange({
-                            providerId: model.providerId,
-                            modelId: model.modelId,
-                          });
-                          setOpen(false);
-                        }}
+                        onClick={() => selectModel(model)}
                       >
                         <ProviderAvatar name={model.fullName} />
                         <span className="min-w-0 flex-1">
@@ -226,7 +274,7 @@ export function ModelPicker({
                 search={{ provider: undefined }}
               />
             }
-            onClick={() => setOpen(false)}
+            onClick={() => handleOpenChange(false)}
           >
             <Settings2Icon data-icon="inline-start" />
             مدیریت مدل‌ها
