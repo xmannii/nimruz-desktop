@@ -67,6 +67,7 @@ import type { ChatStatus } from "ai";
 import { ArrowUpIcon, ListTodoIcon, PlayIcon, SquareIcon } from "lucide-react";
 import {
   type ChangeEvent,
+  type ClipboardEvent,
   type FormEvent,
   type KeyboardEvent,
   type ReactNode,
@@ -77,7 +78,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { shouldExpandComposer } from "./composer-utils";
+import { getPastedFiles, shouldExpandComposer } from "./composer-utils";
 
 async function fileToBase64(file: File): Promise<string> {
   const buffer = await file.arrayBuffer();
@@ -309,7 +310,7 @@ export function ChatComposer({
     onTextChange(removeMention(text, mention));
   }
 
-  async function handleImportFiles(files: FileList | null) {
+  async function handleImportFiles(files: FileList | File[] | null) {
     if (!files || files.length === 0 || !workspaceId) return;
 
     const selected = Array.from(files);
@@ -387,6 +388,18 @@ export function ChatComposer({
     : canImport || canAttach
       ? "افزودن فایل"
       : "برای افزودن فایل یک فضای کاری لازم است";
+
+  function handlePaste(event: ClipboardEvent<HTMLTextAreaElement>) {
+    const files = getPastedFiles(event.clipboardData);
+    if (files.length === 0) return;
+
+    event.preventDefault();
+    if (!canImport || isImporting) {
+      if (!canImport) toast.error(attachmentTitle);
+      return;
+    }
+    void handleImportFiles(files);
+  }
 
   function focusComposer() {
     requestAnimationFrame(() => {
@@ -539,6 +552,7 @@ export function ChatComposer({
     onChange: (e: ChangeEvent<HTMLTextAreaElement>) =>
       handleTextChange(e.currentTarget),
     onKeyDown: handleKeyDown,
+    onPaste: handlePaste,
     disabled: isBusy || Boolean(pendingQuestion),
   };
 
