@@ -7,7 +7,9 @@ import {
   saveAppearanceSettings,
   sanitizeAppearanceSettings,
   type AppearanceSettings,
+  type ThemeMode,
 } from "@/lib/settings/appearance";
+import { useTheme } from "next-themes";
 import {
   createContext,
   useCallback,
@@ -36,11 +38,15 @@ type AppearanceContextValue = {
   appearance: AppearanceSettings;
   isHydrated: boolean;
   updateAppearance: (settings: AppearanceSettings) => void;
+  setThemeMode: (themeMode: ThemeMode) => void;
 };
 
 const AppearanceContext = createContext<AppearanceContextValue | null>(null);
 
 export function AppearanceProvider({ children }: { children: ReactNode }) {
+  // The renderer origin uses a random localhost port per launch, so next-themes'
+  // localStorage does not survive restarts. SQLite is the source of truth.
+  const { setTheme } = useTheme();
   const [appearance, setAppearance] = useState<AppearanceSettings>(
     DEFAULT_APPEARANCE_SETTINGS
   );
@@ -56,6 +62,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         setAppearance(loaded);
         applyAppearanceSettings(loaded);
+        setTheme(loaded.themeMode);
       })
       .catch((error) => {
         console.error("Failed to load appearance settings:", error);
@@ -70,7 +77,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [setTheme]);
 
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
@@ -79,6 +86,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
         const next = sanitizeAppearanceSettings(JSON.parse(event.newValue));
         setAppearance(next);
         applyAppearanceSettings(next);
+        setTheme(next.themeMode);
       } catch {
         // Ignore malformed cross-window state.
       }
@@ -86,7 +94,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
 
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, []);
+  }, [setTheme]);
 
   useEffect(() => {
     return () => {
@@ -125,9 +133,17 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     }, SAVE_DEBOUNCE_MS);
   }, []);
 
+  const setThemeMode = useCallback(
+    (themeMode: ThemeMode) => {
+      setTheme(themeMode);
+      updateAppearance({ ...appearance, themeMode });
+    },
+    [appearance, setTheme, updateAppearance]
+  );
+
   return (
     <AppearanceContext.Provider
-      value={{ appearance, isHydrated, updateAppearance }}
+      value={{ appearance, isHydrated, updateAppearance, setThemeMode }}
     >
       {children}
     </AppearanceContext.Provider>

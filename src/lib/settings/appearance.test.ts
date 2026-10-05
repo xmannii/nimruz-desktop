@@ -19,3 +19,14 @@ test("preserves an explicit system-font selection", () => {
     SYSTEM_FONT_VALUE
   );
 });
+
+test("persists a valid theme mode and falls back to light", () => {
+  assert.equal(DEFAULT_APPEARANCE_SETTINGS.themeMode, "light");
+  assert.equal(sanitizeAppearanceSettings({ themeMode: "dark" }).themeMode, "dark");
+  assert.equal(
+    sanitizeAppearanceSettings({ themeMode: "system" }).themeMode,
+    "system"
+  );
+  assert.equal(sanitizeAppearanceSettings({ themeMode: "neon" }).themeMode, "light");
+  assert.equal(sanitizeAppearanceSettings({}).themeMode, "light");
+});
