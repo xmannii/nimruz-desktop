@@ -99,12 +99,15 @@ test("generates OpenRouter speech and serves it with range requests", async () =
 
       const body = (await requests[0].json()) as Record<string, unknown>;
       assert.equal(requests[0].headers.get("authorization"), "Bearer sk-or-test-key");
-      // Gemini gets the tone as direction, not as text to read aloud.
-      assert.equal(body.model, "google/gemini-tts");
-      assert.equal(body.instructions, undefined);
-      assert.match(String(body.input), /### PERFORMANCE\nآرام بخوان/);
-      assert.match(String(body.input), /#### TRANSCRIPT\nسلام دنیا$/);
-      assert.equal(body.voice, "Kore");
+      // The script stays verbatim; OpenRouter maps `instructions` to
+      // Gemini's speech_metadata.style, which is never read aloud.
+      assert.deepEqual(body, {
+        model: "google/gemini-tts",
+        input: "سلام دنیا",
+        response_format: "mp3",
+        voice: "Kore",
+        instructions: "آرام بخوان",
+      });
 
       const full = await service.handleMediaRequest(
         new Request(`nimruz-media://item/${item.id}`)
@@ -434,9 +437,9 @@ test("synthesizes Gemini TTS as WAV", async () => {
       assert.equal(store.get(item.id)?.error, null);
       const body = JSON.stringify(await requests[0].json());
       assert.match(body, /Kore/);
+      // Older preview models get the tone as a structured prompt.
       assert.match(body, /### PERFORMANCE\\nگرم و آرام/);
       assert.match(body, /#### TRANSCRIPT\\nسلام/);
-      // The old "tone: text" prefix that Gemini read aloud is gone.
       assert.doesNotMatch(body, /گرم و آرام: سلام/);
       const done = store.get(item.id)!;
       assert.equal(done.mimeType, "audio/wav");
@@ -695,6 +698,36 @@ test("keeps the separate instructions field for OpenAI-style TTS", async () => {
       const body = (await requests[0].json()) as Record<string, unknown>;
       assert.equal(body.input, "Hello there");
       assert.equal(body.instructions, "warm and calm");
+    }
+  );
+});
+
+test("sends Gemini 3.8 tone as speech_metadata.style, never in the text", async () => {
+  const pcm = Buffer.alloc(32, 2).toString("base64");
+  await withStudio(
+    {
+      [`POST ${GOOGLE_API}/models/gemini-3.8-flash-tts:generateContent`]: () =>
+        Response.json({
+          candidates: [{ content: { parts: [{ inlineData: { mimeType: "audio/L16;codec=pcm;rate=24000", data: pcm } }] } }],
+        }),
+    },
+    async ({ service, store, requests }) => {
+      const item = await service.generateSpeech({
+        provider: "google",
+        modelId: "gemini-3.8-flash-tts",
+        voice: "Kore",
+        input: "سلام",
+        instructions: "مثل یک قصه‌گو",
+      });
+      await waitFor(() => store.get(item.id)?.status === "done");
+      const body = (await requests[0].json()) as {
+        contents: Array<{ parts: Array<{ text: string; speech_metadata?: { style: string } }> }>;
+      };
+      assert.deepEqual(body.contents[0].parts[0], {
+        text: "سلام",
+        speech_metadata: { style: "مثل یک قصه‌گو" },
+      });
+      assert.equal(store.get(item.id)?.mimeType, "audio/wav");
     }
   );
 });

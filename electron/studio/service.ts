@@ -5,7 +5,7 @@ import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { generateImage, generateSpeech } from "ai";
+import { generateImage } from "ai";
 import { APP_NAME } from "@/lib/branding";
 import {
   parseElevenLabsModels,
@@ -48,7 +48,7 @@ import {
   transcribeWithGemini,
   uploadGeminiFile,
 } from "./gemini-audio";
-import { buildGeminiTtsPrompt, isGeminiTtsModel } from "./tts-prompt";
+import { buildGeminiTtsRequest, geminiAudioToFile } from "./tts-prompt";
 import {
   isStudioItemId,
   StudioStore,
@@ -939,24 +939,33 @@ export class StudioService {
     void this.track(record.id, async (signal) => {
       this.patch(record.id, { status: "running" });
       if (provider === "google") {
-        const result = await generateSpeech({
-          model: createGoogleGenerativeAI({
-            apiKey,
-            baseURL: auth.baseUrl,
-            fetch: this.fetch,
-          }).speech(model),
-          // Direction goes into a structured prompt, never prefixed to the
-          // script, so Gemini does not read it aloud.
-          text: buildGeminiTtsPrompt(input, instructions),
-          voice: voice || undefined,
-          abortSignal: signal,
-          maxRetries: 1,
-        });
-        await this.saveMedia(
-          record.id,
-          Buffer.from(result.audio.uint8Array),
-          result.audio.mediaType || "audio/wav"
+        // Called directly so the tone travels as speech_metadata.style (or a
+        // structured prompt on older models) instead of being spoken.
+        const response = await ensureOk(
+          await this.fetch(
+            `${auth.baseUrl}/models/${encodeURIComponent(model)}:generateContent`,
+            {
+              method: "POST",
+              signal,
+              headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+              body: JSON.stringify(
+                buildGeminiTtsRequest({
+                  modelId: model,
+                  text: input,
+                  voice: voice || undefined,
+                  style: instructions || undefined,
+                })
+              ),
+            }
+          )
         );
+        const payload = (await response.json()) as {
+          candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { mimeType?: string; data?: string } }> } }>;
+        };
+        const inline = payload.candidates?.[0]?.content?.parts?.find((part) => part.inlineData?.data)?.inlineData;
+        if (!inline?.data) throw new StudioError("Google صدایی برنگرداند.");
+        const file = geminiAudioToFile(Buffer.from(inline.data, "base64"), inline.mimeType ?? "audio/L16;rate=24000");
+        await this.saveMedia(record.id, file.data, file.mimeType);
         return;
       }
       const response =
@@ -984,12 +993,12 @@ export class StudioService {
               headers: this.openRouterHeaders(apiKey),
               body: JSON.stringify({
                 model,
-                // OpenAI-style models take a separate instructions field;
-                // Gemini needs the direction embedded as a structured prompt.
-                input: isGeminiTtsModel(model) ? buildGeminiTtsPrompt(input, instructions) : input,
+                // Keep the script verbatim: OpenRouter sends `instructions` to
+                // Gemini as speech_metadata.style, which is never spoken.
+                input,
                 response_format: "mp3",
                 ...(voice ? { voice } : {}),
-                ...(instructions && !isGeminiTtsModel(model) ? { instructions } : {}),
+                ...(instructions ? { instructions } : {}),
                 ...(speed ? { speed } : {}),
               }),
             });
