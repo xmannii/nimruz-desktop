@@ -92,9 +92,15 @@ export function useStudioItemActions(item: StudioItem) {
 export function StudioMediaTile({
   item,
   siblings,
+  size,
+  onNaturalRatio,
 }: {
   item: StudioItem;
   siblings?: StudioItem[];
+  /** Exact box from the justified layout; falls back to a square/16:9 tile. */
+  size?: { width: number; height: number };
+  /** Reports the media's real width/height once it loads. */
+  onNaturalRatio?: (id: string, ratio: number) => void;
 }) {
   const { openItem } = useStudio();
   const actions = useStudioItemActions(item);
@@ -120,9 +126,10 @@ export function StudioMediaTile({
   const tile = (
     <div
       className={cn(
-        "group/tile relative w-full overflow-hidden rounded-xl bg-muted",
-        item.kind === "video" ? "aspect-video" : "aspect-square"
+        "group/tile relative overflow-hidden rounded-xl border border-border/70 bg-muted",
+        !size && (item.kind === "video" ? "aspect-video w-full" : "aspect-square w-full")
       )}
+      style={size ? { width: size.width, height: size.height } : undefined}
     >
       {ready ? (
         <button
@@ -147,6 +154,12 @@ export function StudioMediaTile({
                 loop
                 playsInline
                 preload="metadata"
+                onLoadedMetadata={(event) => {
+                  const video = event.currentTarget;
+                  if (video.videoWidth && video.videoHeight) {
+                    onNaturalRatio?.(item.id, video.videoWidth / video.videoHeight);
+                  }
+                }}
                 className="size-full object-cover"
               />
               <span className="absolute start-2 bottom-2 flex size-7 items-center justify-center rounded-full bg-black/50 text-white transition-opacity group-hover/tile:opacity-0">
@@ -159,7 +172,13 @@ export function StudioMediaTile({
               alt={item.prompt}
               loading="lazy"
               decoding="async"
-              onLoad={() => setLoaded(true)}
+              onLoad={(event) => {
+                setLoaded(true);
+                const image = event.currentTarget;
+                if (image.naturalWidth && image.naturalHeight) {
+                  onNaturalRatio?.(item.id, image.naturalWidth / image.naturalHeight);
+                }
+              }}
               className={cn("size-full object-cover transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")}
             />
           )}
@@ -238,7 +257,7 @@ export function StudioMediaTile({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div className="w-full" />}>{tile}</ContextMenuTrigger>
+      <ContextMenuTrigger render={<div className={size ? "shrink-0" : "w-full"} />}>{tile}</ContextMenuTrigger>
       <ContextMenuContent dir="rtl" className="min-w-52">
         {ready ? (
           <>

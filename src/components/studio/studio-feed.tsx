@@ -4,14 +4,17 @@ import { StudioMediaTile } from "@/components/studio/studio-media-tile";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStudioItems } from "@/hooks/use-studio-items";
-import { groupStudioItemsByDate } from "@/lib/studio/format";
-import type { StudioKind } from "@/lib/studio/types";
+import { groupStudioItemsByDate, parseAspectRatio } from "@/lib/studio/format";
+import { computeJustifiedRows } from "@/lib/studio/layout";
+import type { StudioItem, StudioKind } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
 import { ImageUpIcon } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type DragEvent,
@@ -20,6 +23,74 @@ import {
 } from "react";
 
 export type StudioFeedHandle = { scrollToTop: () => void };
+
+const GAP = 8;
+
+/** Width of an element, kept current with a ResizeObserver. */
+function useElementWidth<T extends HTMLElement>() {
+  const ref = useRef<T>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+    setWidth(element.clientWidth);
+    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width] as const;
+}
+
+/**
+ * Rows of media at their real aspect ratios, scaled so every full row
+ * spans the container (a "justified" photo layout).
+ */
+function JustifiedGallery({
+  items,
+  siblings,
+  width,
+  targetHeight,
+  naturalRatios,
+  onNaturalRatio,
+}: {
+  items: StudioItem[];
+  siblings: StudioItem[];
+  width: number;
+  targetHeight: number;
+  naturalRatios: Map<string, number>;
+  onNaturalRatio: (id: string, ratio: number) => void;
+}) {
+  const rows = useMemo(() => {
+    const ratios = items.map(
+      (item) =>
+        naturalRatios.get(item.id) ??
+        parseAspectRatio(item.params.aspectRatio) ??
+        (item.kind === "video" ? 16 / 9 : 1)
+    );
+    return computeJustifiedRows(ratios, width, { targetHeight, gap: GAP });
+  }, [items, naturalRatios, width, targetHeight]);
+
+  return (
+    <div className="flex flex-col" style={{ gap: GAP }}>
+      {rows.map((row, rowIndex) => (
+        <div key={rowIndex} className="flex" style={{ gap: GAP, height: row.height }}>
+          {row.boxes.map((box) => {
+            const item = items[box.index];
+            return (
+              <StudioMediaTile
+                key={item.id}
+                item={item}
+                siblings={siblings}
+                size={{ width: box.width, height: box.height }}
+                onNaturalRatio={onNaturalRatio}
+              />
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /**
  * Gallery of generations, newest first and grouped by day, with the
@@ -43,6 +114,19 @@ export function StudioFeed({
   const scrollerRef = useRef<HTMLDivElement>(null);
   const newestId = useRef<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [contentRef, contentWidth] = useElementWidth<HTMLDivElement>();
+  const [naturalRatios, setNaturalRatios] = useState<Map<string, number>>(() => new Map());
+  const targetHeight = kind === "video" ? 190 : 210;
+
+  const rememberRatio = useCallback((id: string, ratio: number) => {
+    setNaturalRatios((current) => {
+      const previous = current.get(id);
+      if (previous !== undefined && Math.abs(previous - ratio) < 0.01) return current;
+      const next = new Map(current);
+      next.set(id, ratio);
+      return next;
+    });
+  }, []);
 
   useImperativeHandle(ref, () => ({
     scrollToTop: () => scrollerRef.current?.scrollTo({ top: 0, behavior: "smooth" }),
@@ -68,12 +152,7 @@ export function StudioFeed({
     if (onDropFiles) onDropFiles(Array.from(event.dataTransfer.files));
   }
 
-  const gridClass = cn(
-    "grid gap-2",
-    kind === "video"
-      ? "grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]"
-      : "grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))]"
-  );
+  const gridClass = "grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-2";
 
   return (
     <div
@@ -93,36 +172,41 @@ export function StudioFeed({
     >
       <div ref={scrollerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <div className="mx-auto flex min-h-full w-full max-w-6xl flex-col px-4 py-5 sm:px-6">
-          {isLoading && items.length === 0 ? (
-            <div className={gridClass}>
-              {Array.from({ length: kind === "video" ? 3 : 6 }, (_, index) => (
-                <Skeleton
-                  key={index}
-                  className={cn("rounded-xl", kind === "video" ? "aspect-video" : "aspect-square")}
-                />
-              ))}
-            </div>
-          ) : items.length === 0 ? (
-            <div className="my-auto">{empty}</div>
-          ) : (
-            <div className="flex flex-col gap-6">
-              {groupStudioItemsByDate(items).map((group) => (
-                <section key={group.label} className="flex flex-col gap-2.5">
-                  <h2 className="text-xs font-medium text-muted-foreground">{group.label}</h2>
-                  <div className={gridClass}>
-                    {group.items.map((item) => (
-                      <StudioMediaTile key={item.id} item={item} siblings={items} />
-                    ))}
-                  </div>
-                </section>
-              ))}
-              {hasMore ? (
-                <Button type="button" variant="ghost" size="sm" className="self-center" onClick={loadMore}>
-                  موارد قدیمی‌تر
-                </Button>
-              ) : null}
-            </div>
-          )}
+          <div ref={contentRef} className="flex w-full flex-1 flex-col">
+            {isLoading && items.length === 0 ? (
+              <div className={gridClass}>
+                {Array.from({ length: kind === "video" ? 3 : 6 }, (_, index) => (
+                  <Skeleton
+                    key={index}
+                    className={cn("rounded-xl", kind === "video" ? "aspect-video" : "aspect-square")}
+                  />
+                ))}
+              </div>
+            ) : items.length === 0 ? (
+              <div className="my-auto">{empty}</div>
+            ) : (
+              <div className="flex flex-col gap-6">
+                {groupStudioItemsByDate(items).map((group) => (
+                  <section key={group.label} className="flex flex-col gap-2.5">
+                    <h2 className="text-xs font-medium text-muted-foreground">{group.label}</h2>
+                    <JustifiedGallery
+                      items={group.items}
+                      siblings={items}
+                      width={contentWidth}
+                      targetHeight={targetHeight}
+                      naturalRatios={naturalRatios}
+                      onNaturalRatio={rememberRatio}
+                    />
+                  </section>
+                ))}
+                {hasMore ? (
+                  <Button type="button" variant="ghost" size="sm" className="self-center" onClick={loadMore}>
+                    موارد قدیمی‌تر
+                  </Button>
+                ) : null}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
