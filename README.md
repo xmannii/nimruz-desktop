@@ -146,7 +146,7 @@ Pre-built installers are published on every [GitHub Release](https://github.com/
 | --- | --- | --- |
 | **macOS** (Apple Silicon) | `.dmg` | [Latest release](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Windows** | `.exe` (NSIS) | [Latest release](https://github.com/xmannii/nimruz-desktop/releases/latest) |
-| **Linux** | AppImage | Build locally with `pnpm dist` |
+| **Linux** (x64) | `.AppImage` | [Latest release](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 
 The rolling [`dev-latest`](https://github.com/xmannii/nimruz-desktop/releases/tag/dev-latest) prerelease may include Telegram assistant changes before they reach a stable release.
 
@@ -166,6 +166,18 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 
 1. Download the latest `.exe` installer from [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest).
 2. Run the installer and follow the prompts.
+
+### Linux install
+
+1. Download the latest `.AppImage` from [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest).
+2. Make it executable and run it:
+
+```bash
+chmod +x Nimruz-*.AppImage
+./Nimruz-*.AppImage
+```
+
+On Ubuntu 22.04 and newer, AppImages need FUSE 2 (`libfuse2`, or `libfuse2t64` on 24.04). Saved API keys are encrypted with your desktop keyring (GNOME Keyring or KWallet).
 
 ## Quick start
 

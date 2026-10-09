@@ -146,7 +146,7 @@
 | --- | --- | --- |
 | **macOS** (Apple Silicon) | `.dmg` | [آخرین نسخه](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Windows** | `.exe` (NSIS) | [آخرین نسخه](https://github.com/xmannii/nimruz-desktop/releases/latest) |
-| **Linux** | AppImage | ساخت محلی با `pnpm dist` |
+| **Linux** (x64) | `.AppImage` | [آخرین نسخه](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 
 نسخهٔ در حال توسعهٔ [`dev-latest`](https://github.com/xmannii/nimruz-desktop/releases/tag/dev-latest) ممکن است تغییرات دستیار تلگرام را پیش از انتشار پایدار داشته باشد.
 
@@ -166,6 +166,18 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 
 1. آخرین `.exe` را از [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) دانلود کنید.
 2. نصب‌کننده را اجرا کنید و مراحل را دنبال کنید.
+
+### نصب در لینوکس
+
+1. آخرین `.AppImage` را از [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest) دانلود کنید.
+2. آن را اجرایی کنید و اجرا کنید:
+
+```bash
+chmod +x Nimruz-*.AppImage
+./Nimruz-*.AppImage
+```
+
+در Ubuntu 22.04 و بعد از آن، AppImage به FUSE 2 نیاز دارد (`libfuse2` یا در 24.04 `libfuse2t64`). کلیدهای API با keyring دسکتاپ (GNOME Keyring یا KWallet) رمزنگاری می‌شوند.
 
 ## شروع سریع
 

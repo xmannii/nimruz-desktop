@@ -55,6 +55,10 @@ jobs:
             label: macOS
             artifact: dev-macos
             glob: release/*.dmg
+          - os: ubuntu-latest
+            label: Linux
+            artifact: dev-linux
+            glob: release/*.AppImage
 
     steps:
       - uses: actions/checkout@v4
@@ -106,6 +110,12 @@ jobs:
           name: dev-macos
           path: artifacts/macos
 
+      - name: Download Linux installer
+        uses: actions/download-artifact@v4
+        with:
+          name: dev-linux
+          path: artifacts/linux
+
       - name: Point rolling dev tag at this build
         shell: bash
         run: |
@@ -130,5 +140,6 @@ jobs:
           files: |
             artifacts/windows/*
             artifacts/macos/*
+            artifacts/linux/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
