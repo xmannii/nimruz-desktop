@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { featuredRank, isNewModel } from "./featured";
+import { featuredRank, isNewModel, supportsAudioTags } from "./featured";
 
 test("ranks the newest flagships first", () => {
   assert.equal(featuredRank("image", "google/gemini-nano-banana-2.1"), 0);
@@ -21,4 +21,12 @@ test("flags models released in the last two months as new", () => {
   assert.equal(isNewModel(now - 10 * 86_400_000, now), true);
   assert.equal(isNewModel(now - 90 * 86_400_000, now), false);
   assert.equal(isNewModel(null, now), false);
+});
+
+test("detects ElevenLabs models that understand audio tags", () => {
+  assert.equal(supportsAudioTags("elevenlabs/eleven-v3"), true);
+  assert.equal(supportsAudioTags("elevenlabs/eleven-v4-turbo"), true);
+  assert.equal(supportsAudioTags("eleven_v3"), true);
+  assert.equal(supportsAudioTags("elevenlabs/eleven-multilingual-v2"), false);
+  assert.equal(supportsAudioTags("google/gemini-3.8-flash-tts"), false);
 });

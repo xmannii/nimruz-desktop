@@ -52,3 +52,8 @@ const NEW_WINDOW_MS = 60 * 86_400_000;
 export function isNewModel(createdAt: number | null | undefined, now = Date.now()) {
   return typeof createdAt === "number" && now - createdAt < NEW_WINDOW_MS;
 }
+
+/** ElevenLabs v3/v4 understand inline audio tags such as [whispers]. */
+export function supportsAudioTags(modelId: string) {
+  return /eleven[-_]v[34](?:[-_]|$)/.test(modelId);
+}

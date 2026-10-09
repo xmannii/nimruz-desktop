@@ -8,7 +8,10 @@ function getSessionToken() {
   return sessionTokenPromise;
 }
 
-/** Rewrites a rough (often Persian) idea into a detailed English prompt. */
+/**
+ * Rewrites a rough (often Persian) idea into a detailed English prompt, or
+ * with kind "speech-tags" adds ElevenLabs audio tags to a script.
+ */
 export async function requestPromptEnhancement(options: {
   kind: StudioEnhanceRequest["kind"];
   prompt: string;

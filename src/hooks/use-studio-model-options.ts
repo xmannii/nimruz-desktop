@@ -11,9 +11,10 @@ import type {
 } from "@/lib/studio/types";
 import { useMemo } from "react";
 
+/** Vendor sub-group inside a provider, e.g. "openai" within OpenRouter. */
 function groupFor(provider: string, id: string) {
-  if (provider === "google") return "Google AI Studio";
-  if (provider === "elevenlabs") return "ElevenLabs · کلید شخصی";
+  if (provider === "google") return "google";
+  if (provider === "elevenlabs") return "elevenlabs";
   return modelVendor(id);
 }
 
@@ -24,6 +25,7 @@ export function useImageModelOptions(models: StudioImageModel[]) {
         key: studioModelKey(model.provider, model.id),
         id: model.id,
         name: model.name,
+        provider: model.provider,
         group: groupFor(model.provider, model.id),
         rank: featuredRank("image", model.id),
         isNew: isNewModel(model.createdAt),
@@ -40,6 +42,7 @@ export function useVideoModelOptions(models: StudioVideoModel[]) {
         key: studioModelKey(model.provider, model.id),
         id: model.id,
         name: model.name,
+        provider: model.provider,
         group: groupFor(model.provider, model.id),
         rank: featuredRank("video", model.id),
         isNew: isNewModel(model.createdAt),
@@ -63,6 +66,7 @@ export function useSpeechModelOptions(models: StudioSpeechModel[]) {
         key: studioModelKey(model.provider, model.id),
         id: model.id,
         name: model.name,
+        provider: model.provider,
         group: groupFor(model.provider, model.id),
         rank: featuredRank("speech", model.id),
         isNew: isNewModel(model.createdAt),

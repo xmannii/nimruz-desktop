@@ -194,7 +194,8 @@ export type StudioConnectionStatus = {
 export type StudioConnections = Record<StudioConnectionId, StudioConnectionStatus>;
 
 export type StudioEnhanceRequest = {
-  kind: "image" | "video";
+  /** "speech-tags" adds ElevenLabs v3/v4 audio tags to a script. */
+  kind: "image" | "video" | "speech-tags";
   prompt: string;
   providerId?: string;
   model?: string;

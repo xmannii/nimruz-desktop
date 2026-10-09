@@ -24,6 +24,9 @@ import { useStudioCatalog } from "@/hooks/use-studio-catalog";
 import { useStudioItems } from "@/hooks/use-studio-items";
 import { useSpeechModelOptions } from "@/hooks/use-studio-model-options";
 import { retryStudioItem } from "@/lib/studio/actions";
+import { requestPromptEnhancement } from "@/lib/studio/enhance";
+import { supportsAudioTags } from "@/lib/studio/featured";
+import { useAppShell } from "@/components/app-shell-context";
 import {
   formatRelativeTime,
   isStudioItemBusy,
@@ -47,6 +50,7 @@ import {
   RotateCcwIcon,
   SearchIcon,
   SlidersHorizontalIcon,
+  SparklesIcon,
   SquareIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -246,6 +250,8 @@ export function SpeechStudio() {
   const [speed, setSpeed] = useState(preferences.speechSpeed ?? 1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isTagging, setIsTagging] = useState(false);
+  const { defaultModelRef } = useAppShell();
 
   const models = useMemo(() => catalog?.speech ?? [], [catalog]);
   const options = useSpeechModelOptions(models);
@@ -289,7 +295,32 @@ export function SpeechStudio() {
     }
   }
 
-  const seconds = Math.max(1, Math.round(text.trim().length / CHARS_PER_SECOND));
+  async function addAudioTags() {
+    if (!defaultModelRef || !text.trim()) return;
+    const original = text;
+    setIsTagging(true);
+    try {
+      const tagged = await requestPromptEnhancement({
+        kind: "speech-tags",
+        prompt: original,
+        model: defaultModelRef,
+      });
+      setText(tagged);
+      toast.success("برچسب‌های احساس اضافه شد.", {
+        action: { label: "بازگشت", onClick: () => setText(original) },
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "افزودن برچسب‌ها ناموفق بود.");
+    } finally {
+      setIsTagging(false);
+    }
+  }
+
+  const canTag = Boolean(model && supportsAudioTags(model.id));
+  const seconds = Math.max(
+    1,
+    Math.round(text.replace(/\[[^\]]*\]/g, "").trim().length / CHARS_PER_SECOND)
+  );
   const selectedVoice = model?.voices.find((candidate) => candidate.id === voice);
   const canSubmit = Boolean(text.trim() && model && (!needsOpenRouter || openRouterReady !== false));
 
@@ -360,7 +391,12 @@ export function SpeechStudio() {
               dir={text.trim() ? "auto" : "rtl"}
               value={text}
               maxLength={STUDIO_LIMITS.speechInput}
-              placeholder="متنی که می‌خواهید خوانده شود را اینجا بنویسید یا بچسبانید…"
+              readOnly={isTagging}
+              placeholder={
+                canTag
+                  ? "متن را بنویسید. برای حس بیشتر از برچسب‌هایی مثل [whispers] یا [laughs] استفاده کنید…"
+                  : "متنی که می‌خواهید خوانده شود را اینجا بنویسید یا بچسبانید…"
+              }
               aria-label="متن برای خواندن"
               className="min-h-56 w-full resize-none bg-transparent p-5 text-[17px] leading-9 outline-none placeholder:text-start placeholder:text-muted-foreground/60"
               onChange={(event) => setText(event.target.value)}
@@ -382,6 +418,24 @@ export function SpeechStudio() {
                 {isSubmitting ? <Spinner data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}
                 ساخت صدا
               </Button>
+              {canTag ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="rounded-full text-muted-foreground hover:text-foreground"
+                  disabled={!text.trim() || !defaultModelRef || isTagging}
+                  title={
+                    defaultModelRef
+                      ? "هوش مصنوعی برچسب‌هایی مثل [whispers] و [laughs] را به متن اضافه می‌کند؛ کلمات تغییر نمی‌کنند."
+                      : "برای این کار یک مدل گفتگو فعال کنید"
+                  }
+                  onClick={() => void addAudioTags()}
+                >
+                  {isTagging ? <Spinner data-icon="inline-start" /> : <SparklesIcon data-icon="inline-start" />}
+                  افزودن حس
+                </Button>
+              ) : null}
               <button
                 type="button"
                 className="flex min-w-0 items-center gap-1.5 rounded-full px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:pointer-events-none"
