@@ -17,9 +17,8 @@ import {
 import { toast } from "sonner";
 
 /**
- * Floating prompt dock shared by the image and video tabs. Enter generates,
- * Shift+Enter adds a line, and the prompt stays after generating so people
- * can iterate on it.
+ * Prompt dock shared by the image and video tabs. Enter generates and
+ * Shift+Enter adds a line; "use again" on any result restores its prompt.
  */
 export function StudioComposer({
   value,

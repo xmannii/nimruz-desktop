@@ -142,21 +142,13 @@ export function ImageStudio() {
         imageCount: count,
         imageStyle: styleId,
       });
-      // Keep the prompt so it is easy to iterate; references are one-shot.
+      setPrompt("");
       setReferences([]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "شروع ساخت ناموفق بود.");
     } finally {
       setIsSubmitting(false);
     }
-  }
-
-  function reuse(item: StudioItem) {
-    setPrompt(item.prompt);
-    setModelKey(studioModelKey(item.provider, item.modelId));
-    if (typeof item.params.style === "string") setStyleId(item.params.style);
-    else setStyleId("none");
-    if (typeof item.params.aspectRatio === "string") setAspectRatio(item.params.aspectRatio);
   }
 
   const composer = (
@@ -249,7 +241,6 @@ export function ImageStudio() {
     <StudioFeed
       kind="image"
       composer={composer}
-      onReuse={reuse}
       onDropFiles={(files) => void addFiles(files)}
       empty={
         <StudioEmptyState

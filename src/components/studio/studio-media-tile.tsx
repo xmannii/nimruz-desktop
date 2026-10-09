@@ -1,6 +1,6 @@
 "use client";
 
-import { useStudio } from "@/components/studio/studio-context";
+import { studioModelKey, useStudio } from "@/components/studio/studio-context";
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
@@ -10,12 +10,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { Spinner } from "@/components/ui/spinner";
-import { copyText, retryStudioItem } from "@/lib/studio/actions";
-import {
-  isStudioItemBusy,
-  parseAspectRatio,
-  studioMediaUrl,
-} from "@/lib/studio/format";
+import { copyText, regenerateStudioItem, retryStudioItem } from "@/lib/studio/actions";
+import { isStudioItemBusy, studioMediaUrl } from "@/lib/studio/format";
 import type { StudioItem } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
 import {
@@ -25,12 +21,14 @@ import {
   FilmIcon,
   FolderOpenIcon,
   ImagePlusIcon,
+  PencilLineIcon,
   PlayIcon,
+  RefreshCwIcon,
   RotateCcwIcon,
   Trash2Icon,
   XIcon,
 } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 function useElapsedSeconds(since: number, active: boolean) {
@@ -46,9 +44,7 @@ function useElapsedSeconds(since: number, active: boolean) {
 function formatElapsed(seconds: number) {
   const minutes = Math.floor(seconds / 60);
   const rest = seconds % 60;
-  return `${minutes.toLocaleString("fa-IR")}:${rest.toLocaleString("fa-IR", {
-    minimumIntegerDigits: 2,
-  })}`;
+  return `${minutes.toLocaleString("fa-IR")}:${rest.toLocaleString("fa-IR", { minimumIntegerDigits: 2 })}`;
 }
 
 /** Shared actions for media items (tile menu and lightbox). */
@@ -66,6 +62,28 @@ export function useStudioItemActions(item: StudioItem) {
         toast.error("کپی ناموفق بود.");
       }
     },
+    reuse: () => {
+      const modelKey = studioModelKey(item.provider, item.modelId);
+      const styleId = typeof item.params.style === "string" ? item.params.style : undefined;
+      sendDraft(
+        item.kind === "video"
+          ? { tab: "video", prompt: item.prompt, modelKey, styleId }
+          : {
+              tab: "image",
+              prompt: item.prompt,
+              modelKey,
+              styleId,
+              aspectRatio: typeof item.params.aspectRatio === "string" ? item.params.aspectRatio : undefined,
+            }
+      );
+    },
+    regenerate: async () => {
+      try {
+        await regenerateStudioItem(item);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "ساخت دوباره ناموفق بود.");
+      }
+    },
     animate: () => sendDraft({ tab: "video", firstFrameItem: item }),
     useAsReference: () => sendDraft({ tab: "image", referenceItem: item }),
   };
@@ -74,11 +92,9 @@ export function useStudioItemActions(item: StudioItem) {
 export function StudioMediaTile({
   item,
   siblings,
-  layout = "feed",
 }: {
   item: StudioItem;
   siblings?: StudioItem[];
-  layout?: "feed" | "grid";
 }) {
   const { openItem } = useStudio();
   const actions = useStudioItemActions(item);
@@ -89,11 +105,6 @@ export function StudioMediaTile({
   const [loaded, setLoaded] = useState(false);
   const failed = item.status === "failed" || item.status === "interrupted";
   const ready = item.status === "done" && item.hasMedia;
-  const ratio =
-    parseAspectRatio(item.params.aspectRatio) ?? (item.kind === "video" ? 16 / 9 : 1);
-
-  const sizing: CSSProperties =
-    layout === "feed" ? { aspectRatio: ratio } : { aspectRatio: item.kind === "video" ? 16 / 9 : 1 };
 
   async function retry() {
     setIsRetrying(true);
@@ -109,15 +120,14 @@ export function StudioMediaTile({
   const tile = (
     <div
       className={cn(
-        "group/tile relative overflow-hidden rounded-2xl bg-muted ring-1 ring-foreground/5",
-        layout === "feed" ? "h-[clamp(12rem,32vh,20rem)] max-w-full" : "w-full"
+        "group/tile relative w-full overflow-hidden rounded-xl bg-muted",
+        item.kind === "video" ? "aspect-video" : "aspect-square"
       )}
-      style={sizing}
     >
       {ready ? (
         <button
           type="button"
-          className="absolute inset-0 size-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-inset focus-visible:ring-ring/60"
+          className="absolute inset-0 size-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
           aria-label={`نمایش: ${item.title}`}
           onClick={() => openItem(item, siblings)}
           onMouseEnter={() => void videoRef.current?.play().catch(() => undefined)}
@@ -137,11 +147,10 @@ export function StudioMediaTile({
                 loop
                 playsInline
                 preload="metadata"
-                onLoadedData={() => setLoaded(true)}
                 className="size-full object-cover"
               />
-              <span className="absolute start-2.5 bottom-2.5 flex size-8 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-md transition-opacity group-hover/tile:opacity-0">
-                <PlayIcon className="size-3.5 translate-x-px fill-current" />
+              <span className="absolute start-2 bottom-2 flex size-7 items-center justify-center rounded-full bg-black/50 text-white transition-opacity group-hover/tile:opacity-0">
+                <PlayIcon className="size-3 translate-x-px fill-current" />
               </span>
             </>
           ) : (
@@ -151,28 +160,24 @@ export function StudioMediaTile({
               loading="lazy"
               decoding="async"
               onLoad={() => setLoaded(true)}
-              className={cn(
-                "size-full object-cover transition-opacity duration-300",
-                loaded ? "opacity-100" : "opacity-0"
-              )}
+              className={cn("size-full object-cover transition-opacity duration-200", loaded ? "opacity-100" : "opacity-0")}
             />
           )}
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2.5 pt-6 pb-2 text-start opacity-0 transition-opacity group-hover/tile:opacity-100">
+            <span dir="auto" className="line-clamp-2 text-[11px] leading-[1.15rem] text-white">
+              {item.prompt}
+            </span>
+          </span>
         </button>
       ) : busy ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-4 text-center">
-          <Spinner className="size-5 text-muted-foreground" />
-          <span className="text-xs font-medium text-foreground/80">
-            {item.status === "pending" ? "در صف…" : item.kind === "video" ? "در حال ساخت ویدیو" : "در حال ساخت"}
-          </span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 p-3 text-center">
+          <Spinner className="size-4 text-muted-foreground" />
           <span className="text-[11px] tabular-nums text-muted-foreground">{formatElapsed(elapsed)}</span>
-          {item.kind === "video" ? (
-            <span className="text-[10px] text-muted-foreground/80">معمولاً ۱ تا ۴ دقیقه</span>
-          ) : null}
           <Button
             type="button"
             variant="ghost"
             size="icon-xs"
-            className="absolute end-2 top-2 rounded-full opacity-0 transition-opacity group-hover/tile:opacity-100 focus-visible:opacity-100"
+            className="absolute end-1.5 top-1.5 rounded-full opacity-0 transition-opacity group-hover/tile:opacity-100 focus-visible:opacity-100"
             aria-label="لغو ساخت"
             onClick={() => void window.desktop.studio.cancel(item.id)}
           >
@@ -180,31 +185,31 @@ export function StudioMediaTile({
           </Button>
         </div>
       ) : failed ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 p-4 text-center">
-          <span className="flex size-9 items-center justify-center rounded-full bg-destructive/10 text-destructive">
-            <AlertTriangleIcon className="size-4" />
-          </span>
-          <p className="line-clamp-3 max-w-56 text-xs leading-5 text-muted-foreground" title={item.error ?? undefined}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 p-3 text-center">
+          <AlertTriangleIcon className="size-4 text-destructive" />
+          <p className="line-clamp-2 text-[11px] leading-[1.15rem] text-muted-foreground" title={item.error ?? undefined}>
             {item.error ?? "ساخت ناموفق بود."}
           </p>
-          <div className="flex gap-1">
+          <div className="flex gap-0.5">
             <Button
               type="button"
-              size="sm"
-              variant="secondary"
-              className="h-7 rounded-full px-3 text-xs"
+              size="icon-xs"
+              variant="ghost"
+              className="rounded-full"
+              aria-label="تلاش دوباره"
+              title="تلاش دوباره"
               disabled={isRetrying}
               onClick={() => void retry()}
             >
-              {isRetrying ? <Spinner data-icon="inline-start" /> : <RotateCcwIcon data-icon="inline-start" />}
-              دوباره
+              {isRetrying ? <Spinner /> : <RotateCcwIcon />}
             </Button>
             <Button
               type="button"
               size="icon-xs"
               variant="ghost"
-              className="size-7 rounded-full"
+              className="rounded-full"
               aria-label="حذف"
+              title="حذف"
               onClick={actions.remove}
             >
               <Trash2Icon />
@@ -214,25 +219,12 @@ export function StudioMediaTile({
       ) : null}
 
       {ready ? (
-        <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-end gap-1 bg-gradient-to-b from-black/35 to-transparent p-2 opacity-0 transition-opacity duration-200 group-hover/tile:opacity-100 group-focus-within/tile:opacity-100">
-          {item.kind === "image" ? (
-            <Button
-              type="button"
-              size="icon-xs"
-              variant="secondary"
-              className="pointer-events-auto size-7 rounded-full bg-white/85 text-black shadow-sm backdrop-blur hover:bg-white"
-              aria-label="ساخت ویدیو از این تصویر"
-              title="ساخت ویدیو"
-              onClick={actions.animate}
-            >
-              <FilmIcon />
-            </Button>
-          ) : null}
+        <div className="absolute end-1.5 top-1.5 flex gap-1 opacity-0 transition-opacity group-hover/tile:opacity-100 group-focus-within/tile:opacity-100">
           <Button
             type="button"
             size="icon-xs"
             variant="secondary"
-            className="pointer-events-auto size-7 rounded-full bg-white/85 text-black shadow-sm backdrop-blur hover:bg-white"
+            className="size-7 rounded-full bg-background/90 shadow-sm hover:bg-background"
             aria-label="ذخیره فایل"
             title="ذخیره"
             onClick={actions.save}
@@ -246,10 +238,8 @@ export function StudioMediaTile({
 
   return (
     <ContextMenu>
-      <ContextMenuTrigger render={<div className={layout === "grid" ? "w-full" : undefined} />}>
-        {tile}
-      </ContextMenuTrigger>
-      <ContextMenuContent dir="rtl" className="min-w-48">
+      <ContextMenuTrigger render={<div className="w-full" />}>{tile}</ContextMenuTrigger>
+      <ContextMenuContent dir="rtl" className="min-w-52">
         {ready ? (
           <>
             <ContextMenuItem onClick={actions.save}>
@@ -260,8 +250,17 @@ export function StudioMediaTile({
               <FolderOpenIcon />
               نمایش در پوشه
             </ContextMenuItem>
+            <ContextMenuSeparator />
           </>
         ) : null}
+        <ContextMenuItem onClick={actions.reuse}>
+          <PencilLineIcon />
+          استفاده دوباره از درخواست
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => void actions.regenerate()}>
+          <RefreshCwIcon />
+          ساخت دوباره
+        </ContextMenuItem>
         <ContextMenuItem onClick={() => void actions.copyPrompt()}>
           <CopyIcon />
           کپی متن درخواست

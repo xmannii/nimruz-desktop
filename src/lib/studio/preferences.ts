@@ -4,7 +4,6 @@ const STORAGE_KEY = "nimruz.studio.preferences.v1";
 
 export type StudioPreferences = {
   lastTab?: StudioTab;
-  view?: "feed" | "grid";
   imageModelKey?: string;
   imageAspectRatio?: string;
   imageCount?: number;

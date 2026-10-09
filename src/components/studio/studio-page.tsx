@@ -7,7 +7,6 @@ import {
   StudioContextProvider,
   type StudioContextValue,
   type StudioDraft,
-  type StudioView,
 } from "@/components/studio/studio-context";
 import { StudioHistorySheet } from "@/components/studio/studio-history-sheet";
 import { StudioItemViewer } from "@/components/studio/studio-item-viewer";
@@ -15,7 +14,6 @@ import { TranscribeStudio } from "@/components/studio/transcribe-studio";
 import { VideoStudio } from "@/components/studio/video-studio";
 import { useSpeech } from "@/components/speech/speech-provider";
 import { Button } from "@/components/ui/button";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   isStudioItemBusy,
   STUDIO_KIND_LABELS,
@@ -24,7 +22,7 @@ import {
   studioKindTab,
   type StudioTab,
 } from "@/lib/studio/format";
-import { loadStudioPreferences, saveStudioPreferences } from "@/lib/studio/preferences";
+import { saveStudioPreferences } from "@/lib/studio/preferences";
 import type { StudioItem } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
@@ -34,9 +32,7 @@ import {
   FilmIcon,
   HistoryIcon,
   ImageIcon,
-  LayoutGridIcon,
   PlugIcon,
-  RowsIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
 import { toast } from "sonner";
@@ -130,7 +126,6 @@ export function StudioPage({ tab }: { tab: StudioTab }) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [draft, setDraft] = useState<StudioDraft | null>(null);
-  const [view, setViewState] = useState<StudioView>(() => loadStudioPreferences().view ?? "feed");
 
   const openItem = useCallback((item: StudioItem, siblings?: StudioItem[]) => {
     setViewer({ item, siblings: siblings ?? [item] });
@@ -188,19 +183,12 @@ export function StudioPage({ tab }: { tab: StudioTab }) {
 
   const clearDraft = useCallback(() => setDraft(null), []);
 
-  const setView = useCallback((next: StudioView) => {
-    setViewState(next);
-    saveStudioPreferences({ view: next });
-  }, []);
-
   const openConnections = useCallback(() => setConnectionsOpen(true), []);
 
   const contextValue = useMemo<StudioContextValue>(
-    () => ({ tab, setTab, openItem, draft, sendDraft, clearDraft, view, setView, openConnections }),
-    [tab, setTab, openItem, draft, sendDraft, clearDraft, view, setView, openConnections]
+    () => ({ tab, setTab, openItem, draft, sendDraft, clearDraft, openConnections }),
+    [tab, setTab, openItem, draft, sendDraft, clearDraft, openConnections]
   );
-
-  const showViewToggle = tab === "image" || tab === "video";
 
   return (
     <StudioContextProvider value={contextValue}>
@@ -232,25 +220,6 @@ export function StudioPage({ tab }: { tab: StudioTab }) {
           </nav>
 
           <div className="ms-auto flex items-center gap-1">
-            {showViewToggle ? (
-              <ToggleGroup
-                value={[view]}
-                onValueChange={(values) => {
-                  const next = values[0];
-                  if (next === "feed" || next === "grid") setView(next);
-                }}
-                size="sm"
-                spacing={0}
-                aria-label="نمای نمایش"
-              >
-                <ToggleGroupItem value="feed" aria-label="نمای فید" title="فید">
-                  <RowsIcon />
-                </ToggleGroupItem>
-                <ToggleGroupItem value="grid" aria-label="نمای گالری" title="گالری">
-                  <LayoutGridIcon />
-                </ToggleGroupItem>
-              </ToggleGroup>
-            ) : null}
             <Button
               type="button"
               variant="ghost"

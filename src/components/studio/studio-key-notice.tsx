@@ -32,25 +32,14 @@ export function useOpenRouterKeyConfigured() {
 
 export function StudioKeyNotice() {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/8 p-3 ps-4">
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400">
-        <KeyRoundIcon className="size-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">برای ساخت، کلید OpenRouter لازم است</p>
-        <p className="text-xs text-muted-foreground">
-          استودیو از همان کلید OpenRouter بخش گفتگو استفاده می‌کند.
-        </p>
-      </div>
+    <div className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+      <KeyRoundIcon className="size-3.5 shrink-0" />
+      <span className="min-w-0 flex-1">برای ساخت با OpenRouter، کلید API را در تنظیمات وارد کنید.</span>
       <Button
-        size="sm"
+        size="xs"
         variant="outline"
-        className="rounded-full"
         render={
-          <Link
-            to="/settings/models/providers"
-            search={{ provider: OPENROUTER_PROVIDER_ID }}
-          />
+          <Link to="/settings/models/providers" search={{ provider: OPENROUTER_PROVIDER_ID }} />
         }
       >
         افزودن کلید

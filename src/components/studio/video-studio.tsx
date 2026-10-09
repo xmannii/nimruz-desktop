@@ -156,6 +156,7 @@ export function VideoStudio() {
         videoAudio: withAudio,
         videoCamera: camera,
       });
+      setPrompt("");
       setFirstFrame(null);
       toast.success("ساخت ویدیو شروع شد. وقتی آماده شد خبرتان می‌کنیم.");
     } catch (error) {
@@ -168,15 +169,6 @@ export function VideoStudio() {
   function submit() {
     if (estimate !== null && estimate >= CONFIRM_COST_USD) setConfirmOpen(true);
     else void generate();
-  }
-
-  function reuse(item: StudioItem) {
-    setPrompt(item.prompt);
-    setModelKey(studioModelKey(item.provider, item.modelId));
-    setCamera(typeof item.params.style === "string" ? item.params.style : "none");
-    if (typeof item.params.aspectRatio === "string") setAspectRatio(item.params.aspectRatio);
-    if (typeof item.params.duration === "number") setDuration(item.params.duration);
-    if (typeof item.params.resolution === "string") setResolution(item.params.resolution);
   }
 
   const frameSrc = firstFrame
@@ -308,8 +300,7 @@ export function VideoStudio() {
       <StudioFeed
         kind="video"
         composer={composer}
-        onReuse={reuse}
-        onDropFiles={(files) => void chooseFrame(files[0])}
+          onDropFiles={(files) => void chooseFrame(files[0])}
         empty={
           <StudioEmptyState
             icon={<FilmIcon />}

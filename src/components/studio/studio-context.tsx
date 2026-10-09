@@ -23,8 +23,6 @@ export type StudioDraft =
     }
   | { tab: "speech"; text?: string };
 
-export type StudioView = "feed" | "grid";
-
 export type StudioContextValue = {
   tab: StudioTab;
   setTab: (tab: StudioTab) => void;
@@ -33,8 +31,6 @@ export type StudioContextValue = {
   draft: StudioDraft | null;
   sendDraft: (draft: StudioDraft) => void;
   clearDraft: () => void;
-  view: StudioView;
-  setView: (view: StudioView) => void;
   openConnections: () => void;
 };
 

@@ -288,6 +288,7 @@ export function SpeechStudio() {
         speed: model.supportsSpeed && speed !== 1 ? speed : undefined,
       });
       saveStudioPreferences({ speechModelKey: modelKey, speechVoice: voice, speechSpeed: speed });
+      setText("");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "شروع ساخت ناموفق بود.");
     } finally {

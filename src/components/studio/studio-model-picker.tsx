@@ -12,6 +12,11 @@ import { Spinner } from "@/components/ui/spinner";
 import { modelVendor, shortModelName } from "@/lib/studio/format";
 import { normalizeSearchText } from "@/lib/studio/search";
 import { cn } from "@/lib/utils";
+import {
+  ModelLogo,
+  providerLogoKey,
+  resolveModelLogo,
+} from "@/components/studio/model-logo";
 import { CheckIcon, ChevronDownIcon, RefreshCwIcon, SearchIcon } from "lucide-react";
 import { useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -47,17 +52,13 @@ function providerLabel(provider: string, size: "full" | "short" = "full") {
   return PROVIDER_LABELS[provider]?.[size] ?? provider;
 }
 
-function VendorMark({ name, className }: { name: string; className?: string }) {
+function OptionLogo({ option, className }: { option: StudioModelOption; className?: string }) {
   return (
-    <span
-      className={cn(
-        "flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-[10px] font-semibold uppercase text-muted-foreground",
-        className
-      )}
-      aria-hidden
-    >
-      {name.slice(0, 2)}
-    </span>
+    <ModelLogo
+      logo={resolveModelLogo(option.id, option.provider)}
+      fallback={option.group ?? modelVendor(option.id)}
+      className={className}
+    />
   );
 }
 
@@ -81,7 +82,7 @@ function ModelRow({
       )}
       onClick={onChoose}
     >
-      <VendorMark name={option.group ?? modelVendor(option.id)} />
+      <OptionLogo option={option} />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className="truncate text-xs font-medium">{shortModelName(option.name)}</span>
@@ -227,11 +228,10 @@ export function StudioModelPicker({
       >
         {isLoading && !selected ? (
           <Spinner className="mx-1 size-3.5" />
+        ) : selected ? (
+          <OptionLogo option={selected} className="size-6 rounded-full" />
         ) : (
-          <VendorMark
-            name={selected ? (selected.group ?? modelVendor(selected.id)) : "?"}
-            className="size-6 rounded-full text-[9px]"
-          />
+          <ModelLogo logo={null} fallback="?" className="size-6 rounded-full" />
         )}
         <span className="flex min-w-0 items-baseline gap-1.5" dir="ltr">
           <span className="truncate">
@@ -299,6 +299,9 @@ export function StudioModelPicker({
                   )}
                   onClick={() => setProviderFilter(provider.id)}
                 >
+                  {provider.id === "all" ? null : (
+                    <ModelLogo logo={providerLogoKey(provider.id)} fallback={provider.id} tile={false} className="size-3.5" />
+                  )}
                   {provider.id === "all" ? "همه" : providerLabel(provider.id, "short")}
                   <span className="text-[10px] tabular-nums text-muted-foreground/80">
                     {provider.count.toLocaleString("fa-IR")}
@@ -321,7 +324,12 @@ export function StudioModelPicker({
                     dir="rtl"
                     className="sticky top-0 z-10 flex items-baseline justify-between bg-popover px-2 pb-1 pt-2"
                   >
-                    <span className="text-[11px] font-semibold text-foreground/80">{section.title}</span>
+                    <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground/80">
+                      {section.key !== "featured" ? (
+                        <ModelLogo logo={providerLogoKey(section.key)} fallback={section.key} tile={false} className="size-3.5" />
+                      ) : null}
+                      {section.title}
+                    </span>
                     {section.subtitle ? (
                       <span className="text-[10px] text-muted-foreground">{section.subtitle}</span>
                     ) : null}
