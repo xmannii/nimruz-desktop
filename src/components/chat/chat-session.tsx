@@ -45,6 +45,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { StudioShortcuts } from "@/components/studio/studio-shortcuts";
 import { ChatComposer } from "./chat-composer";
 import { ChatMessages } from "./chat-messages";
 import { getChatErrorMessage } from "@/lib/chat/errors";
@@ -1032,6 +1033,7 @@ export function ChatSession({
                 از کجا شروع کنیم؟
               </p>
               {composer}
+              <StudioShortcuts text={text} />
             </div>
           </div>
         </div>
