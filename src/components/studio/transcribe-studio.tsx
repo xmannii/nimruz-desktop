@@ -58,6 +58,7 @@ import { cn } from "@/lib/utils";
 import { Link } from "@tanstack/react-router";
 import {
   AlertTriangleIcon,
+  AudioLinesIcon,
   CopyIcon,
   DownloadIcon,
   FileAudioIcon,
@@ -157,7 +158,7 @@ function SessionRow({ item, onRemove }: { item: FileTranscriptionItem; onRemove:
 }
 
 function TranscriptRow({ item, modelLabel }: { item: StudioItem; modelLabel: string }) {
-  const { openItem } = useStudio();
+  const { openItem, sendDraft } = useStudio();
   const { model: defaultModelRef, label: assistantLabel } = useStudioAssistantModel();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -274,6 +275,16 @@ function TranscriptRow({ item, modelLabel }: { item: StudioItem; modelLabel: str
       <div className="flex shrink-0 items-center opacity-0 transition-opacity group-hover/row:opacity-100 group-focus-within/row:opacity-100">
         {text ? (
           <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="تبدیل به صدا"
+              title="تبدیل این متن به صدا"
+              onClick={() => sendDraft({ tab: "speech", text })}
+            >
+              <AudioLinesIcon />
+            </Button>
             <Button
               type="button"
               variant="ghost"

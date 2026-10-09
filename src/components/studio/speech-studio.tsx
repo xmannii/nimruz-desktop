@@ -459,9 +459,25 @@ export function SpeechStudio() {
     if (!model.voices.some((candidate) => candidate.id === voice)) setVoice(model.voices[0].id);
   }, [model, voice]);
 
+  const textRef = useRef(text);
+  textRef.current = text;
+  const [flashSignal, setFlashSignal] = useState(0);
+
+  // Text handed over from elsewhere (e.g. a transcript): fill, highlight, and
+  // offer an undo if it replaced something the person had written.
   useEffect(() => {
     if (draft?.tab !== "speech") return;
-    if (draft.text !== undefined) setText(draft.text.slice(0, STUDIO_LIMITS.speechInput));
+    if (draft.text !== undefined) {
+      const previous = textRef.current;
+      const next = draft.text.slice(0, STUDIO_LIMITS.speechInput);
+      setText(next);
+      setFlashSignal((value) => value + 1);
+      if (previous.trim() && previous !== next) {
+        toast.info("متن جدید جایگزین متن قبلی شد.", {
+          action: { label: "بازگشت", onClick: () => setText(previous) },
+        });
+      }
+    }
     clearDraft();
   }, [draft, clearDraft]);
 
@@ -558,6 +574,7 @@ export function SpeechStudio() {
           submitLabel="ساخت صدا"
           submitOnEnter={false}
           tall
+          flashSignal={flashSignal}
           enhanceKind={canTag ? "speech-tags" : undefined}
           notice={needsOpenRouter && openRouterReady === false ? <StudioKeyNotice /> : null}
           footer={

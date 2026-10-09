@@ -38,6 +38,7 @@ export function StudioComposer({
   enhanceKind,
   submitOnEnter = true,
   tall = false,
+  flashSignal = 0,
   className,
 }: {
   value: string;
@@ -57,6 +58,8 @@ export function StudioComposer({
   enhanceKind?: "image" | "video" | "speech-tags";
   submitOnEnter?: boolean;
   tall?: boolean;
+  /** Bump to briefly highlight and focus the box (e.g. text handed over). */
+  flashSignal?: number;
   className?: string;
 }) {
   const maxHeight = tall ? 320 : 240;
@@ -86,6 +89,17 @@ export function StudioComposer({
   }, [value, maxHeight]);
 
   useEffect(() => () => enhanceAbort.current?.abort(), []);
+
+  const [flashing, setFlashing] = useState(false);
+  useEffect(() => {
+    if (!flashSignal) return;
+    const textarea = textareaRef.current;
+    textarea?.focus();
+    textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
+    setFlashing(true);
+    const timer = window.setTimeout(() => setFlashing(false), 900);
+    return () => window.clearTimeout(timer);
+  }, [flashSignal]);
 
   function submit() {
     if (canSubmit && !isSubmitting && !isEnhancing) onSubmit();
@@ -132,7 +146,10 @@ export function StudioComposer({
     <div className={cn("mx-auto flex w-full max-w-3xl flex-col gap-2", className)}>
       {notice}
       <form
-        className="relative flex flex-col rounded-3xl border border-border bg-card shadow-xs transition-colors focus-within:border-foreground/25"
+        className={cn(
+          "relative flex flex-col rounded-3xl border border-border bg-card shadow-xs transition-[border-color,box-shadow] duration-300 focus-within:border-foreground/25",
+          flashing && "border-primary/50 ring-4 ring-primary/15"
+        )}
         onSubmit={(event) => {
           event.preventDefault();
           submit();
