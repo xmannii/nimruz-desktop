@@ -99,13 +99,12 @@ test("generates OpenRouter speech and serves it with range requests", async () =
 
       const body = (await requests[0].json()) as Record<string, unknown>;
       assert.equal(requests[0].headers.get("authorization"), "Bearer sk-or-test-key");
-      assert.deepEqual(body, {
-        model: "google/gemini-tts",
-        input: "سلام دنیا",
-        response_format: "mp3",
-        voice: "Kore",
-        instructions: "آرام بخوان",
-      });
+      // Gemini gets the tone as direction, not as text to read aloud.
+      assert.equal(body.model, "google/gemini-tts");
+      assert.equal(body.instructions, undefined);
+      assert.match(String(body.input), /### PERFORMANCE\nآرام بخوان/);
+      assert.match(String(body.input), /#### TRANSCRIPT\nسلام دنیا$/);
+      assert.equal(body.voice, "Kore");
 
       const full = await service.handleMediaRequest(
         new Request(`nimruz-media://item/${item.id}`)
@@ -435,7 +434,10 @@ test("synthesizes Gemini TTS as WAV", async () => {
       assert.equal(store.get(item.id)?.error, null);
       const body = JSON.stringify(await requests[0].json());
       assert.match(body, /Kore/);
-      assert.match(body, /گرم و آرام/);
+      assert.match(body, /### PERFORMANCE\\nگرم و آرام/);
+      assert.match(body, /#### TRANSCRIPT\\nسلام/);
+      // The old "tone: text" prefix that Gemini read aloud is gone.
+      assert.doesNotMatch(body, /گرم و آرام: سلام/);
       const done = store.get(item.id)!;
       assert.equal(done.mimeType, "audio/wav");
       assert.equal(done.params.speed, null);
@@ -671,6 +673,28 @@ test("uploads long audio through the Files API and deletes it afterwards", async
       assert.match(JSON.stringify(await generate.json()), /file_data/);
       assert.equal(store.get(item.id)?.text, "متن طولانی");
       await waitFor(() => deleted.length === 1);
+    }
+  );
+});
+
+test("keeps the separate instructions field for OpenAI-style TTS", async () => {
+  await withStudio(
+    {
+      "POST https://openrouter.ai/api/v1/audio/speech": () =>
+        new Response(new Uint8Array([1]), { headers: { "Content-Type": "audio/mpeg" } }),
+    },
+    async ({ service, store, requests }) => {
+      const item = await service.generateSpeech({
+        provider: "openrouter",
+        modelId: "openai/gpt-4o-mini-tts",
+        voice: "alloy",
+        input: "Hello there",
+        instructions: "warm and calm",
+      });
+      await waitFor(() => store.get(item.id)?.status === "done");
+      const body = (await requests[0].json()) as Record<string, unknown>;
+      assert.equal(body.input, "Hello there");
+      assert.equal(body.instructions, "warm and calm");
     }
   );
 });

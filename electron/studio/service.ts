@@ -48,6 +48,7 @@ import {
   transcribeWithGemini,
   uploadGeminiFile,
 } from "./gemini-audio";
+import { buildGeminiTtsPrompt, isGeminiTtsModel } from "./tts-prompt";
 import {
   isStudioItemId,
   StudioStore,
@@ -944,9 +945,10 @@ export class StudioService {
             baseURL: auth.baseUrl,
             fetch: this.fetch,
           }).speech(model),
-          text: input,
+          // Direction goes into a structured prompt, never prefixed to the
+          // script, so Gemini does not read it aloud.
+          text: buildGeminiTtsPrompt(input, instructions),
           voice: voice || undefined,
-          instructions: instructions || undefined,
           abortSignal: signal,
           maxRetries: 1,
         });
@@ -982,10 +984,12 @@ export class StudioService {
               headers: this.openRouterHeaders(apiKey),
               body: JSON.stringify({
                 model,
-                input,
+                // OpenAI-style models take a separate instructions field;
+                // Gemini needs the direction embedded as a structured prompt.
+                input: isGeminiTtsModel(model) ? buildGeminiTtsPrompt(input, instructions) : input,
                 response_format: "mp3",
                 ...(voice ? { voice } : {}),
-                ...(instructions ? { instructions } : {}),
+                ...(instructions && !isGeminiTtsModel(model) ? { instructions } : {}),
                 ...(speed ? { speed } : {}),
               }),
             });
