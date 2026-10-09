@@ -30,3 +30,10 @@ test("detects ElevenLabs models that understand audio tags", () => {
   assert.equal(supportsAudioTags("elevenlabs/eleven-multilingual-v2"), false);
   assert.equal(supportsAudioTags("google/gemini-3.8-flash-tts"), false);
 });
+
+test("recommends current Gemini Flash models for transcription", () => {
+  assert.equal(featuredRank("transcript", "gemini-3.5-flash"), 0);
+  assert.equal(featuredRank("transcript", "gemini-3-pro-preview"), 1);
+  assert.equal(featuredRank("transcript", "gemini-3.5-flash-lite"), 2);
+  assert.equal(featuredRank("transcript", "gemini-2.0-flash"), null);
+});

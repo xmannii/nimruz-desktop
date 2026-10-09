@@ -77,6 +77,7 @@ import {
   type StudioImageRequest,
   type StudioListOptions,
   type StudioSpeechRequest,
+  type StudioRemoteTranscriptionRequest,
   type StudioTranscriptInput,
   type StudioTranscriptPatch,
   type StudioVideoRequest,
@@ -325,6 +326,9 @@ export function registerIpcHandlers(options: {
   );
   handle("studio:save-transcript", (input: StudioTranscriptInput) =>
     studio.saveTranscript(input)
+  );
+  handle("studio:transcribe-remote", (request: StudioRemoteTranscriptionRequest) =>
+    studio.transcribeRemote(request)
   );
   handle(
     "studio:update-transcript",

@@ -29,6 +29,7 @@ import {
   type StudioTranscriptInput,
   type StudioTranscriptPatch,
   type StudioProvider,
+  type StudioRemoteTranscriptionRequest,
   type StudioVideoRequest,
 } from "@/lib/studio/types";
 import {
@@ -40,6 +41,13 @@ import {
   isBflApiUrl,
   parseBflPoll,
 } from "./bfl";
+import {
+  deleteGeminiFile,
+  GEMINI_INLINE_AUDIO_BYTES,
+  GeminiAudioError,
+  transcribeWithGemini,
+  uploadGeminiFile,
+} from "./gemini-audio";
 import {
   isStudioItemId,
   StudioStore,
@@ -133,6 +141,7 @@ function missingKeyMessage(provider: StudioProvider) {
 
 function errorMessage(error: unknown) {
   if (error instanceof StudioError) return error.message;
+  if (error instanceof GeminiAudioError && error.statusCode === undefined) return error.message;
   const status =
     error && typeof error === "object" && "statusCode" in error
       ? Number((error as { statusCode?: unknown }).statusCode)
@@ -340,9 +349,11 @@ export class StudioService {
       } catch (error) {
         if (!this.catalog) {
           // OpenRouter being unreachable should not hide direct providers.
-          this.catalog = { image: [], video: [], speech: [], fetchedAt: 0 };
+          this.catalog = { image: [], video: [], speech: [], transcription: [], fetchedAt: 0 };
           const fallback = await this.withConnections(this.catalog);
-          if (fallback.image.length + fallback.video.length + fallback.speech.length === 0) {
+          if (
+            fallback.image.length + fallback.video.length + fallback.speech.length + fallback.transcription.length === 0
+          ) {
             this.catalog = null;
             throw new StudioError(errorMessage(error));
           }
@@ -370,6 +381,7 @@ export class StudioService {
       image: [...(google?.image ?? []), ...(bfl?.image ?? []), ...catalog.image],
       video: [...(google?.video ?? []), ...(bfl?.video ?? []), ...catalog.video],
       speech: [...(google?.speech ?? []), ...eleven, ...catalog.speech],
+      transcription: [...(google?.transcription ?? []), ...catalog.transcription],
     };
   }
 
@@ -389,6 +401,7 @@ export class StudioService {
       image: parseOpenRouterImageModels(image),
       video: parseOpenRouterVideoModels(video),
       speech: parseOpenRouterSpeechModels(speech),
+      transcription: [],
       fetchedAt: Date.now(),
     };
   }
@@ -1027,6 +1040,77 @@ export class StudioService {
     ) {
       await this.saveMedia(record.id, Buffer.from(audio), mimeType, {}, "done");
     }
+    return this.get(record.id)!;
+  }
+
+  /**
+   * Transcribes audio with a Gemini model. The audio is saved first so it can
+   * be played while the transcript is still being written.
+   */
+  async transcribeRemote(request: StudioRemoteTranscriptionRequest): Promise<StudioItem> {
+    const auth = this.requireAuth("google");
+    const model = modelId(request.modelId);
+    const mimeType =
+      typeof request.mimeType === "string" && /^audio\/[\w.+-]{1,40}$/.test(request.mimeType)
+        ? request.mimeType
+        : null;
+    if (!mimeType) throw new StudioError("قالب فایل صوتی پشتیبانی نمی‌شود.");
+    if (
+      !(request.audio instanceof ArrayBuffer) ||
+      request.audio.byteLength === 0 ||
+      request.audio.byteLength > STUDIO_LIMITS.maxRemoteTranscriptionBytes
+    ) {
+      throw new StudioError("حجم فایل صوتی نامعتبر است.");
+    }
+    const sourceName =
+      typeof request.sourceName === "string" && request.sourceName.trim()
+        ? request.sourceName.trim().slice(0, 200)
+        : "رونویسی";
+    const instructions =
+      typeof request.instructions === "string" ? request.instructions.trim().slice(0, 1_000) : "";
+    const audio = Buffer.from(request.audio);
+
+    const record = this.insert({
+      kind: "transcript",
+      provider: "google",
+      modelId: model,
+      prompt: "",
+      title: sourceName,
+      durationSeconds:
+        typeof request.durationSeconds === "number" && Number.isFinite(request.durationSeconds)
+          ? request.durationSeconds
+          : null,
+      params: { sourceName, instructions: instructions || null },
+    });
+    await this.saveMedia(record.id, audio, mimeType, {}, "running");
+
+    void this.track(record.id, async (signal) => {
+      let uploaded: { name: string; uri: string } | null = null;
+      try {
+        if (audio.byteLength > GEMINI_INLINE_AUDIO_BYTES) {
+          uploaded = await uploadGeminiFile(this.fetch, auth, audio, mimeType, sourceName, signal);
+        }
+        const text = await transcribeWithGemini(
+          this.fetch,
+          auth,
+          {
+            modelId: model,
+            mimeType,
+            audio: uploaded ? { fileUri: uploaded.uri } : { inline: audio },
+            instructions: instructions || undefined,
+          },
+          signal
+        );
+        this.patch(record.id, {
+          status: "done",
+          text: text.slice(0, STUDIO_LIMITS.transcript),
+          error: null,
+        });
+      } finally {
+        if (uploaded) await deleteGeminiFile(this.fetch, auth, uploaded.name);
+      }
+    });
+
     return this.get(record.id)!;
   }
 

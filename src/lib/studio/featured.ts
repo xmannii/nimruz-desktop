@@ -5,7 +5,12 @@ import type { StudioKind } from "./types";
  * Patterns match both OpenRouter slugs and direct Google model ids, so a
  * newer point release (e.g. 2.5 → 2.6) keeps its place automatically.
  */
-const FEATURED: Record<Extract<StudioKind, "image" | "video" | "speech">, RegExp[]> = {
+const FEATURED: Record<Extract<StudioKind, "image" | "video" | "speech" | "transcript">, RegExp[]> = {
+  transcript: [
+    /^gemini-3(\.\d+)?-flash(-preview)?$/,
+    /^gemini-3(\.\d+)?-pro(-preview)?$/,
+    /^gemini-3(\.\d+)?-flash-lite(-preview)?$/,
+  ],
   image: [
     /gemini-nano-banana-2\.\d|nano-banana/,
     /gpt-image-2\.5/,

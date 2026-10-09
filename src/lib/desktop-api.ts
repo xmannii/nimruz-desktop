@@ -41,6 +41,7 @@ import type {
   StudioItem,
   StudioListOptions,
   StudioModelCatalog,
+  StudioRemoteTranscriptionRequest,
   StudioSpeechRequest,
   StudioStats,
   StudioTranscriptInput,
@@ -280,6 +281,7 @@ export type DesktopAPI = {
     generateVideo: (request: StudioVideoRequest) => Promise<StudioItem>;
     generateSpeech: (request: StudioSpeechRequest) => Promise<StudioItem>;
     saveTranscript: (input: StudioTranscriptInput) => Promise<StudioItem>;
+    transcribeRemote: (request: StudioRemoteTranscriptionRequest) => Promise<StudioItem>;
     updateTranscript: (
       id: string,
       patch: StudioTranscriptPatch

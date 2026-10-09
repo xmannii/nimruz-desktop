@@ -71,7 +71,11 @@ type SpeechContextValue = {
   clearCompleted: () => void;
   isLiveRecording: boolean;
   recordingSeconds: number;
-  startLiveRecording: (options: TranscriptionOptions) => Promise<void>;
+  /** `onFile` receives the recording instead of the local Shenava queue. */
+  startLiveRecording: (
+    options: TranscriptionOptions,
+    onFile?: (file: File) => void
+  ) => Promise<void>;
   stopLiveRecording: () => void;
 };
 
@@ -381,7 +385,7 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const startLiveRecording = useCallback(
-    async (options: TranscriptionOptions) => {
+    async (options: TranscriptionOptions, onFile?: (file: File) => void) => {
       if (liveRecordingRef.current) {
         stopLiveRecording();
         return;
@@ -436,16 +440,13 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
             return;
           }
           const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-          addFiles(
-            [
-              new File(
-                [audio],
-                `recording-${timestamp}.${recordingFileExtension(type)}`,
-                { type }
-              ),
-            ],
-            options
+          const file = new File(
+            [audio],
+            `recording-${timestamp}.${recordingFileExtension(type)}`,
+            { type }
           );
+          if (onFile) onFile(file);
+          else addFiles([file], options);
         };
         recorder.onerror = () => toast.error("ضبط صدا ناموفق بود.");
         liveRecordingRef.current = session;

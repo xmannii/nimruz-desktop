@@ -145,6 +145,7 @@ test("splits Gemini API models into image, video, and speech", () => {
       { name: "models/veo-2.0-generate-001", displayName: "Veo 2", supportedGenerationMethods: ["predictLongRunning"] },
       { name: "models/gemini-3.1-flash-tts-preview", displayName: "Gemini TTS", supportedGenerationMethods: ["generateContent"] },
       { name: "models/gemini-3-flash", displayName: "Gemini 3 Flash", supportedGenerationMethods: ["generateContent"] },
+      { name: "models/gemini-3.1-flash-live-preview", supportedGenerationMethods: ["bidiGenerateContent"] },
       { name: "models/gemini-embedding-001", supportedGenerationMethods: ["embedContent"] },
     ],
   });
@@ -165,4 +166,6 @@ test("splits Gemini API models into image, video, and speech", () => {
   assert.equal(catalog.speech[0].provider, "google");
   assert.equal(catalog.speech[0].supportsSpeed, false);
   assert.equal(catalog.speech[0].voices.length, GEMINI_TTS_VOICES.length);
+  // Plain Gemini models transcribe audio; image/TTS/live variants do not.
+  assert.deepEqual(catalog.transcription.map((model) => model.id), ["gemini-3-flash"]);
 });

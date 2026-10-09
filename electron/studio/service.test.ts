@@ -610,3 +610,67 @@ test("summarises today's output and this month's spend", async () => {
     assert.equal(stats.monthPricedCount, 2);
   });
 });
+
+test("transcribes short audio inline with Gemini and saves the audio first", async () => {
+  await withStudio(
+    {
+      [`POST ${GOOGLE_API}/models/gemini-3-flash:generateContent`]: () =>
+        Response.json({ candidates: [{ content: { parts: [{ text: "سلام، این یک آزمایش است." }] } }] }),
+    },
+    async ({ service, store, requests, changes }) => {
+      const item = await service.transcribeRemote({
+        provider: "google",
+        modelId: "gemini-3-flash",
+        sourceName: "voice.m4a",
+        mimeType: "audio/mp4",
+        audio: new Uint8Array([1, 2, 3]).buffer,
+        instructions: "نام‌ها: نیمروز",
+      });
+      assert.equal(item.kind, "transcript");
+      assert.equal(item.hasMedia, true);
+      await waitFor(() => store.get(item.id)?.status === "done");
+      const body = JSON.stringify(await requests[0].json());
+      assert.match(body, /inline_data/);
+      assert.match(body, /نیمروز/);
+      assert.equal(store.get(item.id)?.text, "سلام، این یک آزمایش است.");
+      assert.ok(changes.some((change) => change.id === item.id && change.status === "running"));
+    }
+  );
+});
+
+test("uploads long audio through the Files API and deletes it afterwards", async () => {
+  const deleted: string[] = [];
+  await withStudio(
+    {
+      [`POST https://generativelanguage.googleapis.com/upload/v1beta/files`]: (request) => {
+        if (request.headers.get("x-goog-upload-command") === "start") {
+          return new Response("{}", {
+            headers: { "x-goog-upload-url": "https://generativelanguage.googleapis.com/upload/v1beta/files?upload_id=abc" },
+          });
+        }
+        return Response.json({ file: { name: "files/audio-1", uri: `${GOOGLE_API}/files/audio-1`, state: "ACTIVE" } });
+      },
+      [`POST ${GOOGLE_API}/models/gemini-3-flash:generateContent`]: () =>
+        Response.json({ candidates: [{ content: { parts: [{ text: "متن طولانی" }] } }] }),
+      [`DELETE ${GOOGLE_API}/files/audio-1`]: (request) => {
+        deleted.push(new URL(request.url).pathname);
+        return new Response(null, { status: 200 });
+      },
+    },
+    async ({ service, store, requests }) => {
+      const big = new Uint8Array(15 * 1024 * 1024);
+      const item = await service.transcribeRemote({
+        provider: "google",
+        modelId: "gemini-3-flash",
+        sourceName: "podcast.mp3",
+        mimeType: "audio/mpeg",
+        audio: big.buffer,
+      });
+      await waitFor(() => store.get(item.id)?.status === "done", 5_000);
+      const generate = requests.find((request) => request.url.includes(":generateContent"))!;
+      assert.match(JSON.stringify(await generate.json()), /file_data/);
+      assert.equal(store.get(item.id)?.text, "متن طولانی");
+      await waitFor(() => deleted.length === 1);
+    }
+  );
+});

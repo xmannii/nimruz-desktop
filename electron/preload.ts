@@ -220,6 +220,8 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("studio:generate-speech", request),
     saveTranscript: (input) =>
       ipcRenderer.invoke("studio:save-transcript", input),
+    transcribeRemote: (request) =>
+      ipcRenderer.invoke("studio:transcribe-remote", request),
     updateTranscript: (id, patch) =>
       ipcRenderer.invoke("studio:update-transcript", id, patch),
     saveAs: (id) => ipcRenderer.invoke("studio:save-as", id),

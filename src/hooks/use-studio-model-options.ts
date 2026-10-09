@@ -5,6 +5,7 @@ import type { StudioModelOption } from "@/components/studio/studio-model-picker"
 import { featuredRank, isNewModel } from "@/lib/studio/featured";
 import { formatStudioCost, modelVendor } from "@/lib/studio/format";
 import type {
+  StudioTranscriptionModel,
   StudioImageModel,
   StudioSpeechModel,
   StudioVideoModel,
@@ -76,6 +77,23 @@ export function useSpeechModelOptions(models: StudioSpeechModel[]) {
           model.voices.length > 0
             ? `${model.voices.length.toLocaleString("fa-IR")} صدا`
             : "صدای پیش‌فرض",
+      })),
+    [models]
+  );
+}
+
+export function useTranscriptionModelOptions(models: StudioTranscriptionModel[]) {
+  return useMemo<StudioModelOption[]>(
+    () =>
+      models.map((model) => ({
+        key: studioModelKey(model.provider, model.id),
+        id: model.id,
+        name: model.name,
+        provider: model.provider,
+        group: "google",
+        rank: featuredRank("transcript", model.id),
+        isNew: isNewModel(model.createdAt),
+        meta: "ابری · فایل‌های طولانی و چندزبانه",
       })),
     [models]
   );

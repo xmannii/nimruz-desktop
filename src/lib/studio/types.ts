@@ -43,6 +43,7 @@ export const STUDIO_LIMITS = {
   maxReferenceImages: 4,
   maxReferenceImageBytes: 8 * 1024 * 1024,
   maxTranscriptAudioBytes: 150 * 1024 * 1024,
+  maxRemoteTranscriptionBytes: 250 * 1024 * 1024,
   listPageSize: 60,
 } as const;
 
@@ -123,10 +124,21 @@ export type StudioVoice = {
   previewUrl?: string;
 };
 
+/** A cloud model that can transcribe audio (Gemini via Google AI Studio). */
+export type StudioTranscriptionModel = {
+  id: string;
+  /** Release time in ms when the catalog reports it. */
+  createdAt?: number | null;
+  provider: Extract<StudioProvider, "google">;
+  name: string;
+  description: string;
+};
+
 export type StudioModelCatalog = {
   image: StudioImageModel[];
   video: StudioVideoModel[];
   speech: StudioSpeechModel[];
+  transcription: StudioTranscriptionModel[];
   fetchedAt: number;
 };
 
@@ -215,4 +227,15 @@ export type StudioStats = {
   monthCost: number;
   /** Items this month with a known cost (the rest are unpriced). */
   monthPricedCount: number;
+};
+
+export type StudioRemoteTranscriptionRequest = {
+  provider: "google";
+  modelId: string;
+  sourceName: string;
+  mimeType: string;
+  audio: ArrayBuffer;
+  durationSeconds?: number | null;
+  /** Extra guidance, e.g. names or terms to spell correctly. */
+  instructions?: string;
 };

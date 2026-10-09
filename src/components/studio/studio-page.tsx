@@ -48,7 +48,7 @@ const TAB_DESCRIPTIONS: Record<StudioTab, string> = {
   image: "ساخت و ویرایش تصویر با OpenRouter، Google و FLUX",
   video: "متن یا تصویر را به ویدیو تبدیل کنید",
   speech: "متن را با صدای طبیعی بخوانید",
-  transcribe: "تبدیل خصوصی گفتار به متن، روی همین دستگاه",
+  transcribe: "گفتار به متن؛ خصوصی روی دستگاه یا با Gemini",
 };
 
 const TAB_COMPONENTS: Record<StudioTab, () => JSX.Element> = {

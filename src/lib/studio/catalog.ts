@@ -1,4 +1,5 @@
 import type {
+  StudioTranscriptionModel,
   StudioImageModel,
   StudioSpeechModel,
   StudioVideoModel,
@@ -232,7 +233,9 @@ export function parseGoogleModels(payload: unknown): {
   image: StudioImageModel[];
   video: StudioVideoModel[];
   speech: StudioSpeechModel[];
+  transcription: StudioTranscriptionModel[];
 } {
+  const transcription: StudioTranscriptionModel[] = [];
   const image: StudioImageModel[] = [];
   const video: StudioVideoModel[] = [];
   const speech: StudioSpeechModel[] = [];
@@ -263,6 +266,8 @@ export function parseGoogleModels(payload: unknown): {
         supportsAudio: false,
         minPricePerSecond: null,
       });
+    } else if (isGeminiAudioUnderstandingModel(id) && methods.includes("generateContent")) {
+      transcription.push({ id, provider: "google", name, description });
     } else if (id.includes("-tts") && methods.includes("generateContent")) {
       speech.push({
         id,
@@ -278,5 +283,14 @@ export function parseGoogleModels(payload: unknown): {
     image: bySortName(image),
     video: bySortName(video),
     speech: bySortName(speech),
+    transcription: bySortName(transcription),
   };
+}
+
+/** Text-output Gemini models accept audio input; skip specialised variants. */
+function isGeminiAudioUnderstandingModel(id: string) {
+  return (
+    id.startsWith("gemini-") &&
+    !/(image|tts|embedding|live|native-audio|computer-use|robotics|aqa|thinking-exp)/.test(id)
+  );
 }

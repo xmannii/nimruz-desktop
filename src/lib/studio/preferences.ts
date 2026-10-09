@@ -17,6 +17,8 @@ export type StudioPreferences = {
   speechModelKey?: string;
   speechVoice?: string;
   speechSpeed?: number;
+  transcribeModelKey?: string;
+  transcribeAutoCorrect?: boolean;
 };
 
 /** Defaults favour the newest broadly capable models with good Persian support. */
