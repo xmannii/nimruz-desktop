@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { Spinner } from "@/components/ui/spinner";
 import { useStudioCatalog } from "@/hooks/use-studio-catalog";
 import { useStudioItems } from "@/hooks/use-studio-items";
@@ -193,6 +194,96 @@ function VoicePicker({
   );
 }
 
+const TONE_PRESETS = [
+  "گرم و آرام",
+  "شاد و پرانرژی",
+  "رسمی و خبری",
+  "مثل یک قصه‌گو",
+  "آهسته و شمرده",
+  "نجواگونه و صمیمی",
+  "هیجان‌زده",
+  "جدی و محکم",
+];
+
+/**
+ * Tone/performance direction for models that accept it. A roomy popover
+ * with presets instead of a cramped inline field; the text is sent as
+ * direction, never read aloud.
+ */
+function TonePicker({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const active = value.trim();
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        className={cn(studioPillClass, "max-w-44", active && "bg-foreground/10 text-foreground")}
+        title={active ? `لحن: ${active}` : "لحن و سبک خواندن"}
+      >
+        <WandIcon className="size-3.5 shrink-0 opacity-70" />
+        <span className="truncate">{active || "لحن"}</span>
+      </PopoverTrigger>
+      <PopoverContent
+        side="top"
+        align="end"
+        initialFocus={textareaRef}
+        className="w-[min(22rem,calc(100vw-2rem))] gap-3 rounded-2xl p-3"
+        dir="rtl"
+      >
+        <div>
+          <p className="text-sm font-medium">لحن و اجرا</p>
+          <p className="mt-0.5 text-[11.5px] leading-5 text-muted-foreground">
+            فقط راهنمای اجراست و خوانده نمی‌شود.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {TONE_PRESETS.map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              className={cn(
+                "rounded-full border px-2.5 py-1 text-xs transition-colors",
+                active === preset
+                  ? "border-foreground/30 bg-foreground/10 text-foreground"
+                  : "border-border/70 text-muted-foreground hover:bg-muted hover:text-foreground"
+              )}
+              onClick={() => onValueChange(active === preset ? "" : preset)}
+            >
+              {preset}
+            </button>
+          ))}
+        </div>
+        <Textarea
+          ref={textareaRef}
+          dir={active ? "auto" : "rtl"}
+          value={value}
+          rows={3}
+          maxLength={1_000}
+          placeholder="یا خودتان بنویسید؛ مثلاً: صمیمی و آرام، با کمی مکث بعد از هر جمله"
+          aria-label="لحن و سبک خواندن"
+          className="min-h-20 resize-none text-[13px] leading-6"
+          onChange={(event) => onValueChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+              event.preventDefault();
+              setOpen(false);
+            }
+          }}
+        />
+        <div className="flex items-center justify-between">
+          <Button type="button" variant="ghost" size="sm" disabled={!active} onClick={() => onValueChange("")}>
+            پاک کردن
+          </Button>
+          <Button type="button" size="sm" className="rounded-full px-4" onClick={() => setOpen(false)}>
+            تمام
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 /** Compact history row with inline playback. */
 function SpeechRow({ item, onReuse }: { item: StudioItem; onReuse: (item: StudioItem) => void }) {
   const { openItem } = useStudio();
@@ -342,7 +433,6 @@ export function SpeechStudio() {
   const preferences = useMemo(loadStudioPreferences, []);
   const [text, setText] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [showInstructions, setShowInstructions] = useState(false);
   const [modelKey, setModelKey] = useState(
     preferences.speechModelKey ?? DEFAULT_STUDIO_PREFERENCES.speechModelKey
   );
@@ -408,15 +498,11 @@ export function SpeechStudio() {
     setText(item.text ?? item.prompt);
     setModelKey(studioModelKey(item.provider, item.modelId));
     if (typeof item.params.voice === "string") setVoice(item.params.voice);
-    if (typeof item.params.instructions === "string") {
-      setInstructions(item.params.instructions);
-      setShowInstructions(true);
-    }
+    setInstructions(typeof item.params.instructions === "string" ? item.params.instructions : "");
   }
 
   const spoken = text.replace(/\[[^\]]*\]/g, "").trim();
   const seconds = Math.max(1, Math.round(spoken.length / CHARS_PER_SECOND));
-  const instructionsVisible = Boolean(model?.supportsInstructions && (showInstructions || instructions));
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -481,33 +567,6 @@ export function SpeechStudio() {
               </span>
             ) : null
           }
-          attachments={
-            instructionsVisible ? (
-              <div className="flex items-center gap-2 rounded-xl bg-muted/70 px-3">
-                <WandIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                <input
-                  dir={instructions.trim() ? "auto" : "rtl"}
-                  value={instructions}
-                  maxLength={1_000}
-                  placeholder="لحن و سبک خواندن؛ مثلاً: گرم و آرام، مثل یک قصه‌گو"
-                  aria-label="لحن و سبک خواندن"
-                  className="h-9 min-w-0 flex-1 bg-transparent text-xs outline-none placeholder:text-muted-foreground/70"
-                  onChange={(event) => setInstructions(event.target.value)}
-                />
-                <button
-                  type="button"
-                  aria-label="حذف لحن"
-                  className="flex size-5 items-center justify-center rounded-full text-muted-foreground hover:bg-background hover:text-foreground"
-                  onClick={() => {
-                    setInstructions("");
-                    setShowInstructions(false);
-                  }}
-                >
-                  <XIcon className="size-3" />
-                </button>
-              </div>
-            ) : null
-          }
           toolbar={
             <>
               <StudioModelPicker
@@ -524,11 +583,8 @@ export function SpeechStudio() {
                 }
               />
               <VoicePicker model={model} value={voice} onValueChange={setVoice} />
-              {model?.supportsInstructions && !instructionsVisible ? (
-                <button type="button" className={studioPillClass} onClick={() => setShowInstructions(true)} title="لحن و سبک خواندن">
-                  <WandIcon className="size-3.5 opacity-70" />
-                  لحن
-                </button>
+              {model?.supportsInstructions ? (
+                <TonePicker value={instructions} onValueChange={setInstructions} />
               ) : null}
               {model?.supportsSpeed ? (
                 <StudioOptionChip
