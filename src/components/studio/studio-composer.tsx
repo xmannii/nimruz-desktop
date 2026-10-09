@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { requestPromptEnhancement } from "@/lib/studio/enhance";
+import { textDirection } from "@/lib/studio/audio-tags";
+import { StudioAudioTagHighlights } from "@/components/studio/studio-audio-tag-text";
 import { cn } from "@/lib/utils";
 import { ArrowUpIcon, SparklesIcon, XIcon } from "lucide-react";
 import {
@@ -39,6 +41,7 @@ export function StudioComposer({
   submitOnEnter = true,
   tall = false,
   flashSignal = 0,
+  highlightAudioTags = false,
   className,
 }: {
   value: string;
@@ -60,8 +63,12 @@ export function StudioComposer({
   tall?: boolean;
   /** Bump to briefly highlight and focus the box (e.g. text handed over). */
   flashSignal?: number;
+  /** Colour ElevenLabs audio tags like [whispers] behind the text. */
+  highlightAudioTags?: boolean;
   className?: string;
 }) {
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const direction = value.trim() ? textDirection(value) : "rtl";
   const maxHeight = tall ? 320 : 240;
   const enhanceCopy =
     enhanceKind === "speech-tags"
@@ -157,10 +164,26 @@ export function StudioComposer({
       >
         {attachments ? <div className="px-3 pt-3">{attachments}</div> : null}
         <div className="relative">
+          {highlightAudioTags && value ? (
+            // Mirrors the textarea's text box so tag highlights sit exactly
+            // under the tags; the textarea above stays fully editable.
+            <div
+              ref={backdropRef}
+              aria-hidden
+              dir={direction}
+              className={cn(
+                "pointer-events-none absolute inset-0 overflow-hidden px-4 pt-3.5 pb-1 text-[15px] leading-7 break-words whitespace-pre-wrap text-transparent",
+                tall ? "max-h-80" : "max-h-60"
+              )}
+            >
+              <StudioAudioTagHighlights text={value} />
+            </div>
+          ) : null}
           <textarea
             ref={textareaRef}
-            // Empty → RTL so the Persian placeholder aligns right; typed text picks its own direction.
-            dir={value.trim() ? "auto" : "rtl"}
+            // Empty → RTL so the Persian placeholder aligns right; otherwise
+            // the first real letter decides, ignoring leading audio tags.
+            dir={direction}
             value={value}
             rows={1}
             maxLength={maxLength}
@@ -168,10 +191,13 @@ export function StudioComposer({
             aria-label={placeholder}
             readOnly={isEnhancing}
             className={cn(
-              "block w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-7 outline-none placeholder:text-start placeholder:text-muted-foreground/60",
+              "relative block w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-7 break-words outline-none placeholder:text-start placeholder:text-muted-foreground/60",
               tall ? "max-h-80 min-h-[5.5rem]" : "max-h-60 min-h-[3.25rem]"
             )}
             onChange={(event) => onValueChange(event.target.value)}
+            onScroll={(event) => {
+              if (backdropRef.current) backdropRef.current.scrollTop = event.currentTarget.scrollTop;
+            }}
             onPaste={handlePaste}
             onKeyDown={(event) => {
               if (

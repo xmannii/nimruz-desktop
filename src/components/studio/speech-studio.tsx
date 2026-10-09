@@ -3,6 +3,7 @@
 import { useStudio, parseStudioModelKey, studioModelKey } from "@/components/studio/studio-context";
 import { StudioComposer } from "@/components/studio/studio-composer";
 import { StudioExpandableText } from "@/components/studio/studio-expandable-text";
+import { StudioAudioTagText } from "@/components/studio/studio-audio-tag-text";
 import { StudioOptionChip, studioPillClass } from "@/components/studio/studio-controls";
 import { StudioEmptyState } from "@/components/studio/studio-feed";
 import { StudioKeyNotice, useOpenRouterKeyConfigured } from "@/components/studio/studio-key-notice";
@@ -368,7 +369,9 @@ function SpeechRow({ item, onReuse }: { item: StudioItem; onReuse: (item: Studio
       )}
 
       <div className="min-w-0 flex-1">
-        <StudioExpandableText text={item.text ?? item.prompt} />
+        <StudioExpandableText text={item.text ?? item.prompt}>
+          <StudioAudioTagText text={item.text ?? item.prompt} />
+        </StudioExpandableText>
         {failed ? (
           <p className="mt-0.5 line-clamp-1 text-[11px] text-destructive">{item.error ?? "ساخت صدا ناموفق بود."}</p>
         ) : (
@@ -575,6 +578,7 @@ export function SpeechStudio() {
           submitOnEnter={false}
           tall
           flashSignal={flashSignal}
+          highlightAudioTags={canTag || /\[[^\]\n]{1,40}\]/.test(text)}
           enhanceKind={canTag ? "speech-tags" : undefined}
           notice={needsOpenRouter && openRouterReady === false ? <StudioKeyNotice /> : null}
           footer={

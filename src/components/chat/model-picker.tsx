@@ -28,8 +28,13 @@ type ModelPickerProps = {
   onValueChange: (value: ProviderModelRef) => void;
   disabled?: boolean;
   compact?: boolean;
-  /** "chevron" renders only a small arrow, e.g. beside another button. */
-  trigger?: "pill" | "chevron";
+  /**
+   * "chevron" renders only a small arrow, e.g. beside another button;
+   * "row" renders a full-width sidebar row with the model and a caption.
+   */
+  trigger?: "pill" | "chevron" | "row";
+  /** Second line under the model name for the "row" trigger. */
+  caption?: string;
   /** Popover heading; defaults to "انتخاب مدل". */
   heading?: string;
   /** Optional note under the heading explaining what the model is used for. */
@@ -91,6 +96,7 @@ export function ModelPicker({
   heading = "انتخاب مدل",
   description,
   align = "start",
+  caption,
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -118,7 +124,29 @@ export function ModelPicker({
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
-      {trigger === "chevron" ? (
+      {trigger === "row" ? (
+        <PopoverTrigger
+          disabled={disabled}
+          aria-label={selected ? `${heading}: ${selected.fullName}` : heading}
+          className={cn(
+            "flex w-full items-center gap-2.5 rounded-xl border border-sidebar-border/70 px-2.5 py-2 text-start transition-colors hover:bg-sidebar-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+            open && "bg-sidebar-accent/60"
+          )}
+        >
+          {selected ? (
+            <ProviderAvatar name={selected.fullName} className="size-7 shrink-0 rounded-lg [&_svg]:size-3.5" />
+          ) : null}
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[12.5px] font-medium" dir="ltr">
+              {selected?.name ?? "مدل"}
+            </span>
+            {caption ? (
+              <span className="block truncate text-[10.5px] text-muted-foreground">{caption}</span>
+            ) : null}
+          </span>
+          <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        </PopoverTrigger>
+      ) : trigger === "chevron" ? (
         <PopoverTrigger
           disabled={disabled}
           title={selected ? `${heading}: ${selected.fullName}` : heading}

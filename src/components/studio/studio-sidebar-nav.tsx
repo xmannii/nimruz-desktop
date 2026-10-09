@@ -29,6 +29,7 @@ import {
   studioTabKind,
   type StudioTab,
 } from "@/lib/studio/format";
+import { AUDIO_TAG_PATTERN, textDirection } from "@/lib/studio/audio-tags";
 import type { StudioItem } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
@@ -302,8 +303,11 @@ export function StudioSidebarNav() {
                     onClick={() => reusePrompt(item)}
                   >
                     <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                    <span dir="auto" className="min-w-0 flex-1 truncate text-[12.5px] text-foreground/85">
-                      {item.prompt}
+                    <span
+                      dir={textDirection(item.prompt)}
+                      className="min-w-0 flex-1 truncate text-start text-[12.5px] text-foreground/85"
+                    >
+                      {item.prompt.replace(AUDIO_TAG_PATTERN, " ").replace(/\s+/g, " ").trim()}
                     </span>
                     <CornerDownLeftIcon className="size-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/prompt:opacity-100" />
                   </button>
@@ -332,19 +336,15 @@ export function StudioSidebarNav() {
             )
           }
         >
-          <div className="flex flex-col items-start gap-1.5 rounded-xl border border-sidebar-border/70 px-2 py-2">
-            <ModelPicker
-              value={assistant.model}
-              onValueChange={assistant.setModel}
-              heading="مدل دستیار"
-              description="برای بهبود درخواست‌ها، برچسب‌های صوتی ElevenLabs و اصلاح رونویسی در استودیو."
-              align="end"
-            />
-            <span className="px-1 text-[10.5px] leading-4 text-muted-foreground">
-              {assistant.followsDefault ? "همان مدل گفتگو · " : ""}
-              بهبود درخواست، برچسب صوتی و اصلاح متن
-            </span>
-          </div>
+          <ModelPicker
+            trigger="row"
+            value={assistant.model}
+            onValueChange={assistant.setModel}
+            heading="مدل دستیار"
+            description="برای بهبود درخواست‌ها، برچسب‌های صوتی ElevenLabs و اصلاح رونویسی در استودیو."
+            caption={assistant.followsDefault ? "همان مدل گفتگو" : "ویژه استودیو"}
+            align="end"
+          />
         </Section>
       ) : null}
       <Section title="سرویس‌ها">

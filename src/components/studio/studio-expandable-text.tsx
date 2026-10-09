@@ -1,7 +1,8 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { useLayoutEffect, useRef, useState } from "react";
+import { textDirection } from "@/lib/studio/audio-tags";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 /**
  * Shows a short preview of long text with an inline "more / less" toggle.
@@ -12,10 +13,13 @@ export function StudioExpandableText({
   text,
   lines = 2,
   className,
+  children,
 }: {
   text: string;
   lines?: 2 | 3;
   className?: string;
+  /** Rich rendering of `text` (e.g. audio-tag badges); defaults to plain text. */
+  children?: ReactNode;
 }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -35,7 +39,7 @@ export function StudioExpandableText({
     <div className={className}>
       <p
         ref={ref}
-        dir="auto"
+        dir={textDirection(text)}
         className={cn(
           "text-[13.5px] leading-6 whitespace-pre-wrap text-foreground/90",
           expanded
@@ -45,7 +49,7 @@ export function StudioExpandableText({
               : "line-clamp-2"
         )}
       >
-        {text}
+        {children ?? text}
       </p>
       {overflows || expanded ? (
         <button
