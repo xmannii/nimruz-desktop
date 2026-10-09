@@ -1,5 +1,6 @@
 "use client";
 
+import { ModelLogo } from "@/components/studio/model-logo";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,19 +33,23 @@ const SERVICES: Array<{
   {
     id: "google",
     name: "Google AI Studio",
-    mark: (
-      <span className="bg-[conic-gradient(from_200deg,#4285f4,#34a853,#fbbc05,#ea4335,#4285f4)] bg-clip-text text-base font-bold text-transparent">
-        G
-      </span>
-    ),
+    mark: <ModelLogo logo="google" fallback="G" tile={false} className="size-5" />,
     description: "Imagen و Nano Banana برای تصویر، Veo برای ویدیو، Gemini TTS برای صدا.",
     keyUrl: "https://aistudio.google.com/apikey",
     placeholder: "AIza…",
   },
   {
+    id: "bfl",
+    name: "Black Forest Labs",
+    mark: <ModelLogo logo="bfl" fallback="BFL" tile={false} className="size-5" />,
+    description: "FLUX 3، FLUX.2 و Kontext برای تصویر و ویرایش؛ FLUX 3 برای ویدیو.",
+    keyUrl: "https://dashboard.bfl.ai/",
+    placeholder: "bfl_…",
+  },
+  {
     id: "elevenlabs",
     name: "ElevenLabs",
-    mark: <span className="text-sm font-bold">II</span>,
+    mark: <ModelLogo logo="elevenlabs" fallback="11" tile={false} className="size-5" />,
     description: "صداهای شخصی، طراحی‌شده و کلون‌شده حساب خودتان.",
     keyUrl: "https://elevenlabs.io/app/settings/api-keys",
     placeholder: "sk_…",

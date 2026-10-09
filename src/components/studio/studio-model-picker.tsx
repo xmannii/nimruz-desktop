@@ -36,11 +36,12 @@ export type StudioModelOption = {
   isNew?: boolean;
 };
 
-const PROVIDER_ORDER = ["openrouter", "google", "elevenlabs"];
+const PROVIDER_ORDER = ["openrouter", "google", "bfl", "elevenlabs"];
 
 const PROVIDER_LABELS: Record<string, { full: string; short: string }> = {
   openrouter: { full: "OpenRouter", short: "OpenRouter" },
   google: { full: "Google AI Studio", short: "Google" },
+  bfl: { full: "Black Forest Labs", short: "BFL" },
   elevenlabs: { full: "ElevenLabs", short: "ElevenLabs" },
 };
 

@@ -10,21 +10,22 @@ export const STUDIO_ITEM_STATUSES = [
 ] as const;
 export type StudioItemStatus = (typeof STUDIO_ITEM_STATUSES)[number];
 
-export const STUDIO_PROVIDERS = ["openrouter", "google", "elevenlabs", "shenava"] as const;
+export const STUDIO_PROVIDERS = ["openrouter", "google", "bfl", "elevenlabs", "shenava"] as const;
 export type StudioProvider = (typeof STUDIO_PROVIDERS)[number];
 
 /** Providers that generate images and videos. */
-export type StudioMediaProvider = Extract<StudioProvider, "openrouter" | "google">;
+export type StudioMediaProvider = Extract<StudioProvider, "openrouter" | "google" | "bfl">;
 /** Providers that synthesize speech. */
 export type StudioSpeechProvider = Extract<StudioProvider, "openrouter" | "google" | "elevenlabs">;
 
 /** Optional direct connections managed from Studio. */
-export const STUDIO_CONNECTIONS = ["google", "elevenlabs"] as const;
+export const STUDIO_CONNECTIONS = ["google", "bfl", "elevenlabs"] as const;
 export type StudioConnectionId = (typeof STUDIO_CONNECTIONS)[number];
 
 /** Credential ids for keys entered in Studio. */
 export const STUDIO_CREDENTIAL_IDS: Record<StudioConnectionId, string> = {
   google: "google-ai-studio",
+  bfl: "black-forest-labs",
   elevenlabs: "elevenlabs",
 };
 
@@ -200,3 +201,7 @@ export type StudioEnhanceRequest = {
   providerId?: string;
   model?: string;
 };
+
+export function toMediaProvider(value: unknown): StudioMediaProvider {
+  return value === "google" || value === "bfl" ? value : "openrouter";
+}

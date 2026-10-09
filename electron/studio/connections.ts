@@ -71,8 +71,10 @@ export function createStudioConnections(options: {
   return {
     getGoogleAuth,
     getElevenLabsKey: () => credentials.getKey(STUDIO_CREDENTIAL_IDS.elevenlabs),
+    getBflKey: () => credentials.getKey(STUDIO_CREDENTIAL_IDS.bfl),
     getStatus: (): StudioConnections => ({
       google: status("google"),
+      bfl: status("bfl"),
       elevenlabs: status("elevenlabs"),
     }),
   };

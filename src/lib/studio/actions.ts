@@ -1,4 +1,4 @@
-import type { StudioItem } from "./types";
+import { toMediaProvider, type StudioItem } from "./types";
 
 function stringParam(item: StudioItem, key: string) {
   const value = item.params[key];
@@ -6,7 +6,7 @@ function stringParam(item: StudioItem, key: string) {
 }
 
 function mediaProvider(item: StudioItem) {
-  return item.provider === "google" ? ("google" as const) : ("openrouter" as const);
+  return toMediaProvider(item.provider);
 }
 
 function styleOf(item: StudioItem) {

@@ -465,6 +465,7 @@ app.whenReady().then(async () => {
     getOpenRouterKey: () => credentials.getKey(OPENROUTER_PROVIDER_ID),
     getGoogleAuth: studioConnections.getGoogleAuth,
     getElevenLabsKey: studioConnections.getElevenLabsKey,
+    getBflKey: studioConnections.getBflKey,
     onItemChange: (item) => sendToMainWindow(STUDIO_ITEM_CHANNEL, item),
     onItemDelete: (id) => sendToMainWindow(STUDIO_ITEM_DELETED_CHANNEL, id),
   });

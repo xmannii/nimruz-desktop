@@ -32,6 +32,15 @@ import {
   type StudioVideoRequest,
 } from "@/lib/studio/types";
 import {
+  BFL_API,
+  BFL_IMAGE_MODELS,
+  BFL_VIDEO_MODELS,
+  buildBflImageBody,
+  buildBflVideoBody,
+  isBflApiUrl,
+  parseBflPoll,
+} from "./bfl";
+import {
   isStudioItemId,
   StudioStore,
   toPublicStudioItem,
@@ -59,6 +68,7 @@ export type StudioServiceOptions = {
   getOpenRouterKey: () => string | null;
   getGoogleAuth: () => ProviderAuth | null;
   getElevenLabsKey: () => string | null;
+  getBflKey?: () => string | null;
   onItemChange: (item: StudioItem) => void;
   onItemDelete: (id: string) => void;
   fetchImpl?: FetchLike;
@@ -111,11 +121,12 @@ function applyStyle(prompt: string, style: unknown) {
 }
 
 function mediaProvider(value: unknown): StudioMediaProvider {
-  return value === "google" ? "google" : "openrouter";
+  return value === "google" || value === "bfl" ? value : "openrouter";
 }
 
 function missingKeyMessage(provider: StudioProvider) {
   if (provider === "google") return "کلید Google AI Studio تنظیم نشده است.";
+  if (provider === "bfl") return "کلید Black Forest Labs تنظیم نشده است.";
   if (provider === "elevenlabs") return "کلید ElevenLabs تنظیم نشده است.";
   return "کلید OpenRouter تنظیم نشده است. آن را در تنظیمات وارد کنید.";
 }
@@ -250,7 +261,7 @@ export class StudioService {
       if (
         item.kind === "video" &&
         jobId &&
-        (item.provider === "openrouter" || item.provider === "google") &&
+        (item.provider === "openrouter" || item.provider === "google" || item.provider === "bfl") &&
         this.runVideoJob(item.id, item.provider, jobId)
       ) {
         continue;
@@ -334,9 +345,10 @@ export class StudioService {
     return this.withConnections(this.catalog!);
   }
 
-  invalidateConnection(connection: "google" | "elevenlabs") {
+  invalidateConnection(connection: "google" | "bfl" | "elevenlabs") {
     if (connection === "google") this.googleCatalog = null;
-    else this.elevenLabsModels = null;
+    else if (connection === "elevenlabs") this.elevenLabsModels = null;
+    // BFL models are a static list; nothing to refresh.
   }
 
   private async withConnections(catalog: StudioModelCatalog) {
@@ -344,10 +356,11 @@ export class StudioService {
       this.loadGoogleCatalog().catch(() => null),
       this.loadElevenLabsModels().catch(() => []),
     ]);
+    const bfl = this.options.getBflKey?.() ? { image: BFL_IMAGE_MODELS, video: BFL_VIDEO_MODELS } : null;
     return {
       ...catalog,
-      image: [...(google?.image ?? []), ...catalog.image],
-      video: [...(google?.video ?? []), ...catalog.video],
+      image: [...(google?.image ?? []), ...(bfl?.image ?? []), ...catalog.image],
+      video: [...(google?.video ?? []), ...(bfl?.video ?? []), ...catalog.video],
       speech: [...(google?.speech ?? []), ...eleven, ...catalog.speech],
     };
   }
@@ -457,6 +470,30 @@ export class StudioService {
       })
     );
 
+    if (provider === "bfl") {
+      for (const record of records) {
+        void this.track(record.id, async (signal) => {
+          this.patch(record.id, { status: "running" });
+          const pollingUrl = await this.submitBfl(auth.apiKey, model, signal, buildBflImageBody({
+            modelId: model,
+            prompt: style.modelPrompt,
+            aspectRatio,
+            references: referenceImages.map((image) => image.dataUrl),
+          }));
+          const ready = await this.waitForBfl(pollingUrl, auth.apiKey, signal, 1_000, 5 * 60 * 1000);
+          const download = await ensureOk(await this.fetch(ready.url, { signal }));
+          const mimeType = download.headers.get("content-type")?.split(";")[0] || "image/png";
+          await this.saveMedia(
+            record.id,
+            await readLimited(download, 64 * 1024 * 1024),
+            mimeType.startsWith("image/") ? mimeType : "image/png",
+            ready.cost !== null ? { cost: ready.cost } : {}
+          );
+        });
+      }
+      return records.map(toPublicStudioItem);
+    }
+
     const imageModel =
       provider === "google"
         ? createGoogleGenerativeAI({
@@ -532,7 +569,16 @@ export class StudioService {
 
     void this.track(record.id, async (signal) => {
       const jobId =
-        provider === "google"
+        provider === "bfl"
+          ? await this.submitBfl(auth.apiKey, model, signal, buildBflVideoBody({
+              prompt: style.modelPrompt,
+              aspectRatio,
+              resolution,
+              duration,
+              generateAudio: request.generateAudio,
+              firstFrame: firstFrame?.dataUrl ?? null,
+            }))
+          : provider === "google"
           ? await this.submitGoogleVideo(auth, signal, {
               model,
               prompt: style.modelPrompt,
@@ -559,6 +605,56 @@ export class StudioService {
     });
 
     return toPublicStudioItem(record);
+  }
+
+  /** Submits a BFL job and returns its polling URL (a BFL host, checked). */
+  private async submitBfl(
+    apiKey: string,
+    model: string,
+    signal: AbortSignal,
+    body: Record<string, unknown>
+  ) {
+    const response = await ensureOk(
+      await this.fetch(`${BFL_API}/v1/${encodeURIComponent(model)}`, {
+        method: "POST",
+        signal,
+        headers: { "x-key": apiKey, "Content-Type": "application/json", accept: "application/json" },
+        body: JSON.stringify(body),
+      })
+    );
+    const submitted = (await response.json()) as { polling_url?: unknown };
+    if (!isBflApiUrl(submitted.polling_url)) {
+      throw new StudioError("پاسخ نامعتبر از Black Forest Labs دریافت شد.");
+    }
+    return submitted.polling_url;
+  }
+
+  /** One poll; the signed result URL is fetched without the API key. */
+  private async pollBflOnce(pollingUrl: string, apiKey: string, signal: AbortSignal) {
+    if (!isBflApiUrl(pollingUrl)) throw new StudioError("آدرس پیگیری نامعتبر است.");
+    const response = await ensureOk(
+      await this.fetch(pollingUrl, { headers: { "x-key": apiKey, accept: "application/json" }, signal })
+    );
+    const result = parseBflPoll(await response.json());
+    if (result.state === "failed") throw new StudioError(result.message);
+    if (result.state === "pending") return null;
+    return { url: result.url, headers: {}, cost: result.cost };
+  }
+
+  private async waitForBfl(
+    pollingUrl: string,
+    apiKey: string,
+    signal: AbortSignal,
+    intervalMs: number,
+    timeoutMs: number
+  ) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      await delay(this.options.videoPollIntervalMs ?? intervalMs, signal);
+      const result = await this.pollBflOnce(pollingUrl, apiKey, signal);
+      if (result) return result;
+    }
+    throw new StudioError("ساخت تصویر بیش از حد طول کشید.");
   }
 
   private async submitOpenRouterVideo(
@@ -680,7 +776,9 @@ export class StudioService {
     while (Date.now() - startedAt < VIDEO_MAX_POLL_MS) {
       await delay(this.options.videoPollIntervalMs ?? VIDEO_POLL_INTERVAL_MS, signal);
       const result =
-        provider === "google"
+        provider === "bfl"
+          ? await this.pollBflOnce(jobId, auth.apiKey, signal)
+          : provider === "google"
           ? await this.pollGoogleVideo(jobId, auth, signal)
           : await this.pollOpenRouterVideo(jobId, auth.apiKey, signal);
       if (!result) continue;
@@ -998,6 +1096,10 @@ export class StudioService {
 
   private authFor(provider: StudioProvider): ProviderAuth | null {
     if (provider === "google") return this.options.getGoogleAuth();
+    if (provider === "bfl") {
+      const apiKey = this.options.getBflKey?.() ?? null;
+      return apiKey ? { apiKey, baseUrl: BFL_API } : null;
+    }
     const apiKey =
       provider === "elevenlabs"
         ? this.options.getElevenLabsKey()

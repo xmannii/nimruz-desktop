@@ -39,6 +39,7 @@ async function withStudio(
     store,
     mediaDirectory,
     getOpenRouterKey: () => "sk-or-test-key",
+    getBflKey: () => "bfl-test-key",
     getGoogleAuth: () => ({
       apiKey: "google-test-key",
       baseUrl: "https://generativelanguage.googleapis.com/v1beta",
@@ -459,10 +460,12 @@ test("lists Google models alongside OpenRouter in the catalog", async () => {
     },
     async ({ service }) => {
       const catalog = await service.getCatalog();
-      assert.deepEqual(catalog.image.map((model) => [model.provider, model.id]), [
-        ["google", "imagen-4.0-generate-001"],
-      ]);
-      assert.deepEqual(catalog.video.map((model) => model.provider), ["google"]);
+      assert.deepEqual(
+        catalog.image.filter((model) => model.provider === "google").map((model) => model.id),
+        ["imagen-4.0-generate-001"]
+      );
+      assert.ok(catalog.image.some((model) => model.provider === "bfl" && model.id === "flux-3-image"));
+      assert.deepEqual(catalog.video.map((model) => model.provider), ["google", "bfl"]);
     }
   );
 });
@@ -529,4 +532,57 @@ test("repairs Studio tables on databases stamped with a newer version", async ()
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("generates FLUX images through BFL and downloads without the API key", async () => {
+  let polls = 0;
+  await withStudio(
+    {
+      "POST https://api.bfl.ai/v1/flux-2-pro": () =>
+        Response.json({ id: "task-1", polling_url: "https://api.us1.bfl.ai/v1/get_result?id=task-1" }),
+      "GET https://api.us1.bfl.ai/v1/get_result": () => {
+        polls += 1;
+        return Response.json(
+          polls < 2
+            ? { id: "task-1", status: "Pending" }
+            : { id: "task-1", status: "Ready", cost: 3, result: { sample: "https://delivery-us1.bfl.ai/out.png?sig=1" } }
+        );
+      },
+      "GET https://delivery-us1.bfl.ai/out.png": (request) => {
+        assert.equal(request.headers.get("x-key"), null);
+        return new Response(new Uint8Array([0x89, 0x50]), { headers: { "Content-Type": "image/png" } });
+      },
+    },
+    async ({ service, store, requests }) => {
+      const [item] = await service.generateImages({
+        provider: "bfl",
+        modelId: "flux-2-pro",
+        prompt: "یک فنجان چای",
+        aspectRatio: "16:9",
+      });
+      await waitFor(() => store.get(item.id)?.status === "done");
+      assert.equal(requests[0].headers.get("x-key"), "bfl-test-key");
+      const body = (await requests[0].json()) as Record<string, unknown>;
+      assert.equal(body.prompt, "یک فنجان چای");
+      assert.ok(Number(body.width) > Number(body.height));
+      const done = store.get(item.id)!;
+      assert.equal(done.provider, "bfl");
+      assert.equal(done.cost, 0.03);
+    }
+  );
+});
+
+test("refuses BFL polling URLs outside bfl.ai", async () => {
+  await withStudio(
+    {
+      "POST https://api.bfl.ai/v1/flux-3-video": () =>
+        Response.json({ id: "x", polling_url: "https://attacker.example/steal" }),
+    },
+    async ({ service, store, requests }) => {
+      const item = await service.generateVideo({ provider: "bfl", modelId: "flux-3-video", prompt: "x" });
+      await waitFor(() => store.get(item.id)?.status === "failed");
+      assert.equal(requests.length, 1);
+      assert.match(store.get(item.id)?.error ?? "", /نامعتبر/);
+    }
+  );
 });

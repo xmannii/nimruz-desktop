@@ -13,6 +13,8 @@ const FEATURED: Record<Extract<StudioKind, "image" | "video" | "speech">, RegExp
     /gemini-3\.\d-flash-image/,
     /seedream-5/,
     /flux-3-image/,
+    /flux-2-max/,
+    /flux-kontext-max/,
     /grok-imagine-image-2/,
     /qwen-image-3-pro/,
     /imagen-4\.\d-ultra|imagen-4/,

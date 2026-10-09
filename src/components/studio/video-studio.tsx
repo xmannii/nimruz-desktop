@@ -39,7 +39,7 @@ import {
   saveStudioPreferences,
 } from "@/lib/studio/preferences";
 import { findPreset, VIDEO_CAMERA_MOVES } from "@/lib/studio/presets";
-import { STUDIO_LIMITS, type StudioItem } from "@/lib/studio/types";
+import { STUDIO_LIMITS, toMediaProvider, type StudioItem } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
 import {
   ClockIcon,
@@ -55,6 +55,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const CONFIRM_COST_USD = 1;
+
+/** Friendly names for resolution classes some providers use. */
+const RESOLUTION_LABELS: Record<string, string> = {
+  hd: "HD",
+  fhd: "Full HD",
+  qhd: "QHD",
+  uhd: "4K",
+};
 
 type FirstFrame = { type: "item"; item: StudioItem } | { type: "data-url"; dataUrl: string };
 
@@ -133,7 +141,7 @@ export function VideoStudio() {
     setIsSubmitting(true);
     try {
       await window.desktop.studio.generateVideo({
-        provider: provider === "google" ? "google" : "openrouter",
+        provider: toMediaProvider(provider),
         modelId,
         prompt,
         style: move.prompt ? { id: move.id, prompt: move.prompt } : undefined,
@@ -276,7 +284,7 @@ export function VideoStudio() {
               value={effectiveResolution}
               onValueChange={setResolution}
               icon={<MonitorIcon className="size-3.5 opacity-70" />}
-              options={model.resolutions.map((value) => ({ value, label: value }))}
+              options={model.resolutions.map((value) => ({ value, label: RESOLUTION_LABELS[value] ?? value }))}
             />
           ) : null}
           {model?.supportsAudio ? (

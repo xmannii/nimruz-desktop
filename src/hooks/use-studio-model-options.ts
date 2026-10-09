@@ -14,6 +14,7 @@ import { useMemo } from "react";
 /** Vendor sub-group inside a provider, e.g. "openai" within OpenRouter. */
 function groupFor(provider: string, id: string) {
   if (provider === "google") return "google";
+  if (provider === "bfl") return "black-forest-labs";
   if (provider === "elevenlabs") return "elevenlabs";
   return modelVendor(id);
 }

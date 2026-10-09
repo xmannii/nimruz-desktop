@@ -29,7 +29,7 @@ import {
   saveStudioPreferences,
 } from "@/lib/studio/preferences";
 import { findPreset, IMAGE_STYLES } from "@/lib/studio/presets";
-import { STUDIO_LIMITS, type StudioItem } from "@/lib/studio/types";
+import { STUDIO_LIMITS, toMediaProvider, type StudioItem } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
 import { CopyIcon, ImageIcon, ImagePlusIcon, PlugIcon } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -122,7 +122,7 @@ export function ImageStudio() {
     setIsSubmitting(true);
     try {
       await window.desktop.studio.generateImages({
-        provider: provider === "google" ? "google" : "openrouter",
+        provider: toMediaProvider(provider),
         modelId,
         prompt,
         style: style.prompt ? { id: style.id, prompt: style.prompt } : undefined,

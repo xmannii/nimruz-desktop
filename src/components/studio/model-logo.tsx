@@ -41,7 +41,7 @@ export function resolveModelLogo(modelId: string, provider?: string): ModelLogoK
   if (/hailuo/.test(id)) return "hailuo";
   if (/happyhorse/.test(id)) return "happyhorse";
   if (/kling/.test(id)) return "kling";
-  if (/flux/.test(id)) return "bfl";
+  if (provider === "bfl" || /flux/.test(id)) return "bfl";
   if (/seedance|seedream|seed-/.test(id)) return "bytedance";
   if (vendor && VENDOR_LOGOS[vendor]) return VENDOR_LOGOS[vendor];
   if (provider === "google") return "google";
@@ -51,6 +51,7 @@ export function resolveModelLogo(modelId: string, provider?: string): ModelLogoK
 export function providerLogoKey(provider: string): ModelLogoKey | null {
   if (provider === "openrouter") return "openrouter";
   if (provider === "google") return "google";
+  if (provider === "bfl") return "bfl";
   if (provider === "elevenlabs") return "elevenlabs";
   return null;
 }
