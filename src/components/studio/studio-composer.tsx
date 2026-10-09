@@ -153,6 +153,7 @@ export function StudioComposer({
     <div className={cn("mx-auto flex w-full max-w-3xl flex-col gap-2", className)}>
       {notice}
       <form
+        data-studio-tour="composer"
         className={cn(
           "relative flex flex-col rounded-3xl border border-border bg-card shadow-xs transition-[border-color,box-shadow] duration-300 focus-within:border-foreground/25",
           flashing && "border-primary/50 ring-4 ring-primary/15"
@@ -227,7 +228,7 @@ export function StudioComposer({
               {isSubmitting ? <Spinner /> : <ArrowUpIcon className="size-4.5" />}
             </Button>
             {enhanceKind ? (
-              <span className="flex items-center">
+              <span data-studio-tour="enhance" className="flex items-center">
                 <Tooltip>
                   <TooltipTrigger
                     render={

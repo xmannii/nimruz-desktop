@@ -20,6 +20,8 @@ export type StudioPreferences = {
   speechSpeed?: number;
   transcribeModelKey?: string;
   transcribeAutoCorrect?: boolean;
+  /** Set once the first-run Studio tour has been finished or skipped. */
+  tourCompleted?: boolean;
   /** Chat model for Studio helpers; absent means "follow the chat default". */
   assistantModel?: ProviderModelRef;
 };

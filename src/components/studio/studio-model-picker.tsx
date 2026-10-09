@@ -217,6 +217,7 @@ export function StudioModelPicker({
       }}
     >
       <PopoverTrigger
+        data-studio-tour="model"
         disabled={disabled}
         aria-label={
           selected

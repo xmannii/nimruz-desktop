@@ -156,7 +156,7 @@ export function StudioSidebarNav() {
 
   if (isIconMode) {
     return (
-      <SidebarMenu className="gap-1 px-2 py-2">
+      <SidebarMenu data-studio-tour="tools" className="gap-1 px-2 py-2">
         {STUDIO_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab];
           return (
@@ -179,7 +179,7 @@ export function StudioSidebarNav() {
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
       {/* Tools */}
-      <div className="grid grid-cols-2 gap-1.5 px-3 pt-3">
+      <div data-studio-tour="tools" className="grid grid-cols-2 gap-1.5 px-3 pt-3">
         {STUDIO_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab];
           const active = currentTab === tab;

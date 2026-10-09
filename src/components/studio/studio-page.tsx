@@ -10,6 +10,7 @@ import {
 } from "@/components/studio/studio-context";
 import { StudioHistorySheet } from "@/components/studio/studio-history-sheet";
 import { StudioItemViewer } from "@/components/studio/studio-item-viewer";
+import { StudioTour } from "@/components/studio/studio-tour";
 import { TranscribeStudio } from "@/components/studio/transcribe-studio";
 import { VideoStudio } from "@/components/studio/video-studio";
 import { useSpeech } from "@/components/speech/speech-provider";
@@ -22,12 +23,13 @@ import {
   studioKindTab,
   type StudioTab,
 } from "@/lib/studio/format";
-import { saveStudioPreferences } from "@/lib/studio/preferences";
+import { loadStudioPreferences, saveStudioPreferences } from "@/lib/studio/preferences";
 import type { StudioItem } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
 import {
   AudioLinesIcon,
+  CircleHelpIcon,
   FileAudioIcon,
   FilmIcon,
   HistoryIcon,
@@ -57,6 +59,31 @@ const TAB_COMPONENTS: Record<StudioTab, () => JSX.Element> = {
   speech: SpeechStudio,
   transcribe: TranscribeStudio,
 };
+
+/**
+ * Opens the Studio tour on the first visit, once no other dialog (app
+ * onboarding, What's New) is in the way. Gives up quietly after a while and
+ * tries again on the next visit.
+ */
+function useFirstRunTour(start: () => void) {
+  const startRef = useRef(start);
+  startRef.current = start;
+
+  useEffect(() => {
+    if (loadStudioPreferences().tourCompleted) return;
+    let timer = 0;
+    const attempt = (remaining: number) => {
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) {
+        if (remaining > 0) timer = window.setTimeout(() => attempt(remaining - 1), 1000);
+        return;
+      }
+      startRef.current();
+    };
+    // Let the tab and sidebar settle so the spotlight lands on real controls.
+    timer = window.setTimeout(() => attempt(60), 700);
+    return () => window.clearTimeout(timer);
+  }, []);
+}
 
 /**
  * Tracks running work per tab and announces finished generations that
@@ -141,6 +168,14 @@ export function StudioPage({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [draft, setDraft] = useState<StudioDraft | null>(null);
+  const [tourOpen, setTourOpen] = useState(false);
+
+  useFirstRunTour(useCallback(() => setTourOpen(true), []));
+
+  const closeTour = useCallback(() => {
+    setTourOpen(false);
+    saveStudioPreferences({ tourCompleted: true });
+  }, []);
 
   const openItem = useCallback((item: StudioItem, siblings?: StudioItem[]) => {
     setViewer({ item, siblings: siblings ?? [item] });
@@ -244,7 +279,7 @@ export function StudioPage({
           </div>
 
           {/* Narrow windows hide the sidebar, so keep compact tabs here. */}
-          <nav aria-label="بخش‌های استودیو" className="flex items-center gap-0.5 md:hidden">
+          <nav data-studio-tour="tools" aria-label="بخش‌های استودیو" className="flex items-center gap-0.5 md:hidden">
             {STUDIO_TABS.map((value) => {
               const Icon = TAB_ICONS[value];
               const active = value === tab;
@@ -274,13 +309,30 @@ export function StudioPage({
               type="button"
               variant="ghost"
               size="icon-sm"
+              aria-label="راهنمای استودیو"
+              title="راهنمای استودیو"
+              onClick={() => setTourOpen(true)}
+            >
+              <CircleHelpIcon />
+            </Button>
+            <Button
+              data-studio-tour="services"
+              type="button"
+              variant="ghost"
+              size="icon-sm"
               aria-label="سرویس‌ها و کلیدها"
               title="سرویس‌ها"
               onClick={openConnections}
             >
               <PlugIcon />
             </Button>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+            <Button
+              data-studio-tour="history"
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setHistoryOpen(true)}
+            >
               <HistoryIcon data-icon="inline-start" />
               <span className="hidden md:inline">تاریخچه</span>
             </Button>
@@ -313,6 +365,7 @@ export function StudioPage({
         onOpenItem={(item) => openItem(item)}
       />
       <StudioConnectionsDialog open={connectionsOpen} onOpenChange={setConnectionsOpen} />
+      <StudioTour open={tourOpen} onClose={closeTour} />
     </StudioContextProvider>
   );
 }
