@@ -249,7 +249,13 @@ test("persists transcripts with audio and AI corrections", async () => {
     const corrected = service.updateTranscript(id, { correctedText: "متن اصلاح‌شده" });
     assert.equal(corrected?.correctedText, "متن اصلاح‌شده");
 
-    const results = service.list({ kind: "transcript", query: "اصلاح" });
+    // Arabic kaf/yeh and missing half-spaces still match Persian text.
+    const results = service.list({ kind: "transcript", query: "اصلاحشده" });
+    assert.deepEqual(
+      service.list({ query: "متن خام" }).map((result) => result.id),
+      [id]
+    );
+    assert.equal(service.list({ query: "ميتينگ" }).length, 0);
     assert.deepEqual(results.map((result) => result.id), [id]);
     assert.equal(service.list({ kind: "image" }).length, 0);
 

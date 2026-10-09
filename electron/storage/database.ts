@@ -688,6 +688,7 @@ export class AppDatabase {
             cost REAL,
             duration_seconds REAL,
             parent_id TEXT,
+            search_text TEXT NOT NULL DEFAULT '',
             created_at INTEGER NOT NULL,
             updated_at INTEGER NOT NULL
           );

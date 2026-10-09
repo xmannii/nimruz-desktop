@@ -13,6 +13,7 @@ import { Route as CompanionRouteImport } from './routes/companion'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AppTranscribeRouteImport } from './routes/_app.transcribe'
+import { Route as AppStudioRouteImport } from './routes/_app.studio'
 import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppSettingsIndexRouteImport } from './routes/_app.settings.index'
 import { Route as AppWorkspaceWorkspaceIdRouteImport } from './routes/_app.workspace.$workspaceId'
@@ -59,6 +60,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppTranscribeRoute = AppTranscribeRouteImport.update({
   id: '/transcribe',
   path: '/transcribe',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppStudioRoute = AppStudioRouteImport.update({
+  id: '/studio',
+  path: '/studio',
   getParentRoute: () => AppRoute,
 } as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
@@ -215,6 +221,7 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/companion': typeof CompanionRoute
   '/settings': typeof AppSettingsRouteWithChildren
+  '/studio': typeof AppStudioRoute
   '/transcribe': typeof AppTranscribeRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
   '/settings/about': typeof AppSettingsAboutRoute
@@ -246,6 +253,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/companion': typeof CompanionRoute
+  '/studio': typeof AppStudioRoute
   '/transcribe': typeof AppTranscribeRoute
   '/': typeof AppIndexRoute
   '/chat/$chatId': typeof AppChatChatIdRoute
@@ -278,6 +286,7 @@ export interface FileRoutesById {
   '/_app': typeof AppRouteWithChildren
   '/companion': typeof CompanionRoute
   '/_app/settings': typeof AppSettingsRouteWithChildren
+  '/_app/studio': typeof AppStudioRoute
   '/_app/transcribe': typeof AppTranscribeRoute
   '/_app/': typeof AppIndexRoute
   '/_app/chat/$chatId': typeof AppChatChatIdRoute
@@ -314,6 +323,7 @@ export interface FileRouteTypes {
     | '/'
     | '/companion'
     | '/settings'
+    | '/studio'
     | '/transcribe'
     | '/chat/$chatId'
     | '/settings/about'
@@ -345,6 +355,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/companion'
+    | '/studio'
     | '/transcribe'
     | '/'
     | '/chat/$chatId'
@@ -376,6 +387,7 @@ export interface FileRouteTypes {
     | '/_app'
     | '/companion'
     | '/_app/settings'
+    | '/_app/studio'
     | '/_app/transcribe'
     | '/_app/'
     | '/_app/chat/$chatId'
@@ -440,6 +452,13 @@ declare module '@tanstack/react-router' {
       path: '/transcribe'
       fullPath: '/transcribe'
       preLoaderRoute: typeof AppTranscribeRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/studio': {
+      id: '/_app/studio'
+      path: '/studio'
+      fullPath: '/studio'
+      preLoaderRoute: typeof AppStudioRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/settings': {
@@ -734,6 +753,7 @@ const AppWorkspaceWorkspaceIdRouteWithChildren =
 
 interface AppRouteChildren {
   AppSettingsRoute: typeof AppSettingsRouteWithChildren
+  AppStudioRoute: typeof AppStudioRoute
   AppTranscribeRoute: typeof AppTranscribeRoute
   AppIndexRoute: typeof AppIndexRoute
   AppChatChatIdRoute: typeof AppChatChatIdRoute
@@ -742,6 +762,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppSettingsRoute: AppSettingsRouteWithChildren,
+  AppStudioRoute: AppStudioRoute,
   AppTranscribeRoute: AppTranscribeRoute,
   AppIndexRoute: AppIndexRoute,
   AppChatChatIdRoute: AppChatChatIdRoute,

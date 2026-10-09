@@ -53,7 +53,7 @@ import { useSpeech } from "@/components/speech/speech-provider";
 import { HOME_WORKSPACE_ID, isHomeWorkspace } from "@/lib/workspace";
 import {
   ArrowRightIcon,
-  AudioLinesIcon,
+  WandSparklesIcon,
   CogIcon,
   FolderIcon,
   HistoryIcon,
@@ -86,10 +86,10 @@ type AppSidebarProps = {
   onPinChat: (id: string, pinned: boolean) => void;
   typingTitles?: Record<string, string>;
   onOpenSettings: () => void;
-  onOpenTranscription: () => void;
+  onOpenStudio: () => void;
   onBackToChat: () => void;
   settingsActive?: boolean;
-  transcriptionActive?: boolean;
+  studioActive?: boolean;
   memoryCount?: number;
 };
 
@@ -112,10 +112,10 @@ export function AppSidebar({
   onPinChat,
   typingTitles = {},
   onOpenSettings,
-  onOpenTranscription,
+  onOpenStudio,
   onBackToChat,
   settingsActive = false,
-  transcriptionActive = false,
+  studioActive = false,
   memoryCount = 0,
 }: AppSidebarProps) {
   const { isMobile, setOpenMobile, state } = useSidebar();
@@ -282,16 +282,16 @@ export function AppSidebar({
 
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  tooltip={{ children: "رونویسی صوت", side: "left" }}
-                  isActive={transcriptionActive}
+                  tooltip={{ children: "استودیو", side: "left" }}
+                  isActive={studioActive}
                   className="h-8 text-[13px]"
                   onClick={() => {
-                    onOpenTranscription();
+                    onOpenStudio();
                     closeMobileSidebar();
                   }}
                 >
-                  <AudioLinesIcon />
-                  <span className="flex-1 text-start">رونویسی صوت</span>
+                  <WandSparklesIcon />
+                  <span className="flex-1 text-start">استودیو</span>
                   {hasBusyItems || isLiveRecording ? (
                     <LoaderCircleIcon
                       className="animate-spin"

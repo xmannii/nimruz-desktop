@@ -1,6 +1,8 @@
-import { FileTranscriptionPage } from "@/components/speech/file-transcription-page";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, redirect } from "@tanstack/react-router";
 
+// Transcription now lives in Studio; keep old links and shortcuts working.
 export const Route = createFileRoute("/_app/transcribe")({
-  component: FileTranscriptionPage,
+  beforeLoad: () => {
+    throw redirect({ to: "/studio", search: { tab: "transcribe" }, replace: true });
+  },
 });

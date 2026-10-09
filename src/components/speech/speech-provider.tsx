@@ -3,10 +3,12 @@
 import type { FileTranscriptionItem } from "@/components/speech/transcription-result-card";
 import type { ProviderModelRef } from "@/lib/models/catalog";
 import {
+  audioMimeTypeFor,
   MAX_AUDIO_DURATION_SECONDS,
   splitPcmAtSilence,
 } from "@/lib/speech/file-transcription";
 import { requestTranscriptCorrection } from "@/lib/speech/request-correction";
+import { STUDIO_LIMITS } from "@/lib/studio/types";
 import {
   DEFAULT_MICROPHONE_ID,
   MICROPHONE_STORAGE_KEY,
@@ -117,6 +119,31 @@ async function decodeAudio(file: File) {
     );
   } finally {
     await context.close().catch(() => undefined);
+  }
+}
+
+/** Saves a finished transcript (and its audio) to Studio history. */
+async function persistTranscript(
+  job: PendingTranscription,
+  text: string,
+  durationSeconds: number
+) {
+  const mimeType = audioMimeTypeFor(job.file);
+  try {
+    await window.desktop.studio.saveTranscript({
+      id: job.id,
+      sourceName: job.file.name,
+      modelKey: job.modelKey,
+      text,
+      durationSeconds,
+      mimeType,
+      audio:
+        mimeType && job.file.size <= STUDIO_LIMITS.maxTranscriptAudioBytes
+          ? await job.file.arrayBuffer()
+          : null,
+    });
+  } catch (error) {
+    console.warn("Failed to save transcript to Studio history:", error);
   }
 }
 
@@ -233,6 +260,9 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
           correctedText,
           correctionError: null,
         });
+        void window.desktop.studio
+          .updateTranscript(id, { correctedText })
+          .catch(() => undefined);
       } catch (error) {
         if (controller.signal.aborted) return;
         updateItem(id, {
@@ -289,6 +319,7 @@ export function SpeechProvider({ children }: { children: ReactNode }) {
             progress: 100,
             transcript,
           });
+          await persistTranscript(job, transcript, decoded.durationSeconds);
 
           if (job.autoCorrect && job.correctionModel) {
             await correctItem(

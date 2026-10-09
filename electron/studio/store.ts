@@ -10,6 +10,7 @@ import {
   type StudioListOptions,
   type StudioProvider,
 } from "@/lib/studio/types";
+import { normalizeSearchText } from "@/lib/studio/search";
 
 /** A row as stored, including the private on-disk media path. */
 export type StudioItemRecord = StudioItem & { storagePath: string | null };
@@ -76,6 +77,12 @@ function mapRow(row: Record<string, unknown>): StudioItemRecord {
   };
 }
 
+function searchTextFor(record: StudioItemRecord) {
+  return normalizeSearchText(
+    [record.title, record.prompt, record.text ?? "", record.correctedText ?? ""].join(" ")
+  ).slice(0, 20_000);
+}
+
 export function toPublicStudioItem(record: StudioItemRecord): StudioItem {
   const { storagePath: _storagePath, ...item } = record;
   return item;
@@ -109,8 +116,8 @@ export class StudioStore {
     if (!isStudioItemId(record.id)) throw new Error("Invalid Studio item id.");
     this.database
       .prepare(
-        `INSERT INTO studio_items (${COLUMNS})
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO studio_items (${COLUMNS}, search_text)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         record.id,
@@ -130,7 +137,8 @@ export class StudioStore {
         record.durationSeconds,
         record.parentId,
         record.createdAt,
-        record.updatedAt
+        record.updatedAt,
+        searchTextFor(record)
       );
     return record;
   }
@@ -157,7 +165,7 @@ export class StudioStore {
         `UPDATE studio_items
             SET status = ?, title = ?, params_json = ?, mime_type = ?,
                 storage_path = ?, text = ?, corrected_text = ?, error = ?,
-                cost = ?, duration_seconds = ?, updated_at = ?
+                cost = ?, duration_seconds = ?, search_text = ?, updated_at = ?
           WHERE id = ?`
       )
       .run(
@@ -171,6 +179,7 @@ export class StudioStore {
         next.error,
         next.cost,
         next.durationSeconds,
+        searchTextFor(next),
         next.updatedAt,
         id
       );
@@ -189,14 +198,12 @@ export class StudioStore {
       values.push(options.before);
     }
     const query =
-      typeof options.query === "string" ? options.query.trim().slice(0, 200) : "";
+      typeof options.query === "string"
+        ? normalizeSearchText(options.query.slice(0, 200))
+        : "";
     if (query) {
-      const pattern = `%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
-      clauses.push(
-        `(title LIKE ? ESCAPE '\\' OR prompt LIKE ? ESCAPE '\\'
-          OR text LIKE ? ESCAPE '\\' OR corrected_text LIKE ? ESCAPE '\\')`
-      );
-      values.push(pattern, pattern, pattern, pattern);
+      clauses.push(`search_text LIKE ? ESCAPE '\\'`);
+      values.push(`%${query.replace(/[\\%_]/g, (char) => `\\${char}`)}%`);
     }
     const limit = Math.min(
       Math.max(1, Math.trunc(options.limit ?? STUDIO_LIMITS.listPageSize)),

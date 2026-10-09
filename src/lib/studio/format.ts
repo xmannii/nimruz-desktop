@@ -129,6 +129,18 @@ export function mediaExtension(mimeType: string | null | undefined) {
   }
 }
 
+/** "همین حالا", "۵ دقیقه پیش", "دیروز", then a short Jalali date. */
+export function formatRelativeTime(timestamp: number, now = Date.now()) {
+  const seconds = Math.round((timestamp - now) / 1_000);
+  const abs = Math.abs(seconds);
+  if (abs < 45) return "همین حالا";
+  const formatter = new Intl.RelativeTimeFormat("fa-IR", { numeric: "auto" });
+  if (abs < 3_600) return formatter.format(Math.round(seconds / 60), "minute");
+  if (abs < 86_400) return formatter.format(Math.round(seconds / 3_600), "hour");
+  if (abs < 7 * 86_400) return formatter.format(Math.round(seconds / 86_400), "day");
+  return new Intl.DateTimeFormat("fa-IR", { day: "numeric", month: "long" }).format(timestamp);
+}
+
 export type StudioDateGroup = { label: string; items: StudioItem[] };
 
 /** Groups newest-first items into Today / Yesterday / This week / older months. */

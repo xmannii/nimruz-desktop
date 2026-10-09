@@ -166,3 +166,30 @@
     transform-origin: center;
   }
 }
+
+/* Studio: soft moving sheen on media that is still being generated. */
+.studio-shimmer {
+  background-color: var(--muted);
+  background-image: linear-gradient(
+    110deg,
+    transparent 25%,
+    color-mix(in oklab, var(--foreground) 6%, transparent) 45%,
+    transparent 65%
+  );
+  background-size: 250% 100%;
+}
+
+@keyframes studio-shimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -120% 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .studio-shimmer {
+    animation: studio-shimmer 1.8s ease-in-out infinite;
+  }
+}
