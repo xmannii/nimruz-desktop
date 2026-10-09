@@ -1,6 +1,10 @@
 "use client";
 
-import { StudioMediaTile } from "@/components/studio/studio-media-tile";
+import {
+  isStudioItemFailed,
+  StudioFailedRow,
+  StudioMediaTile,
+} from "@/components/studio/studio-media-tile";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStudioItems } from "@/hooks/use-studio-items";
@@ -144,9 +148,11 @@ export function StudioFeed({
   const [isDragging, setIsDragging] = useState(false);
   const [contentRef, contentWidth] = useElementWidth<HTMLDivElement>();
   const [naturalRatios, setNaturalRatios] = useState<Map<string, number>>(() => new Map());
+  // Failed generations have no media; they get compact rows instead of tiles.
+  const mediaSiblings = useMemo(() => items.filter((item) => !isStudioItemFailed(item)), [items]);
   const targetHeight = useMemo(
-    () => feedTargetHeight(kind, items, naturalRatios, contentWidth),
-    [kind, items, naturalRatios, contentWidth]
+    () => feedTargetHeight(kind, mediaSiblings, naturalRatios, contentWidth),
+    [kind, mediaSiblings, naturalRatios, contentWidth]
   );
 
   const rememberRatio = useCallback((id: string, ratio: number) => {
@@ -222,19 +228,32 @@ export function StudioFeed({
               <div className="my-auto">{empty}</div>
             ) : (
               <div className="flex flex-col gap-6">
-                {groupStudioItemsByDate(items).map((group) => (
-                  <section key={group.label} className="flex flex-col gap-2.5">
-                    <h2 className="text-xs font-medium text-muted-foreground">{group.label}</h2>
-                    <JustifiedGallery
-                      items={group.items}
-                      siblings={items}
-                      width={contentWidth}
-                      targetHeight={targetHeight}
-                      naturalRatios={naturalRatios}
-                      onNaturalRatio={rememberRatio}
-                    />
-                  </section>
-                ))}
+                {groupStudioItemsByDate(items).map((group) => {
+                  const failed = group.items.filter(isStudioItemFailed);
+                  const media = group.items.filter((item) => !isStudioItemFailed(item));
+                  return (
+                    <section key={group.label} className="flex flex-col gap-2.5">
+                      <h2 className="text-xs font-medium text-muted-foreground">{group.label}</h2>
+                      {failed.length > 0 ? (
+                        <ul className="divide-y divide-border/60 rounded-xl border border-border/70">
+                          {failed.map((item) => (
+                            <StudioFailedRow key={item.id} item={item} />
+                          ))}
+                        </ul>
+                      ) : null}
+                      {media.length > 0 ? (
+                        <JustifiedGallery
+                          items={media}
+                          siblings={mediaSiblings}
+                          width={contentWidth}
+                          targetHeight={targetHeight}
+                          naturalRatios={naturalRatios}
+                          onNaturalRatio={rememberRatio}
+                        />
+                      ) : null}
+                    </section>
+                  );
+                })}
                 {hasMore ? (
                   <Button type="button" variant="ghost" size="sm" className="self-center" onClick={loadMore}>
                     موارد قدیمی‌تر

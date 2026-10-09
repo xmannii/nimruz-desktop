@@ -309,3 +309,77 @@ export function StudioMediaTile({
     </ContextMenu>
   );
 }
+
+export function isStudioItemFailed(item: StudioItem) {
+  return item.status === "failed" || item.status === "interrupted";
+}
+
+/**
+ * A failed generation as one compact line: there is no media to show, so it
+ * should not take a full tile's space in the gallery.
+ */
+export function StudioFailedRow({ item }: { item: StudioItem }) {
+  const actions = useStudioItemActions(item);
+  const [isRetrying, setIsRetrying] = useState(false);
+
+  async function retry() {
+    setIsRetrying(true);
+    try {
+      await retryStudioItem(item);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تلاش دوباره ناموفق بود.");
+    } finally {
+      setIsRetrying(false);
+    }
+  }
+
+  return (
+    <li className="flex items-center gap-2.5 py-2 ps-3 pe-1.5">
+      <AlertTriangleIcon className="size-3.5 shrink-0 text-destructive" />
+      <div className="min-w-0 flex-1">
+        <p dir="auto" className="truncate text-start text-[13px]" title={item.prompt}>
+          {item.prompt}
+        </p>
+        <p className="truncate text-[11px] text-muted-foreground" title={item.error ?? undefined}>
+          {item.status === "interrupted" ? "ساخت نیمه‌کاره ماند." : item.error ?? "ساخت ناموفق بود."}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-0.5">
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          className="rounded-full text-muted-foreground hover:text-foreground"
+          aria-label="ویرایش درخواست"
+          title="ویرایش درخواست"
+          onClick={actions.reuse}
+        >
+          <PencilLineIcon />
+        </Button>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          className="rounded-full text-muted-foreground hover:text-foreground"
+          aria-label="تلاش دوباره"
+          title="تلاش دوباره"
+          disabled={isRetrying}
+          onClick={() => void retry()}
+        >
+          {isRetrying ? <Spinner /> : <RotateCcwIcon />}
+        </Button>
+        <Button
+          type="button"
+          size="icon-xs"
+          variant="ghost"
+          className="rounded-full text-muted-foreground hover:text-destructive"
+          aria-label="حذف"
+          title="حذف"
+          onClick={actions.remove}
+        >
+          <Trash2Icon />
+        </Button>
+      </div>
+    </li>
+  );
+}
