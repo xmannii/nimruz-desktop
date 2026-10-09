@@ -13,6 +13,8 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { ModelPicker } from "@/components/chat/model-picker";
+import { useStudioAssistantModel } from "@/hooks/use-studio-assistant-model";
 import { useStudioConnections } from "@/hooks/use-studio-connections";
 import { useStudioItems } from "@/hooks/use-studio-items";
 import { useStudioStats } from "@/hooks/use-studio-stats";
@@ -127,6 +129,7 @@ export function StudioSidebarNav() {
   const { hasBusyItems, isLiveRecording } = useSpeech();
   const { connections } = useStudioConnections();
   const openRouterReady = useOpenRouterKeyConfigured();
+  const assistant = useStudioAssistantModel();
   const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
 
@@ -311,8 +314,39 @@ export function StudioSidebarNav() {
         </Section>
       ) : null}
 
-      {/* Services, pinned to the bottom */}
+      {/* Assistant model and services, pinned to the bottom */}
       <div className="mt-auto pb-3">
+      {assistant.model ? (
+        <Section
+          title="مدل دستیار"
+          action={
+            assistant.followsDefault ? null : (
+              <button
+                type="button"
+                className="text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+                title="استفاده از مدل پیش‌فرض گفتگو"
+                onClick={() => assistant.setModel(null)}
+              >
+                پیش‌فرض
+              </button>
+            )
+          }
+        >
+          <div className="flex flex-col items-start gap-1.5 rounded-xl border border-sidebar-border/70 px-2 py-2">
+            <ModelPicker
+              value={assistant.model}
+              onValueChange={assistant.setModel}
+              heading="مدل دستیار"
+              description="برای بهبود درخواست‌ها، برچسب‌های صوتی ElevenLabs و اصلاح رونویسی در استودیو."
+              align="end"
+            />
+            <span className="px-1 text-[10.5px] leading-4 text-muted-foreground">
+              {assistant.followsDefault ? "همان مدل گفتگو · " : ""}
+              بهبود درخواست، برچسب صوتی و اصلاح متن
+            </span>
+          </div>
+        </Section>
+      ) : null}
       <Section title="سرویس‌ها">
         <button
           type="button"

@@ -25,9 +25,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { useShenavaModel } from "@/hooks/use-shenava-model";
 import { useStudioCatalog } from "@/hooks/use-studio-catalog";
 import { useStudioConnections } from "@/hooks/use-studio-connections";
+import { useStudioAssistantModel } from "@/hooks/use-studio-assistant-model";
 import { useStudioItems } from "@/hooks/use-studio-items";
 import { useTranscriptionModelOptions } from "@/hooks/use-studio-model-options";
-import type { ProviderModelRef } from "@/lib/models/catalog";
 import { copyText } from "@/lib/studio/actions";
 import {
   formatRelativeTime,
@@ -158,7 +158,7 @@ function SessionRow({ item, onRemove }: { item: FileTranscriptionItem; onRemove:
 
 function TranscriptRow({ item, modelLabel }: { item: StudioItem; modelLabel: string }) {
   const { openItem } = useStudio();
-  const { defaultModelRef } = useAppShell();
+  const { model: defaultModelRef, label: assistantLabel } = useStudioAssistantModel();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isCorrecting, setIsCorrecting] = useState(false);
@@ -296,7 +296,7 @@ function TranscriptRow({ item, modelLabel }: { item: StudioItem; modelLabel: str
               variant="ghost"
               size="icon-sm"
               aria-label="اصلاح با هوش مصنوعی"
-              title={defaultModelRef ? "اصلاح با هوش مصنوعی" : "برای اصلاح یک مدل گفتگو فعال کنید"}
+              title={defaultModelRef ? `اصلاح با هوش مصنوعی · ${assistantLabel}` : "برای اصلاح یک مدل گفتگو فعال کنید"}
               disabled={!defaultModelRef || isCorrecting}
               onClick={() => void correct()}
             >
@@ -341,7 +341,9 @@ export function TranscribeStudio() {
   const { openConnections } = useStudio();
   const shenava = useShenavaModel();
   const speech = useSpeech();
-  const { defaultModelRef, hasUsableModel } = useAppShell();
+  const { hasUsableModel } = useAppShell();
+  const assistant = useStudioAssistantModel();
+  const correctionModel = assistant.model;
   const { catalog, isLoading: catalogLoading, refresh } = useStudioCatalog();
   const { connections } = useStudioConnections();
   const { items, isLoading, hasMore, loadMore } = useStudioItems({ kind: "transcript" });
@@ -350,14 +352,9 @@ export function TranscribeStudio() {
   const [isDragging, setIsDragging] = useState(false);
   const [autoCorrect, setAutoCorrect] = useState(preferences.transcribeAutoCorrect ?? false);
   const [correctionPrompt, setCorrectionPrompt] = useState(DEFAULT_CORRECTION_PROMPT);
-  const [correctionModel, setCorrectionModel] = useState<ProviderModelRef | null>(defaultModelRef);
   const [instructions, setInstructions] = useState("");
   const [showInstructions, setShowInstructions] = useState(false);
   const [modelKey, setModelKey] = useState<string | null>(preferences.transcribeModelKey ?? null);
-
-  useEffect(() => {
-    if (!correctionModel && defaultModelRef) setCorrectionModel(defaultModelRef);
-  }, [correctionModel, defaultModelRef]);
 
   const installed = SHENAVA_MODEL_KEYS.filter((key) => shenava.status.models[key].installed);
   const cloudOptions = useTranscriptionModelOptions(catalog?.transcription ?? []);
@@ -718,7 +715,17 @@ export function TranscribeStudio() {
                               />
                             </div>
                             {correctionModel ? (
-                              <ModelPicker value={correctionModel} onValueChange={setCorrectionModel} disabled={speech.hasBusyItems} />
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-xs text-muted-foreground">مدل دستیار</span>
+                                <ModelPicker
+                                  value={correctionModel}
+                                  onValueChange={assistant.setModel}
+                                  heading="مدل دستیار"
+                                  description="همین مدل برای بهبود درخواست‌ها و برچسب‌های صوتی هم استفاده می‌شود."
+                                  align="end"
+                                  disabled={speech.hasBusyItems}
+                                />
+                              </div>
                             ) : null}
                             <Textarea
                               value={correctionPrompt}

@@ -1,6 +1,7 @@
 "use client";
 
-import { useAppShell } from "@/components/app-shell-context";
+import { ModelPicker } from "@/components/chat/model-picker";
+import { useStudioAssistantModel } from "@/hooks/use-studio-assistant-model";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -74,7 +75,8 @@ export function StudioComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const enhanceAbort = useRef<AbortController | null>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
-  const { defaultModelRef } = useAppShell();
+  const assistant = useStudioAssistantModel();
+  const defaultModelRef = assistant.model;
 
   useEffect(() => {
     const textarea = textareaRef.current;
@@ -182,28 +184,41 @@ export function StudioComposer({
               {isSubmitting ? <Spinner /> : <ArrowUpIcon className="size-4.5" />}
             </Button>
             {enhanceKind ? (
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="rounded-full text-muted-foreground hover:text-foreground"
-                      aria-label={enhanceCopy.label}
-                      disabled={!value.trim() || !defaultModelRef || isEnhancing}
-                      onClick={() => void enhance()}
-                    />
-                  }
-                >
-                  {isEnhancing ? <Spinner /> : <SparklesIcon />}
-                </TooltipTrigger>
-                <TooltipContent>
-                  {defaultModelRef
-                    ? enhanceCopy.tooltip
-                    : "برای این کار یک مدل گفتگو فعال کنید"}
-                </TooltipContent>
-              </Tooltip>
+              <span className="flex items-center">
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="rounded-full text-muted-foreground hover:text-foreground"
+                        aria-label={enhanceCopy.label}
+                        disabled={!value.trim() || !defaultModelRef || isEnhancing}
+                        onClick={() => void enhance()}
+                      />
+                    }
+                  >
+                    {isEnhancing ? <Spinner /> : <SparklesIcon />}
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {defaultModelRef
+                      ? `${enhanceCopy.tooltip} · ${assistant.label}`
+                      : "برای این کار یک مدل گفتگو فعال کنید"}
+                  </TooltipContent>
+                </Tooltip>
+                {defaultModelRef ? (
+                  <ModelPicker
+                    trigger="chevron"
+                    align="end"
+                    heading="مدل دستیار"
+                    description="برای بهبود درخواست، برچسب‌های صوتی و اصلاح رونویسی در استودیو."
+                    value={defaultModelRef}
+                    onValueChange={assistant.setModel}
+                    disabled={isEnhancing}
+                  />
+                ) : null}
+              </span>
             ) : null}
             {value && !isEnhancing ? (
               <Button

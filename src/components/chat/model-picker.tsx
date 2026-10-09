@@ -28,6 +28,13 @@ type ModelPickerProps = {
   onValueChange: (value: ProviderModelRef) => void;
   disabled?: boolean;
   compact?: boolean;
+  /** "chevron" renders only a small arrow, e.g. beside another button. */
+  trigger?: "pill" | "chevron";
+  /** Popover heading; defaults to "انتخاب مدل". */
+  heading?: string;
+  /** Optional note under the heading explaining what the model is used for. */
+  description?: string;
+  align?: "start" | "end";
 };
 
 function ProviderAvatar({
@@ -80,6 +87,10 @@ export function ModelPicker({
   onValueChange,
   disabled = false,
   compact = false,
+  trigger = "pill",
+  heading = "انتخاب مدل",
+  description,
+  align = "start",
 }: ModelPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -107,50 +118,66 @@ export function ModelPicker({
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger
-        disabled={disabled}
-        title={compact ? selected?.fullName : undefined}
-        className={cn(
-          "inline-flex items-center rounded-full border border-border/70 bg-muted/70 text-xs font-medium text-foreground shadow-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
-          compact
-            ? "h-10 max-w-[7.5rem] shrink gap-1 px-2"
-            : "h-8 max-w-44 gap-1.5 px-2",
-          open && "bg-muted"
-        )}
-        aria-label={selected ? `مدل: ${selected.fullName}` : "انتخاب مدل"}
-      >
-        {selected ? (
-          <ProviderAvatar
-            name={selected.fullName}
-            className="size-5 shrink-0 rounded-sm [&_svg]:size-3"
-          />
-        ) : null}
-        <span className={cn("min-w-0 truncate", compact && "text-[11px]")}>
-          {selected?.name ?? "مدل"}
-        </span>
-        <ChevronDownIcon
+      {trigger === "chevron" ? (
+        <PopoverTrigger
+          disabled={disabled}
+          title={selected ? `${heading}: ${selected.fullName}` : heading}
+          aria-label={selected ? `${heading}: ${selected.fullName}` : heading}
           className={cn(
-            "shrink-0 text-muted-foreground",
-            compact ? "size-3" : "size-3.5"
+            "inline-flex h-8 w-5 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+            open && "bg-muted text-foreground"
           )}
-        />
-      </PopoverTrigger>
+        >
+          <ChevronDownIcon className="size-3.5" />
+        </PopoverTrigger>
+      ) : (
+        <PopoverTrigger
+          disabled={disabled}
+          title={compact ? selected?.fullName : undefined}
+          className={cn(
+            "inline-flex items-center rounded-full border border-border/70 bg-muted/70 text-xs font-medium text-foreground shadow-none transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50",
+            compact
+              ? "h-10 max-w-[7.5rem] shrink gap-1 px-2"
+              : "h-8 max-w-44 gap-1.5 px-2",
+            open && "bg-muted"
+          )}
+          aria-label={selected ? `مدل: ${selected.fullName}` : "انتخاب مدل"}
+        >
+          {selected ? (
+            <ProviderAvatar
+              name={selected.fullName}
+              className="size-5 shrink-0 rounded-sm [&_svg]:size-3"
+            />
+          ) : null}
+          <span className={cn("min-w-0 truncate", compact && "text-[11px]")}>
+            {selected?.name ?? "مدل"}
+          </span>
+          <ChevronDownIcon
+            className={cn(
+              "shrink-0 text-muted-foreground",
+              compact ? "size-3" : "size-3.5"
+            )}
+          />
+        </PopoverTrigger>
+      )}
 
       <PopoverContent
-        align="start"
+        align={align}
         side="top"
         sideOffset={8}
         initialFocus={searchInputRef}
         className="w-[min(20rem,calc(100vw-2rem))] gap-0 overflow-hidden rounded-xl p-0"
       >
-        <div
-          dir="rtl"
-          className="flex items-center justify-between border-b border-border/60 px-3 py-2"
-        >
-          <span className="text-sm font-medium">انتخاب مدل</span>
-          <span className="text-[10px] text-muted-foreground">
-            context · output · $/1M
-          </span>
+        <div dir="rtl" className="border-b border-border/60 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">{heading}</span>
+            <span className="text-[10px] text-muted-foreground">
+              context · output · $/1M
+            </span>
+          </div>
+          {description ? (
+            <p className="mt-0.5 text-[11px] leading-5 text-muted-foreground">{description}</p>
+          ) : null}
         </div>
 
         {enabledModelGroups.length > 0 ? (

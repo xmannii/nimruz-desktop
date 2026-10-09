@@ -1,6 +1,6 @@
 "use client";
 
-import { useAppShell } from "@/components/app-shell-context";
+import { useStudioAssistantModel } from "@/hooks/use-studio-assistant-model";
 import { StudioAudioPlayer } from "@/components/studio/studio-audio-player";
 import { studioModelKey, useStudio } from "@/components/studio/studio-context";
 import { Badge } from "@/components/ui/badge";
@@ -120,7 +120,7 @@ function ViewerContent({
   close: () => void;
 }) {
   const { sendDraft } = useStudio();
-  const { defaultModelRef } = useAppShell();
+  const { model: defaultModelRef } = useStudioAssistantModel();
   const [isCorrecting, setIsCorrecting] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const isVisual = item.kind === "image" || item.kind === "video";

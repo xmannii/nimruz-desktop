@@ -1,3 +1,4 @@
+import type { ProviderModelRef } from "@/lib/models/catalog";
 import type { StudioTab } from "./format";
 
 const STORAGE_KEY = "nimruz.studio.preferences.v1";
@@ -19,6 +20,8 @@ export type StudioPreferences = {
   speechSpeed?: number;
   transcribeModelKey?: string;
   transcribeAutoCorrect?: boolean;
+  /** Chat model for Studio helpers; absent means "follow the chat default". */
+  assistantModel?: ProviderModelRef;
 };
 
 /** Defaults favour the newest broadly capable models with good Persian support. */
