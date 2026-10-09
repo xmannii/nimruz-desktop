@@ -668,6 +668,38 @@ export class AppDatabase {
       });
     }
 
+    if (currentVersion < 11) {
+      this.transaction(() => {
+        this.database.exec(`
+          CREATE TABLE IF NOT EXISTS studio_items (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL,
+            status TEXT NOT NULL,
+            title TEXT NOT NULL,
+            prompt TEXT NOT NULL DEFAULT '',
+            provider TEXT NOT NULL,
+            model_id TEXT NOT NULL,
+            params_json TEXT NOT NULL DEFAULT '{}',
+            mime_type TEXT,
+            storage_path TEXT,
+            text TEXT,
+            corrected_text TEXT,
+            error TEXT,
+            cost REAL,
+            duration_seconds REAL,
+            parent_id TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+          CREATE INDEX IF NOT EXISTS studio_items_created_idx
+            ON studio_items(created_at DESC);
+          CREATE INDEX IF NOT EXISTS studio_items_kind_created_idx
+            ON studio_items(kind, created_at DESC);
+          PRAGMA user_version = 11;
+        `);
+      });
+    }
+
     if (currentVersion >= 2) {
       this.ensureBuiltinCatalog();
     }

@@ -1,0 +1,133 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  minVideoPricePerSecond,
+  parseElevenLabsModels,
+  parseElevenLabsVoices,
+  parseOpenRouterImageModels,
+  parseOpenRouterSpeechModels,
+  parseOpenRouterVideoModels,
+} from "./catalog";
+
+test("keeps only image-output OpenRouter models and skips routers", () => {
+  const models = parseOpenRouterImageModels({
+    data: [
+      {
+        id: "google/gemini-image",
+        name: "Google: Gemini Image",
+        architecture: {
+          input_modalities: ["text", "image"],
+          output_modalities: ["image", "text"],
+        },
+      },
+      {
+        id: "openai/gpt-text",
+        name: "Text only",
+        architecture: { output_modalities: ["text"] },
+      },
+      {
+        id: "openrouter/auto-beta",
+        name: "Auto",
+        architecture: { output_modalities: ["image"] },
+      },
+      { id: "bad id with spaces", architecture: { output_modalities: ["image"] } },
+    ],
+  });
+  assert.deepEqual(models, [{
+    id: "google/gemini-image",
+    name: "Google: Gemini Image",
+    description: "",
+    acceptsImageInput: true,
+  }]);
+});
+
+test("derives the cheapest per-second video price from mixed SKUs", () => {
+  assert.equal(
+    minVideoPricePerSecond({
+      cents_per_image_input: "1",
+      cents_per_video_output_second_480p: "2",
+      cents_per_video_output_second_1080p: "14",
+    }),
+    0.02
+  );
+  assert.equal(
+    minVideoPricePerSecond({
+      duration_seconds_with_audio: "0.40",
+      duration_seconds_without_audio: "0.20",
+    }),
+    0.2
+  );
+  assert.equal(minVideoPricePerSecond({ video_tokens: "0.000007" }), null);
+  assert.equal(minVideoPricePerSecond(null), null);
+});
+
+test("skips video-to-video tools without selectable durations", () => {
+  const models = parseOpenRouterVideoModels({
+    data: [
+      {
+        id: "google/veo-3.1",
+        name: "Google: Veo 3.1",
+        supported_durations: [8, 4, 6, 4],
+        supported_resolutions: ["720p", "1080p"],
+        supported_aspect_ratios: ["16:9", "9:16"],
+        supported_frame_images: ["first_frame", "last_frame"],
+        generate_audio: true,
+        pricing_skus: { duration_seconds_without_audio: "0.20" },
+      },
+      { id: "black-forest-labs/flux-video-edit", supported_durations: null },
+    ],
+  });
+  assert.equal(models.length, 1);
+  assert.deepEqual(models[0].durations, [4, 6, 8]);
+  assert.equal(models[0].supportsFirstFrame, true);
+  assert.equal(models[0].supportsAudio, true);
+  assert.equal(models[0].minPricePerSecond, 0.2);
+});
+
+test("maps OpenRouter speech voices and instruction support", () => {
+  const [eleven, gemini] = parseOpenRouterSpeechModels({
+    data: [
+      {
+        id: "elevenlabs/eleven-v3",
+        name: "ElevenLabs: Eleven v3",
+        architecture: { output_modalities: ["speech"] },
+        supported_voices: ["george", "sarah"],
+      },
+      {
+        id: "google/gemini-tts",
+        name: "Google: Gemini TTS",
+        architecture: { output_modalities: ["speech"] },
+        supported_voices: ["Kore"],
+      },
+    ],
+  });
+  assert.deepEqual(eleven.voices.map((voice) => voice.id), ["george", "sarah"]);
+  assert.equal(eleven.supportsInstructions, false);
+  assert.equal(gemini.supportsInstructions, true);
+});
+
+test("parses ElevenLabs voices and text-to-speech models", () => {
+  const voices = parseElevenLabsVoices({
+    voices: [
+      {
+        voice_id: "JBFqnCBsd6RMkjVDRZzb",
+        name: "George",
+        labels: { gender: "male", accent: "british" },
+        preview_url: "https://example.com/george.mp3",
+      },
+      { voice_id: "../bad", name: "Bad" },
+    ],
+  });
+  assert.equal(voices.length, 1);
+  assert.equal(voices[0].description, "male · british");
+
+  const models = parseElevenLabsModels(
+    [
+      { model_id: "eleven_v3", name: "Eleven v3", can_do_text_to_speech: true },
+      { model_id: "eleven_sts", name: "STS", can_do_text_to_speech: false },
+    ],
+    voices
+  );
+  assert.deepEqual(models.map((model) => model.id), ["eleven_v3"]);
+  assert.equal(models[0].provider, "elevenlabs");
+});

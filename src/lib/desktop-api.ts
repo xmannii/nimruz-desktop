@@ -34,6 +34,17 @@ import type {
 } from "@/lib/telegram";
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
+import type {
+  StudioElevenLabsStatus,
+  StudioImageRequest,
+  StudioItem,
+  StudioListOptions,
+  StudioModelCatalog,
+  StudioSpeechRequest,
+  StudioTranscriptInput,
+  StudioTranscriptPatch,
+  StudioVideoRequest,
+} from "@/lib/studio/types";
 import type { Expert } from "@/lib/settings/experts";
 import type { SubagentModel } from "@/lib/settings/subagents";
 import type {
@@ -255,6 +266,30 @@ export type DesktopAPI = {
         callback: (activation: WakeWordActivation) => void
       ) => () => void;
     };
+  };
+  studio: {
+    list: (options?: StudioListOptions) => Promise<StudioItem[]>;
+    get: (id: string) => Promise<StudioItem | null>;
+    delete: (id: string) => Promise<void>;
+    cancel: (id: string) => Promise<void>;
+    getCatalog: (force?: boolean) => Promise<StudioModelCatalog>;
+    generateImages: (request: StudioImageRequest) => Promise<StudioItem[]>;
+    generateVideo: (request: StudioVideoRequest) => Promise<StudioItem>;
+    generateSpeech: (request: StudioSpeechRequest) => Promise<StudioItem>;
+    saveTranscript: (input: StudioTranscriptInput) => Promise<StudioItem>;
+    updateTranscript: (
+      id: string,
+      patch: StudioTranscriptPatch
+    ) => Promise<StudioItem | null>;
+    saveAs: (id: string) => Promise<boolean>;
+    reveal: (id: string) => Promise<void>;
+    elevenLabs: {
+      getStatus: () => Promise<StudioElevenLabsStatus>;
+      setKey: (key: string) => Promise<StudioElevenLabsStatus>;
+      clearKey: () => Promise<StudioElevenLabsStatus>;
+    };
+    onItemChange: (callback: (item: StudioItem) => void) => () => void;
+    onItemDelete: (callback: (id: string) => void) => () => void;
   };
   providers: {
     listCatalog: () => Promise<ModelCatalogSnapshot>;
