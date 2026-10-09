@@ -125,6 +125,20 @@ test("parses ElevenLabs voices and text-to-speech models", () => {
   assert.equal(voices.length, 1);
   assert.equal(voices[0].description, "male · british");
 
+  // Library voices (not usable on free API keys) sort after built-in ones.
+  const ordered = parseElevenLabsVoices({
+    voices: [
+      { voice_id: "niloofar01", name: "Niloofar", category: "professional" },
+      { voice_id: "EXAVITQu4vr4xnSDxMaL", name: "Sarah", category: "premade" },
+      { voice_id: "cloned01", name: "Mine", category: "cloned" },
+      { voice_id: "JBFqnCBsd6RMkjVDRZzb", name: "George", category: "premade" },
+    ],
+  });
+  assert.deepEqual(
+    ordered.map((voice) => voice.name),
+    ["George", "Sarah", "Niloofar", "Mine"]
+  );
+
   const models = parseElevenLabsModels(
     [
       { model_id: "eleven_v3", name: "Eleven v3", can_do_text_to_speech: true },

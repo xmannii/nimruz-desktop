@@ -160,10 +160,28 @@ export function parseElevenLabsModels(
   });
 }
 
-/** Parses ElevenLabs `GET /v2/voices`. */
+/** George, ElevenLabs' own default voice; available on every plan. */
+export const ELEVENLABS_DEFAULT_VOICE_ID = "JBFqnCBsd6RMkjVDRZzb";
+
+function elevenLabsVoiceRank(voice: Record<string, unknown>) {
+  if (voice.voice_id === ELEVENLABS_DEFAULT_VOICE_ID) return 0;
+  // Voice Library voices saved to the account are not usable through the
+  // API on the free plan; ElevenLabs' built-in voices are.
+  return voice.category === "premade" ? 1 : 2;
+}
+
+/**
+ * Parses ElevenLabs `GET /v2/voices`. Built-in voices come first so the
+ * automatically chosen voice works on free API keys.
+ */
 export function parseElevenLabsVoices(payload: unknown): StudioVoice[] {
   if (!isRecord(payload) || !Array.isArray(payload.voices)) return [];
-  return payload.voices.flatMap((voice): StudioVoice[] => {
+  const voices = payload.voices
+    .filter(isRecord)
+    .map((voice, index) => ({ voice, index }))
+    .sort((a, b) => elevenLabsVoiceRank(a.voice) - elevenLabsVoiceRank(b.voice) || a.index - b.index)
+    .map(({ voice }) => voice);
+  return voices.flatMap((voice): StudioVoice[] => {
     if (!isRecord(voice) || typeof voice.voice_id !== "string") return [];
     if (!/^[\w-]{1,64}$/.test(voice.voice_id)) return [];
     const labels = isRecord(voice.labels) ? voice.labels : {};
