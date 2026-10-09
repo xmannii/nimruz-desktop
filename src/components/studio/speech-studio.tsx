@@ -1,45 +1,31 @@
 "use client";
 
-import { useStudio } from "@/components/studio/studio-context";
 import { StudioAudioPlayer } from "@/components/studio/studio-audio-player";
-import { StudioEmptyHero } from "@/components/studio/studio-gallery";
 import {
-  StudioKeyNotice,
-  useOpenRouterKeyConfigured,
-} from "@/components/studio/studio-key-notice";
-import {
-  StudioModelPicker,
-  type StudioModelOption,
-} from "@/components/studio/studio-model-picker";
-import {
-  StudioOptionChip,
-  StudioPromptBox,
-  StudioShortcutHint,
-} from "@/components/studio/studio-prompt-box";
+  parseStudioModelKey,
+  studioModelKey,
+  useStudio,
+} from "@/components/studio/studio-context";
+import { StudioKeyNotice, useOpenRouterKeyConfigured } from "@/components/studio/studio-key-notice";
+import { StudioModelPicker } from "@/components/studio/studio-model-picker";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { ScrollArea } from "@/components/ui/scroll-area";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Slider } from "@/components/ui/slider";
 import { Spinner } from "@/components/ui/spinner";
+import { Textarea } from "@/components/ui/textarea";
 import { useStudioCatalog } from "@/hooks/use-studio-catalog";
 import { useStudioItems } from "@/hooks/use-studio-items";
+import { useSpeechModelOptions } from "@/hooks/use-studio-model-options";
 import { retryStudioItem } from "@/lib/studio/actions";
 import {
   formatRelativeTime,
-  groupStudioItemsByDate,
   isStudioItemBusy,
   studioMediaUrl,
 } from "@/lib/studio/format";
@@ -49,45 +35,28 @@ import {
   saveStudioPreferences,
 } from "@/lib/studio/preferences";
 import { normalizeSearchText } from "@/lib/studio/search";
-import {
-  STUDIO_LIMITS,
-  type StudioElevenLabsStatus,
-  type StudioItem,
-  type StudioSpeechModel,
-} from "@/lib/studio/types";
+import { STUDIO_LIMITS, type StudioItem, type StudioSpeechModel } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangleIcon,
-  AudioLinesIcon,
   CheckIcon,
-  ChevronDownIcon,
   DownloadIcon,
-  GaugeIcon,
-  KeyRoundIcon,
   MaximizeIcon,
-  MicVocalIcon,
   PlayIcon,
+  PlugIcon,
   RotateCcwIcon,
   SearchIcon,
+  SlidersHorizontalIcon,
   SquareIcon,
   Trash2Icon,
-  WandSparklesIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-const SPEEDS = ["0.75", "1", "1.25", "1.5"];
+/** Rough Persian/English reading pace used for the duration hint. */
+const CHARS_PER_SECOND = 14;
 
-const SUGGESTIONS = [
-  "سلام! به نیمروز خوش آمدید. امروز چه کاری می‌توانم برایتان انجام دهم؟",
-  "در یک صبح آرام پاییزی، بوی نان تازه در کوچه پیچیده بود.",
-];
-
-function modelKey(model: Pick<StudioSpeechModel, "provider" | "id">) {
-  return `${model.provider}::${model.id}`;
-}
-
-function VoicePicker({
+function VoiceList({
   model,
   value,
   onValueChange,
@@ -96,12 +65,10 @@ function VoicePicker({
   value: string;
   onValueChange: (voice: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [previewing, setPreviewing] = useState<string | null>(null);
   const previewRef = useRef<HTMLAudioElement | null>(null);
-  const voices = model?.voices ?? [];
-  const selected = voices.find((voice) => voice.id === value);
+  const voices = useMemo(() => model?.voices ?? [], [model]);
   const filtered = useMemo(() => {
     const needle = normalizeSearchText(query);
     return needle
@@ -126,172 +93,73 @@ function VoicePicker({
     void audio.play().catch(() => setPreviewing(null));
   }
 
-  if (voices.length === 0) return null;
+  if (voices.length === 0) {
+    return <p className="text-xs text-muted-foreground">این مدل صدای پیش‌فرض خودش را دارد.</p>;
+  }
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) {
-          setQuery("");
-          previewRef.current?.pause();
-          setPreviewing(null);
-        }
-      }}
-    >
-      <PopoverTrigger
-        aria-label="انتخاب صدا"
-        className="inline-flex h-8 max-w-48 items-center gap-1.5 rounded-full border border-border/70 bg-muted/60 px-2.5 text-xs font-medium transition-colors hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-      >
-        <MicVocalIcon className="size-3.5 shrink-0 opacity-70" />
-        <span className="truncate capitalize" dir="ltr">
-          {selected?.name ?? "صدا"}
-        </span>
-        <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-72 gap-0 overflow-hidden rounded-2xl p-0">
-        <div className="relative border-b border-border/60 p-1.5" dir="rtl">
-          <SearchIcon className="pointer-events-none absolute inset-y-0 start-4 my-auto size-3.5 text-muted-foreground" />
+    <div className="flex min-h-0 flex-col gap-2">
+      {voices.length > 8 ? (
+        <div className="relative">
+          <SearchIcon className="pointer-events-none absolute inset-y-0 start-2.5 my-auto size-3.5 text-muted-foreground" />
           <Input
             type="search"
             value={query}
-            autoComplete="off"
             placeholder="جستجوی صدا…"
             aria-label="جستجوی صدا"
             className="h-8 ps-8 text-xs md:text-xs"
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
-        <ScrollArea className="h-64">
-          <div className="flex flex-col p-1.5">
-            {filtered.map((voice) => (
-              <div
-                key={voice.id}
-                className={cn(
-                  "flex items-center gap-1 rounded-xl transition-colors hover:bg-muted",
-                  voice.id === value && "bg-muted"
-                )}
+      ) : null}
+      <div className="flex max-h-72 flex-col overflow-y-auto rounded-xl border border-border/70 p-1" role="listbox" aria-label="صداها">
+        {filtered.map((voice) => {
+          const selected = voice.id === value;
+          return (
+            <div
+              key={voice.id}
+              role="option"
+              aria-selected={selected}
+              className={cn("flex items-center rounded-lg transition-colors hover:bg-muted", selected && "bg-muted")}
+            >
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-2.5 px-2 py-1.5 text-start"
+                onClick={() => onValueChange(voice.id)}
               >
-                <button
-                  type="button"
-                  className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-start"
-                  onClick={() => {
-                    onValueChange(voice.id);
-                    setOpen(false);
-                  }}
-                >
-                  <span className="min-w-0 flex-1" dir="ltr">
-                    <span className="block truncate text-xs font-medium capitalize">{voice.name}</span>
-                    {voice.description ? (
-                      <span className="block truncate text-[10px] text-muted-foreground">
-                        {voice.description}
-                      </span>
-                    ) : null}
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-background text-[11px] font-medium uppercase ring-1 ring-border">
+                  {voice.name.slice(0, 1)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-xs font-medium capitalize" dir="ltr">
+                    {voice.name}
                   </span>
-                  {voice.id === value ? <CheckIcon className="size-3.5 text-primary" /> : null}
-                </button>
-                {voice.previewUrl ? (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-xs"
-                    className="me-1 rounded-full"
-                    aria-label={`پیش‌نمایش ${voice.name}`}
-                    onClick={() => preview(voice.previewUrl!, voice.id)}
-                  >
-                    {previewing === voice.id ? <SquareIcon /> : <PlayIcon />}
-                  </Button>
-                ) : null}
-              </div>
-            ))}
-            {filtered.length === 0 ? (
-              <p className="py-8 text-center text-xs text-muted-foreground">صدایی پیدا نشد.</p>
-            ) : null}
-          </div>
-        </ScrollArea>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-function ElevenLabsKeyDialog({
-  open,
-  onOpenChange,
-  status,
-  onStatusChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  status: StudioElevenLabsStatus | null;
-  onStatusChange: (status: StudioElevenLabsStatus) => void;
-}) {
-  const { refresh } = useStudioCatalog();
-  const [key, setKey] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-
-  async function save() {
-    setIsSaving(true);
-    try {
-      onStatusChange(await window.desktop.studio.elevenLabs.setKey(key));
-      setKey("");
-      await refresh();
-      toast.success("ElevenLabs متصل شد؛ صداهای حساب شما اضافه شدند.");
-      onOpenChange(false);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "ذخیره کلید ناموفق بود.");
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  async function disconnect() {
-    onStatusChange(await window.desktop.studio.elevenLabs.clearKey());
-    await refresh();
-    onOpenChange(false);
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent dir="rtl">
-        <DialogHeader>
-          <DialogTitle>اتصال مستقیم ElevenLabs</DialogTitle>
-          <DialogDescription>
-            مدل‌های ElevenLabs از طریق OpenRouter هم در دسترس‌اند. با کلید شخصی، صداهای
-            ساخته‌شده و کلون‌شده حساب خودتان را هم خواهید داشت. کلید رمزگذاری‌شده روی همین دستگاه
-            می‌ماند.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          className="flex flex-col gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (key.trim()) void save();
-          }}
-        >
-          <Input
-            type="password"
-            dir="ltr"
-            autoComplete="off"
-            placeholder={status?.configured ? `ذخیره‌شده ${status.hint ?? ""}` : "sk_…"}
-            value={key}
-            aria-label="کلید API الون‌لبز"
-            onChange={(event) => setKey(event.target.value)}
-          />
-        </form>
-        <DialogFooter>
-          {status?.configured ? (
-            <Button type="button" variant="ghost" className="me-auto text-destructive" onClick={() => void disconnect()}>
-              قطع اتصال
-            </Button>
-          ) : null}
-          <Button type="button" disabled={!key.trim() || isSaving} onClick={() => void save()}>
-            {isSaving ? <Spinner data-icon="inline-start" /> : null}
-            ذخیره کلید
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+                  {voice.description ? (
+                    <span className="block truncate text-[11px] text-muted-foreground">{voice.description}</span>
+                  ) : null}
+                </span>
+                {selected ? <CheckIcon className="size-3.5 shrink-0" /> : null}
+              </button>
+              {voice.previewUrl ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="me-1 rounded-full"
+                  aria-label={`پیش‌نمایش ${voice.name}`}
+                  onClick={() => preview(voice.previewUrl!, voice.id)}
+                >
+                  {previewing === voice.id ? <SquareIcon /> : <PlayIcon />}
+                </Button>
+              ) : null}
+            </div>
+          );
+        })}
+        {filtered.length === 0 ? (
+          <p className="py-6 text-center text-xs text-muted-foreground">صدایی پیدا نشد.</p>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
@@ -303,21 +171,21 @@ function SpeechClip({ item }: { item: StudioItem }) {
   const voice = typeof item.params.voice === "string" ? item.params.voice : null;
 
   return (
-    <article className="group/clip flex flex-col gap-3 rounded-3xl border border-border/60 bg-card p-4 shadow-xs transition-colors hover:border-border">
-      <p dir="auto" className="line-clamp-3 text-sm leading-7 text-foreground/90">
+    <article className="group/clip flex flex-col gap-2.5 border-b border-border/60 py-4 last:border-b-0">
+      <p dir="auto" className="line-clamp-2 text-sm leading-7 text-foreground/90">
         {item.text ?? item.prompt}
       </p>
       {item.status === "done" && item.hasMedia ? (
         <StudioAudioPlayer src={studioMediaUrl(item)} />
       ) : busy ? (
-        <div className="studio-shimmer flex h-12 items-center gap-2 rounded-2xl px-4 text-xs text-muted-foreground">
+        <div className="flex h-12 items-center gap-2 rounded-2xl bg-muted/70 px-4 text-xs text-muted-foreground">
           <Spinner className="size-4" />
           در حال ساخت صدا…
         </div>
       ) : failed ? (
-        <div className="flex items-center gap-2 rounded-2xl bg-destructive/8 px-3 py-2.5 text-xs text-destructive">
-          <AlertTriangleIcon className="size-4 shrink-0" />
-          <span className="line-clamp-2 flex-1">{item.error ?? "ساخت صدا ناموفق بود."}</span>
+        <div className="flex items-center gap-2 rounded-2xl bg-muted/70 px-3 py-2 text-xs">
+          <AlertTriangleIcon className="size-4 shrink-0 text-destructive" />
+          <span className="line-clamp-2 flex-1 text-muted-foreground">{item.error ?? "ساخت صدا ناموفق بود."}</span>
           <Button
             type="button"
             size="sm"
@@ -340,36 +208,21 @@ function SpeechClip({ item }: { item: StudioItem }) {
         </div>
       ) : null}
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        {voice ? (
-          <span className="rounded-full bg-muted px-2 py-0.5 capitalize" dir="ltr">
-            {voice}
-          </span>
-        ) : null}
+        {voice ? <span className="capitalize" dir="ltr">{voice}</span> : null}
+        {voice ? <span aria-hidden>·</span> : null}
         <span className="truncate" dir="ltr">{item.modelId.split("/").at(-1)}</span>
         <span aria-hidden>·</span>
         <time dateTime={new Date(item.createdAt).toISOString()}>{formatRelativeTime(item.createdAt)}</time>
-        <div className="ms-auto flex items-center gap-0.5 opacity-60 transition-opacity group-hover/clip:opacity-100 group-focus-within/clip:opacity-100">
+        <div className="ms-auto flex items-center opacity-0 transition-opacity group-hover/clip:opacity-100 group-focus-within/clip:opacity-100">
           {item.hasMedia ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label="ذخیره فایل صوتی"
-              onClick={() => void window.desktop.studio.saveAs(item.id)}
-            >
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="ذخیره فایل صوتی" onClick={() => void window.desktop.studio.saveAs(item.id)}>
               <DownloadIcon />
             </Button>
           ) : null}
           <Button type="button" variant="ghost" size="icon-sm" aria-label="جزئیات" onClick={() => openItem(item)}>
             <MaximizeIcon />
           </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="حذف"
-            onClick={() => void window.desktop.studio.delete(item.id)}
-          >
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="حذف" onClick={() => void window.desktop.studio.delete(item.id)}>
             <Trash2Icon />
           </Button>
         </div>
@@ -379,38 +232,35 @@ function SpeechClip({ item }: { item: StudioItem }) {
 }
 
 export function SpeechStudio() {
-  const { draft, clearDraft } = useStudio();
+  const { draft, clearDraft, openConnections } = useStudio();
   const { catalog, isLoading, refresh } = useStudioCatalog();
-  const keyConfigured = useOpenRouterKeyConfigured();
+  const openRouterReady = useOpenRouterKeyConfigured();
   const { items, isLoading: itemsLoading, hasMore, loadMore } = useStudioItems({ kind: "speech" });
   const preferences = useMemo(loadStudioPreferences, []);
   const [text, setText] = useState("");
   const [instructions, setInstructions] = useState("");
-  const [selectedKey, setSelectedKey] = useState(
+  const [modelKey, setModelKey] = useState(
     preferences.speechModelKey ?? DEFAULT_STUDIO_PREFERENCES.speechModelKey
   );
   const [voice, setVoice] = useState(preferences.speechVoice ?? "");
-  const [speed, setSpeed] = useState(String(preferences.speechSpeed ?? 1));
+  const [speed, setSpeed] = useState(preferences.speechSpeed ?? 1);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [elevenStatus, setElevenStatus] = useState<StudioElevenLabsStatus | null>(null);
-  const [elevenDialogOpen, setElevenDialogOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const models = catalog?.speech ?? [];
-  const model = models.find((candidate) => modelKey(candidate) === selectedKey) ?? null;
-
-  useEffect(() => {
-    void window.desktop.studio.elevenLabs.getStatus().then(setElevenStatus).catch(() => undefined);
-  }, []);
+  const models = useMemo(() => catalog?.speech ?? [], [catalog]);
+  const options = useSpeechModelOptions(models);
+  const model = models.find((candidate) => studioModelKey(candidate.provider, candidate.id) === modelKey) ?? null;
+  const needsOpenRouter = (model?.provider ?? parseStudioModelKey(modelKey).provider) === "openrouter";
 
   useEffect(() => {
-    if (models.length > 0 && !model) setSelectedKey(modelKey(models[0]));
-  }, [models, model]);
+    if (models.length === 0 || model) return;
+    const fallback = options.filter((option) => typeof option.rank === "number").sort((a, b) => a.rank! - b.rank!)[0] ?? options[0];
+    if (fallback) setModelKey(fallback.key);
+  }, [models, model, options]);
 
   useEffect(() => {
-    if (!model) return;
-    if (model.voices.length > 0 && !model.voices.some((candidate) => candidate.id === voice)) {
-      setVoice(model.voices[0].id);
-    }
+    if (!model || model.voices.length === 0) return;
+    if (!model.voices.some((candidate) => candidate.id === voice)) setVoice(model.voices[0].id);
   }, [model, voice]);
 
   useEffect(() => {
@@ -419,29 +269,8 @@ export function SpeechStudio() {
     clearDraft();
   }, [draft, clearDraft]);
 
-  const options: StudioModelOption[] = useMemo(
-    () =>
-      models.map((candidate) => ({
-        key: modelKey(candidate),
-        id: candidate.id,
-        name: candidate.name,
-        group:
-          candidate.provider === "elevenlabs"
-            ? "ElevenLabs · کلید شخصی"
-            : candidate.id.split("/")[0],
-        meta:
-          candidate.voices.length > 0
-            ? `${candidate.voices.length.toLocaleString("fa-IR")} صدا`
-            : "صدای پیش‌فرض",
-        badge: candidate.supportsInstructions ? "لحن" : undefined,
-      })),
-    [models]
-  );
-
-  const needsOpenRouter = model?.provider !== "elevenlabs";
-
   async function submit() {
-    if (!model) return;
+    if (!model || !text.trim()) return;
     setIsSubmitting(true);
     try {
       await window.desktop.studio.generateSpeech({
@@ -450,14 +279,9 @@ export function SpeechStudio() {
         voice,
         input: text,
         instructions: model.supportsInstructions ? instructions : undefined,
-        speed: Number(speed) === 1 ? undefined : Number(speed),
+        speed: model.supportsSpeed && speed !== 1 ? speed : undefined,
       });
-      saveStudioPreferences({
-        speechModelKey: modelKey(model),
-        speechVoice: voice,
-        speechSpeed: Number(speed),
-      });
-      setText("");
+      saveStudioPreferences({ speechModelKey: modelKey, speechVoice: voice, speechSpeed: speed });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "شروع ساخت ناموفق بود.");
     } finally {
@@ -465,125 +289,155 @@ export function SpeechStudio() {
     }
   }
 
-  const remaining = STUDIO_LIMITS.speechInput - text.length;
+  const seconds = Math.max(1, Math.round(text.trim().length / CHARS_PER_SECOND));
+  const selectedVoice = model?.voices.find((candidate) => candidate.id === voice);
+  const canSubmit = Boolean(text.trim() && model && (!needsOpenRouter || openRouterReady !== false));
+
+  const settings = (
+    <div className="flex flex-col gap-6">
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-medium text-muted-foreground">مدل</h3>
+        <StudioModelPicker
+          options={options}
+          value={modelKey}
+          onValueChange={setModelKey}
+          isLoading={isLoading}
+          onRefresh={() => void refresh()}
+          footer={
+            <Button type="button" variant="ghost" size="sm" className="w-full justify-start" onClick={openConnections}>
+              <PlugIcon data-icon="inline-start" />
+              اتصال Google AI Studio یا ElevenLabs
+            </Button>
+          }
+        />
+      </section>
+      <section className="flex min-h-0 flex-col gap-2">
+        <h3 className="text-xs font-medium text-muted-foreground">صدا</h3>
+        <VoiceList model={model} value={voice} onValueChange={setVoice} />
+      </section>
+      {model?.supportsInstructions ? (
+        <section className="flex flex-col gap-2">
+          <h3 className="text-xs font-medium text-muted-foreground">لحن و سبک خواندن</h3>
+          <Textarea
+            dir={instructions.trim() ? "auto" : "rtl"}
+            value={instructions}
+            rows={3}
+            maxLength={1_000}
+            placeholder="مثلاً: گرم و آرام، مثل یک قصه‌گو"
+            className="resize-none text-xs leading-6"
+            onChange={(event) => setInstructions(event.target.value)}
+          />
+        </section>
+      ) : null}
+      {model?.supportsSpeed ? (
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-medium text-muted-foreground">سرعت</h3>
+            <span className="text-xs tabular-nums">{speed.toLocaleString("fa-IR")}×</span>
+          </div>
+          <Slider
+            dir="ltr"
+            min={0.7}
+            max={1.3}
+            step={0.05}
+            value={[speed]}
+            onValueChange={(value) => setSpeed(Array.isArray(value) ? value[0] : value)}
+            aria-label="سرعت خواندن"
+          />
+        </section>
+      ) : null}
+    </div>
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-6 sm:px-8">
-      <div className="flex flex-col gap-3">
-        {keyConfigured === false && needsOpenRouter ? <StudioKeyNotice /> : null}
-        <StudioPromptBox
-          value={text}
-          onValueChange={setText}
-          onSubmit={() => void submit()}
-          placeholder="متنی که می‌خواهید خوانده شود را بنویسید…"
-          maxLength={STUDIO_LIMITS.speechInput}
-          minRows={4}
-          canSubmit={Boolean(
-            text.trim() && model && (!needsOpenRouter || keyConfigured !== false)
-          )}
-          isSubmitting={isSubmitting}
-          submitLabel="ساخت صدا"
-          hint={
-            remaining < 500 ? (
-              <span className={cn("tabular-nums", remaining < 100 && "text-destructive")}>
-                {remaining.toLocaleString("fa-IR")} نویسه باقی‌مانده
-              </span>
-            ) : (
-              <StudioShortcutHint />
-            )
-          }
-          attachments={
-            model?.supportsInstructions ? (
-              <div className="flex items-center gap-2 rounded-2xl bg-muted/60 px-3 py-1.5">
-                <WandSparklesIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                <input
-                  dir="auto"
-                  value={instructions}
-                  maxLength={1_000}
-                  placeholder="لحن و سبک خواندن (اختیاری) — مثلاً: گرم و آرام، مثل یک قصه‌گو"
-                  aria-label="لحن و سبک خواندن"
-                  className="h-7 w-full bg-transparent text-xs outline-none placeholder:text-muted-foreground/70"
-                  onChange={(event) => setInstructions(event.target.value)}
-                />
-              </div>
-            ) : null
-          }
-          toolbar={
-            <>
-              <StudioModelPicker
-                options={options}
-                value={selectedKey}
-                onValueChange={setSelectedKey}
-                isLoading={isLoading}
-                onRefresh={() => void refresh()}
-                footer={
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="w-full justify-start"
-                    onClick={() => setElevenDialogOpen(true)}
-                  >
-                    <KeyRoundIcon data-icon="inline-start" />
-                    {elevenStatus?.configured
-                      ? `ElevenLabs متصل است ${elevenStatus.hint ?? ""}`
-                      : "اتصال ElevenLabs با کلید شخصی"}
-                  </Button>
+    <div className="flex h-full min-h-0">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-4 py-8 sm:px-8">
+          {needsOpenRouter && openRouterReady === false ? <StudioKeyNotice /> : null}
+
+          <div className="flex flex-col rounded-3xl border border-border bg-card shadow-xs transition-colors focus-within:border-foreground/25">
+            <textarea
+              dir={text.trim() ? "auto" : "rtl"}
+              value={text}
+              maxLength={STUDIO_LIMITS.speechInput}
+              placeholder="متنی که می‌خواهید خوانده شود را اینجا بنویسید یا بچسبانید…"
+              aria-label="متن برای خواندن"
+              className="min-h-56 w-full resize-none bg-transparent p-5 text-[17px] leading-9 outline-none placeholder:text-start placeholder:text-muted-foreground/60"
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  if (canSubmit && !isSubmitting) void submit();
                 }
-              />
-              <VoicePicker model={model} value={voice} onValueChange={setVoice} />
-              <StudioOptionChip
-                label="سرعت"
-                value={speed}
-                onValueChange={setSpeed}
-                icon={<GaugeIcon className="size-3.5 opacity-70" />}
-                options={SPEEDS.map((value) => ({
-                  value,
-                  label: `${Number(value).toLocaleString("fa-IR")}×`,
-                }))}
-              />
-            </>
-          }
-        />
+              }}
+            />
+            <div className="flex items-center gap-3 border-t border-border/60 px-3 py-2.5">
+              <Button
+                type="button"
+                className="rounded-full px-4"
+                disabled={!canSubmit || isSubmitting}
+                onClick={() => void submit()}
+                title="Ctrl/⌘ + Enter"
+              >
+                {isSubmitting ? <Spinner data-icon="inline-start" /> : <PlayIcon data-icon="inline-start" />}
+                ساخت صدا
+              </Button>
+              <button
+                type="button"
+                className="flex min-w-0 items-center gap-1.5 rounded-full px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:pointer-events-none"
+                onClick={() => setSettingsOpen(true)}
+              >
+                <SlidersHorizontalIcon className="size-3.5 shrink-0 lg:hidden" />
+                <span className="truncate capitalize" dir="ltr">
+                  {selectedVoice?.name ?? "—"}
+                </span>
+              </button>
+              <span className="ms-auto text-[11px] tabular-nums text-muted-foreground">
+                {text.length.toLocaleString("fa-IR")} نویسه
+                {text.trim() ? ` · حدود ${seconds.toLocaleString("fa-IR")} ثانیه` : ""}
+              </span>
+            </div>
+          </div>
+
+          <section aria-label="صداهای ساخته‌شده" className="flex flex-col">
+            {itemsLoading && items.length === 0 ? (
+              <div className="flex flex-col gap-3">
+                <Skeleton className="h-24 rounded-2xl" />
+                <Skeleton className="h-24 rounded-2xl" />
+              </div>
+            ) : items.length === 0 ? (
+              <p className="py-8 text-center text-[13px] text-muted-foreground">
+                صداهایی که می‌سازید اینجا نگه داشته می‌شوند.
+              </p>
+            ) : (
+              <>
+                <h2 className="mb-1 text-xs font-medium text-muted-foreground">ساخته‌های اخیر</h2>
+                {items.map((item) => (
+                  <SpeechClip key={item.id} item={item} />
+                ))}
+                {hasMore ? (
+                  <Button type="button" variant="ghost" size="sm" className="mt-2 self-center rounded-full" onClick={loadMore}>
+                    موارد قدیمی‌تر
+                  </Button>
+                ) : null}
+              </>
+            )}
+          </section>
+        </div>
       </div>
 
-      {itemsLoading && items.length === 0 ? (
-        <div className="flex flex-col gap-3">
-          <Skeleton className="h-36 rounded-3xl" />
-          <Skeleton className="h-36 rounded-3xl" />
-        </div>
-      ) : items.length === 0 ? (
-        <StudioEmptyHero
-          icon={<AudioLinesIcon />}
-          title="متن را به صدای طبیعی تبدیل کنید"
-          description="Gemini TTS، ElevenLabs و مدل‌های دیگر؛ برای فارسی مدل‌های چندزبانه مثل Gemini و Eleven v3 بهترند."
-          suggestions={SUGGESTIONS}
-          onSuggestion={setText}
-        />
-      ) : (
-        <div className="flex flex-col gap-6">
-          {groupStudioItemsByDate(items).map((group) => (
-            <section key={group.label} className="flex flex-col gap-3">
-              <h2 className="text-xs font-medium text-muted-foreground">{group.label}</h2>
-              {group.items.map((item) => (
-                <SpeechClip key={item.id} item={item} />
-              ))}
-            </section>
-          ))}
-          {hasMore ? (
-            <Button type="button" variant="outline" className="self-center rounded-full" onClick={loadMore}>
-              نمایش موارد قدیمی‌تر
-            </Button>
-          ) : null}
-        </div>
-      )}
+      <aside className="hidden w-80 shrink-0 overflow-y-auto border-s border-border/60 p-5 lg:block" aria-label="تنظیمات صدا">
+        {settings}
+      </aside>
 
-      <ElevenLabsKeyDialog
-        open={elevenDialogOpen}
-        onOpenChange={setElevenDialogOpen}
-        status={elevenStatus}
-        onStatusChange={setElevenStatus}
-      />
+      <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <SheetContent side="left" className="w-full gap-0 overflow-y-auto sm:max-w-sm" dir="rtl">
+          <SheetHeader className="border-b border-border/60 p-5">
+            <SheetTitle>تنظیمات صدا</SheetTitle>
+          </SheetHeader>
+          <div className="p-5">{settings}</div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

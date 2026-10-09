@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  GEMINI_TTS_VOICES,
   minVideoPricePerSecond,
   parseElevenLabsModels,
   parseElevenLabsVoices,
   parseOpenRouterImageModels,
   parseOpenRouterSpeechModels,
   parseOpenRouterVideoModels,
+  parseGoogleModels,
 } from "./catalog";
 
 test("keeps only image-output OpenRouter models and skips routers", () => {
@@ -35,6 +37,8 @@ test("keeps only image-output OpenRouter models and skips routers", () => {
   });
   assert.deepEqual(models, [{
     id: "google/gemini-image",
+    provider: "openrouter",
+    createdAt: null,
     name: "Google: Gemini Image",
     description: "",
     acceptsImageInput: true,
@@ -130,4 +134,35 @@ test("parses ElevenLabs voices and text-to-speech models", () => {
   );
   assert.deepEqual(models.map((model) => model.id), ["eleven_v3"]);
   assert.equal(models[0].provider, "elevenlabs");
+});
+
+test("splits Gemini API models into image, video, and speech", () => {
+  const catalog = parseGoogleModels({
+    models: [
+      { name: "models/imagen-4.0-generate-001", displayName: "Imagen 4", supportedGenerationMethods: ["predict"] },
+      { name: "models/gemini-3.1-flash-image-preview", displayName: "Nano Banana 2", supportedGenerationMethods: ["generateContent"] },
+      { name: "models/veo-3.1-fast-generate-preview", displayName: "Veo 3.1 Fast", supportedGenerationMethods: ["predictLongRunning"] },
+      { name: "models/veo-2.0-generate-001", displayName: "Veo 2", supportedGenerationMethods: ["predictLongRunning"] },
+      { name: "models/gemini-3.1-flash-tts-preview", displayName: "Gemini TTS", supportedGenerationMethods: ["generateContent"] },
+      { name: "models/gemini-3-flash", displayName: "Gemini 3 Flash", supportedGenerationMethods: ["generateContent"] },
+      { name: "models/gemini-embedding-001", supportedGenerationMethods: ["embedContent"] },
+    ],
+  });
+  assert.deepEqual(
+    catalog.image.map((model) => [model.id, model.acceptsImageInput]),
+    [
+      ["imagen-4.0-generate-001", false],
+      ["gemini-3.1-flash-image-preview", true],
+    ]
+  );
+  assert.deepEqual(catalog.video.map((model) => model.id), [
+    "veo-2.0-generate-001",
+    "veo-3.1-fast-generate-preview",
+  ]);
+  assert.deepEqual(catalog.video[0].durations, [5, 6, 7, 8]);
+  assert.deepEqual(catalog.video[1].resolutions, ["720p", "1080p"]);
+  assert.equal(catalog.speech.length, 1);
+  assert.equal(catalog.speech[0].provider, "google");
+  assert.equal(catalog.speech[0].supportsSpeed, false);
+  assert.equal(catalog.speech[0].voices.length, GEMINI_TTS_VOICES.length);
 });

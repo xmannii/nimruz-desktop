@@ -10,11 +10,23 @@ export const STUDIO_ITEM_STATUSES = [
 ] as const;
 export type StudioItemStatus = (typeof STUDIO_ITEM_STATUSES)[number];
 
-export const STUDIO_PROVIDERS = ["openrouter", "elevenlabs", "shenava"] as const;
+export const STUDIO_PROVIDERS = ["openrouter", "google", "elevenlabs", "shenava"] as const;
 export type StudioProvider = (typeof STUDIO_PROVIDERS)[number];
 
-/** Credential id used for the user's own ElevenLabs key. */
-export const ELEVENLABS_CREDENTIAL_ID = "elevenlabs";
+/** Providers that generate images and videos. */
+export type StudioMediaProvider = Extract<StudioProvider, "openrouter" | "google">;
+/** Providers that synthesize speech. */
+export type StudioSpeechProvider = Extract<StudioProvider, "openrouter" | "google" | "elevenlabs">;
+
+/** Optional direct connections managed from Studio. */
+export const STUDIO_CONNECTIONS = ["google", "elevenlabs"] as const;
+export type StudioConnectionId = (typeof STUDIO_CONNECTIONS)[number];
+
+/** Credential ids for keys entered in Studio. */
+export const STUDIO_CREDENTIAL_IDS: Record<StudioConnectionId, string> = {
+  google: "google-ai-studio",
+  elevenlabs: "elevenlabs",
+};
 
 /** Renderer-safe URL scheme that streams Studio media from disk. */
 export const STUDIO_MEDIA_SCHEME = "nimruz-media";
@@ -68,6 +80,9 @@ export type StudioListOptions = {
 
 export type StudioImageModel = {
   id: string;
+  /** Release time in ms when the catalog reports it. */
+  createdAt?: number | null;
+  provider: StudioMediaProvider;
   name: string;
   description: string;
   acceptsImageInput: boolean;
@@ -75,6 +90,9 @@ export type StudioImageModel = {
 
 export type StudioVideoModel = {
   id: string;
+  /** Release time in ms when the catalog reports it. */
+  createdAt?: number | null;
+  provider: StudioMediaProvider;
   name: string;
   description: string;
   durations: number[];
@@ -88,10 +106,13 @@ export type StudioVideoModel = {
 
 export type StudioSpeechModel = {
   id: string;
+  /** Release time in ms when the catalog reports it. */
+  createdAt?: number | null;
   name: string;
-  provider: Extract<StudioProvider, "openrouter" | "elevenlabs">;
+  provider: StudioSpeechProvider;
   voices: StudioVoice[];
   supportsInstructions: boolean;
+  supportsSpeed: boolean;
 };
 
 export type StudioVoice = {
@@ -113,9 +134,14 @@ export type StudioImageInput =
   | { type: "data-url"; dataUrl: string }
   | { type: "item"; itemId: string };
 
+/** A creative preset applied on top of the visible prompt. */
+export type StudioStyleInput = { id: string; prompt: string };
+
 export type StudioImageRequest = {
+  provider?: StudioMediaProvider;
   modelId: string;
   prompt: string;
+  style?: StudioStyleInput;
   aspectRatio?: string;
   count?: number;
   references?: StudioImageInput[];
@@ -123,8 +149,10 @@ export type StudioImageRequest = {
 };
 
 export type StudioVideoRequest = {
+  provider?: StudioMediaProvider;
   modelId: string;
   prompt: string;
+  style?: StudioStyleInput;
   aspectRatio?: string;
   resolution?: string;
   duration?: number;
@@ -134,7 +162,7 @@ export type StudioVideoRequest = {
 };
 
 export type StudioSpeechRequest = {
-  provider: Extract<StudioProvider, "openrouter" | "elevenlabs">;
+  provider: StudioSpeechProvider;
   modelId: string;
   voice: string;
   input: string;
@@ -156,7 +184,18 @@ export type StudioTranscriptPatch = {
   correctedText?: string | null;
 };
 
-export type StudioElevenLabsStatus = {
+export type StudioConnectionStatus = {
   configured: boolean;
   hint: string | null;
+  /** "studio" for a key entered here, "provider" when reused from chat settings. */
+  source: "studio" | "provider" | null;
+};
+
+export type StudioConnections = Record<StudioConnectionId, StudioConnectionStatus>;
+
+export type StudioEnhanceRequest = {
+  kind: "image" | "video";
+  prompt: string;
+  providerId?: string;
+  model?: string;
 };

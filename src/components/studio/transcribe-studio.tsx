@@ -96,6 +96,7 @@ export function TranscribeStudio() {
   const previous = items.filter((item) => !sessionIds.has(item.id));
 
   return (
+    <div className="h-full overflow-y-auto overscroll-contain">
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-6 sm:px-8">
       <FileTranscriptionPage embedded />
 
@@ -120,6 +121,7 @@ export function TranscribeStudio() {
           ) : null}
         </section>
       ) : null}
+    </div>
     </div>
   );
 }

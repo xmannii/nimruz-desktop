@@ -223,10 +223,11 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.invoke("studio:update-transcript", id, patch),
     saveAs: (id) => ipcRenderer.invoke("studio:save-as", id),
     reveal: (id) => ipcRenderer.invoke("studio:reveal", id),
-    elevenLabs: {
-      getStatus: () => ipcRenderer.invoke("studio:elevenlabs:status"),
-      setKey: (key) => ipcRenderer.invoke("studio:elevenlabs:set-key", key),
-      clearKey: () => ipcRenderer.invoke("studio:elevenlabs:clear-key"),
+    connections: {
+      getStatus: () => ipcRenderer.invoke("studio:connections:status"),
+      setKey: (id, key) =>
+        ipcRenderer.invoke("studio:connections:set-key", id, key),
+      clearKey: (id) => ipcRenderer.invoke("studio:connections:clear-key", id),
     },
     onItemChange: (callback) => {
       const handler = (_event: Electron.IpcRendererEvent, item: StudioItem) =>

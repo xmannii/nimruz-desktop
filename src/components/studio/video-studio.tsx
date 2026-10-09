@@ -1,20 +1,23 @@
 "use client";
 
-import { useStudio } from "@/components/studio/studio-context";
-import { StudioEmptyHero, StudioGallery } from "@/components/studio/studio-gallery";
 import {
-  StudioKeyNotice,
-  useOpenRouterKeyConfigured,
-} from "@/components/studio/studio-key-notice";
+  parseStudioModelKey,
+  studioModelKey,
+  useStudio,
+} from "@/components/studio/studio-context";
 import {
-  StudioModelPicker,
-  type StudioModelOption,
-} from "@/components/studio/studio-model-picker";
+  StudioAttachmentThumb,
+  StudioComposer,
+} from "@/components/studio/studio-composer";
 import {
-  AspectRatioGlyph,
+  AspectRatioPicker,
+  PresetPicker,
   StudioOptionChip,
-  StudioPromptBox,
-} from "@/components/studio/studio-prompt-box";
+  studioPillClass,
+} from "@/components/studio/studio-controls";
+import { StudioEmptyState, StudioFeed } from "@/components/studio/studio-feed";
+import { StudioKeyNotice, useOpenRouterKeyConfigured } from "@/components/studio/studio-key-notice";
+import { StudioModelPicker } from "@/components/studio/studio-model-picker";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,9 +29,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { Toggle } from "@/components/ui/toggle";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useStudioCatalog } from "@/hooks/use-studio-catalog";
+import { useVideoModelOptions } from "@/hooks/use-studio-model-options";
 import { readFileAsDataUrl } from "@/lib/studio/actions";
 import { formatStudioCost, studioMediaUrl } from "@/lib/studio/format";
 import {
@@ -36,30 +38,25 @@ import {
   loadStudioPreferences,
   saveStudioPreferences,
 } from "@/lib/studio/preferences";
+import { findPreset, VIDEO_CAMERA_MOVES } from "@/lib/studio/presets";
 import { STUDIO_LIMITS, type StudioItem } from "@/lib/studio/types";
+import { cn } from "@/lib/utils";
 import {
   ClockIcon,
   FilmIcon,
   ImageUpIcon,
   MonitorIcon,
+  MoveIcon,
+  PlugIcon,
   Volume2Icon,
   VolumeXIcon,
-  XIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 const CONFIRM_COST_USD = 1;
 
-const SUGGESTIONS = [
-  "نمای هوایی آرام از کوه دماوند در طلوع، ابرها در حرکت",
-  "قطره باران روی شیشه کافه، دوربین آهسته به جلو",
-  "A paper boat drifting down a rainy street, cinematic, shallow depth of field",
-];
-
-type FirstFrame =
-  | { type: "item"; item: StudioItem }
-  | { type: "data-url"; dataUrl: string };
+type FirstFrame = { type: "item"; item: StudioItem } | { type: "data-url"; dataUrl: string };
 
 function pick<T>(values: T[], preferred: T | undefined, fallback?: T): T | undefined {
   if (preferred !== undefined && values.includes(preferred)) return preferred;
@@ -68,66 +65,53 @@ function pick<T>(values: T[], preferred: T | undefined, fallback?: T): T | undef
 }
 
 export function VideoStudio() {
-  const { draft, clearDraft } = useStudio();
+  const { draft, clearDraft, openConnections } = useStudio();
   const { catalog, isLoading, refresh } = useStudioCatalog();
-  const keyConfigured = useOpenRouterKeyConfigured();
+  const openRouterReady = useOpenRouterKeyConfigured();
   const preferences = useMemo(loadStudioPreferences, []);
   const [prompt, setPrompt] = useState("");
-  const [modelId, setModelId] = useState(
-    preferences.videoModelId ?? DEFAULT_STUDIO_PREFERENCES.videoModelId
+  const [modelKey, setModelKey] = useState(
+    preferences.videoModelKey ?? DEFAULT_STUDIO_PREFERENCES.videoModelKey
   );
   const [aspectRatio, setAspectRatio] = useState(preferences.videoAspectRatio);
   const [resolution, setResolution] = useState(preferences.videoResolution);
   const [duration, setDuration] = useState(preferences.videoDuration);
   const [withAudio, setWithAudio] = useState(preferences.videoAudio ?? true);
+  const [camera, setCamera] = useState(preferences.videoCamera ?? "none");
   const [firstFrame, setFirstFrame] = useState<FirstFrame | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const models = catalog?.video ?? [];
-  const model = models.find((candidate) => candidate.id === modelId) ?? null;
+  const models = useMemo(() => catalog?.video ?? [], [catalog]);
+  const options = useVideoModelOptions(models);
+  const model = models.find((candidate) => studioModelKey(candidate.provider, candidate.id) === modelKey) ?? null;
+  const needsOpenRouter = (model?.provider ?? parseStudioModelKey(modelKey).provider) === "openrouter";
 
   useEffect(() => {
-    if (models.length > 0 && !model) setModelId(models[0].id);
-  }, [models, model]);
+    if (models.length === 0 || model) return;
+    const fallback = options.filter((option) => typeof option.rank === "number").sort((a, b) => a.rank! - b.rank!)[0] ?? options[0];
+    if (fallback) setModelKey(fallback.key);
+  }, [models, model, options]);
 
   // Keep options valid for whichever model is selected.
   const effectiveAspect = model ? pick(model.aspectRatios, aspectRatio, "16:9") : aspectRatio;
   const effectiveResolution = model ? pick(model.resolutions, resolution, "720p") : resolution;
   const effectiveDuration = model ? pick(model.durations, duration, 5) : duration;
   const estimate =
-    model?.minPricePerSecond && effectiveDuration
-      ? model.minPricePerSecond * effectiveDuration
-      : null;
+    model?.minPricePerSecond && effectiveDuration ? model.minPricePerSecond * effectiveDuration : null;
 
   useEffect(() => {
     if (draft?.tab !== "video") return;
     if (draft.prompt !== undefined) setPrompt(draft.prompt);
-    if (draft.modelId) setModelId(draft.modelId);
-    if (draft.firstFrameItem) setFirstFrame({ type: "item", item: draft.firstFrameItem });
+    if (draft.modelKey) setModelKey(draft.modelKey);
+    if (draft.styleId) setCamera(draft.styleId);
+    if (draft.firstFrameItem) {
+      setFirstFrame({ type: "item", item: draft.firstFrameItem });
+      if (!draft.prompt) setPrompt((current) => current || draft.firstFrameItem!.prompt);
+    }
     clearDraft();
   }, [draft, clearDraft]);
-
-  const options: StudioModelOption[] = useMemo(
-    () =>
-      models.map((candidate) => ({
-        key: candidate.id,
-        id: candidate.id,
-        name: candidate.name,
-        badge: candidate.supportsAudio ? "صدا" : undefined,
-        meta: [
-          `${candidate.durations[0]}–${candidate.durations.at(-1)}s`,
-          candidate.resolutions.join(" · "),
-          candidate.minPricePerSecond
-            ? `از ${formatStudioCost(candidate.minPricePerSecond)}/ثانیه`
-            : null,
-        ]
-          .filter(Boolean)
-          .join("  ·  "),
-      })),
-    [models]
-  );
 
   async function chooseFrame(file: File | undefined) {
     if (!file || !file.type.startsWith("image/")) return;
@@ -143,12 +127,16 @@ export function VideoStudio() {
   }
 
   async function generate() {
+    const { provider, modelId } = parseStudioModelKey(modelKey);
+    const move = findPreset(VIDEO_CAMERA_MOVES, camera);
     setConfirmOpen(false);
     setIsSubmitting(true);
     try {
       await window.desktop.studio.generateVideo({
+        provider: provider === "google" ? "google" : "openrouter",
         modelId,
         prompt,
+        style: move.prompt ? { id: move.id, prompt: move.prompt } : undefined,
         aspectRatio: effectiveAspect,
         resolution: effectiveResolution,
         duration: effectiveDuration,
@@ -161,15 +149,15 @@ export function VideoStudio() {
             : undefined,
       });
       saveStudioPreferences({
-        videoModelId: modelId,
+        videoModelKey: modelKey,
         videoAspectRatio: effectiveAspect,
         videoResolution: effectiveResolution,
         videoDuration: effectiveDuration,
         videoAudio: withAudio,
+        videoCamera: camera,
       });
-      setPrompt("");
       setFirstFrame(null);
-      toast.success("ساخت ویدیو شروع شد؛ چند دقیقه طول می‌کشد.");
+      toast.success("ساخت ویدیو شروع شد. وقتی آماده شد خبرتان می‌کنیم.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "شروع ساخت ناموفق بود.");
     } finally {
@@ -182,163 +170,160 @@ export function VideoStudio() {
     else void generate();
   }
 
+  function reuse(item: StudioItem) {
+    setPrompt(item.prompt);
+    setModelKey(studioModelKey(item.provider, item.modelId));
+    setCamera(typeof item.params.style === "string" ? item.params.style : "none");
+    if (typeof item.params.aspectRatio === "string") setAspectRatio(item.params.aspectRatio);
+    if (typeof item.params.duration === "number") setDuration(item.params.duration);
+    if (typeof item.params.resolution === "string") setResolution(item.params.resolution);
+  }
+
   const frameSrc = firstFrame
     ? firstFrame.type === "item"
       ? studioMediaUrl(firstFrame.item)
       : firstFrame.dataUrl
     : null;
 
-  return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-6 sm:px-8">
-      <div className="flex flex-col gap-3">
-        {keyConfigured === false ? <StudioKeyNotice /> : null}
-        <StudioPromptBox
-          value={prompt}
-          onValueChange={setPrompt}
-          onSubmit={submit}
-          placeholder="صحنه، حرکت دوربین و حال‌وهوای ویدیو را توصیف کنید…"
-          maxLength={STUDIO_LIMITS.prompt}
-          canSubmit={Boolean(prompt.trim() && model && keyConfigured !== false)}
-          isSubmitting={isSubmitting}
-          submitLabel="ساخت ویدیو"
-          onPasteImages={(files) => void chooseFrame(files[0])}
-          hint={estimate !== null ? `حدود ${formatStudioCost(estimate)}` : undefined}
-          attachments={
-            frameSrc ? (
-              <div className="flex items-center gap-3">
-                <div className="group/frame relative h-16 overflow-hidden rounded-xl ring-1 ring-foreground/10">
-                  <img src={frameSrc} alt="فریم آغازین" className="h-full w-auto object-cover" />
-                  <button
-                    type="button"
-                    aria-label="حذف فریم آغازین"
-                    className="absolute end-1 top-1 flex size-5 items-center justify-center rounded-full bg-black/60 text-white"
-                    onClick={() => setFirstFrame(null)}
-                  >
-                    <XIcon className="size-3" />
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {model?.supportsFirstFrame
-                    ? "ویدیو از این تصویر شروع می‌شود."
-                    : "این مدل فریم آغازین نمی‌پذیرد؛ نادیده گرفته می‌شود."}
-                </p>
-              </div>
-            ) : null
-          }
-          toolbar={
-            <>
-              <StudioModelPicker
-                options={options}
-                value={modelId}
-                onValueChange={setModelId}
-                isLoading={isLoading}
-                onRefresh={() => void refresh()}
-              />
-              {model && model.aspectRatios.length > 0 && effectiveAspect ? (
-                <StudioOptionChip
-                  label="نسبت تصویر"
-                  value={effectiveAspect}
-                  onValueChange={setAspectRatio}
-                  icon={<AspectRatioGlyph ratio={effectiveAspect} />}
-                  options={model.aspectRatios.map((ratio) => ({ value: ratio, label: ratio }))}
-                />
-              ) : null}
-              {model && model.durations.length > 0 && effectiveDuration ? (
-                <StudioOptionChip
-                  label="مدت"
-                  value={String(effectiveDuration)}
-                  onValueChange={(value) => setDuration(Number(value))}
-                  icon={<ClockIcon className="size-3.5 opacity-70" />}
-                  options={model.durations.map((seconds) => ({
-                    value: String(seconds),
-                    label: `${seconds.toLocaleString("fa-IR")} ثانیه`,
-                    detail: model.minPricePerSecond
-                      ? formatStudioCost(model.minPricePerSecond * seconds) ?? undefined
-                      : undefined,
-                  }))}
-                />
-              ) : null}
-              {model && model.resolutions.length > 0 && effectiveResolution ? (
-                <StudioOptionChip
-                  label="کیفیت"
-                  value={effectiveResolution}
-                  onValueChange={setResolution}
-                  icon={<MonitorIcon className="size-3.5 opacity-70" />}
-                  options={model.resolutions.map((value) => ({ value, label: value }))}
-                />
-              ) : null}
-              {model?.supportsAudio ? (
-                <Toggle
-                  size="sm"
-                  variant="outline"
-                  pressed={withAudio}
-                  onPressedChange={setWithAudio}
-                  aria-label="ساخت صدا همراه ویدیو"
-                  className="h-8 rounded-full border-border/70 bg-muted/60 px-2.5 text-xs shadow-none"
-                >
-                  {withAudio ? <Volume2Icon /> : <VolumeXIcon />}
-                  {withAudio ? "با صدا" : "بی‌صدا"}
-                </Toggle>
-              ) : null}
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="rounded-full"
-                      aria-label="فریم آغازین"
-                      disabled={model ? !model.supportsFirstFrame : false}
-                      onClick={() => fileInputRef.current?.click()}
-                    />
-                  }
-                >
-                  <ImageUpIcon />
-                </TooltipTrigger>
-                <TooltipContent>
-                  {model && !model.supportsFirstFrame
-                    ? "این مدل فریم آغازین نمی‌پذیرد"
-                    : "تصویر به ویدیو: انتخاب فریم آغازین"}
-                </TooltipContent>
-              </Tooltip>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                className="sr-only"
-                onChange={(event) => {
-                  void chooseFrame(event.target.files?.[0]);
-                  event.target.value = "";
-                }}
-              />
-            </>
-          }
-        />
-        <p className="px-2 text-[11px] text-muted-foreground">
-          ساخت ویدیو معمولاً چند دقیقه طول می‌کشد و در پس‌زمینه ادامه پیدا می‌کند، حتی اگر از این بخش خارج شوید.
-        </p>
-      </div>
+  const composer = (
+    <StudioComposer
+      value={prompt}
+      onValueChange={setPrompt}
+      onSubmit={submit}
+      placeholder="صحنه، حرکت و حال‌وهوای ویدیو را توصیف کنید…"
+      maxLength={STUDIO_LIMITS.prompt}
+      canSubmit={Boolean(prompt.trim() && model && (!needsOpenRouter || openRouterReady !== false))}
+      isSubmitting={isSubmitting}
+      submitLabel="ساخت ویدیو"
+      enhanceKind="video"
+      onPasteImages={(files) => void chooseFrame(files[0])}
+      notice={needsOpenRouter && openRouterReady === false ? <StudioKeyNotice /> : null}
+      footer={
+        estimate !== null ? (
+          <span>
+            هزینه تقریبی <span className="font-medium text-foreground/80">{formatStudioCost(estimate)}</span>
+          </span>
+        ) : model?.provider === "google" ? (
+          "هزینه بر اساس تعرفه Google AI Studio"
+        ) : null
+      }
+      attachments={
+        frameSrc ? (
+          <div className="flex items-center gap-3">
+            <StudioAttachmentThumb src={frameSrc} label="فریم آغازین" wide muted={!model?.supportsFirstFrame} onRemove={() => setFirstFrame(null)} />
+            <p className="text-[11px] leading-5 text-muted-foreground">
+              {model?.supportsFirstFrame
+                ? "ویدیو از این تصویر شروع می‌شود؛ بگویید چه حرکتی رخ دهد."
+                : "این مدل فریم آغازین نمی‌پذیرد."}
+            </p>
+          </div>
+        ) : null
+      }
+      toolbar={
+        <>
+          <button
+            type="button"
+            className={cn(studioPillClass, "px-2")}
+            aria-label="فریم آغازین"
+            title={model && !model.supportsFirstFrame ? "این مدل فریم آغازین نمی‌پذیرد" : "تصویر به ویدیو: فریم آغازین"}
+            disabled={model ? !model.supportsFirstFrame : false}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <ImageUpIcon className="size-4" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="sr-only"
+            onChange={(event) => {
+              void chooseFrame(event.target.files?.[0]);
+              event.target.value = "";
+            }}
+          />
+          <StudioModelPicker
+            options={options}
+            value={modelKey}
+            onValueChange={setModelKey}
+            isLoading={isLoading}
+            onRefresh={() => void refresh()}
+            footer={
+              <Button type="button" variant="ghost" size="sm" className="w-full justify-start" onClick={openConnections}>
+                <PlugIcon data-icon="inline-start" />
+                اتصال Google AI Studio برای Veo
+              </Button>
+            }
+          />
+          <PresetPicker
+            presets={VIDEO_CAMERA_MOVES}
+            value={camera}
+            onValueChange={setCamera}
+            label="حرکت دوربین"
+            icon={<MoveIcon className="size-3.5" />}
+          />
+          {model && model.aspectRatios.length > 0 && effectiveAspect ? (
+            <AspectRatioPicker value={effectiveAspect} onValueChange={setAspectRatio} ratios={model.aspectRatios} />
+          ) : null}
+          {model && effectiveDuration ? (
+            <StudioOptionChip
+              label="مدت"
+              value={String(effectiveDuration)}
+              onValueChange={(value) => setDuration(Number(value))}
+              icon={<ClockIcon className="size-3.5 opacity-70" />}
+              renderValue={(option) => `${Number(option?.value ?? 0).toLocaleString("fa-IR")}ث`}
+              options={model.durations.map((seconds) => ({
+                value: String(seconds),
+                label: `${seconds.toLocaleString("fa-IR")} ثانیه`,
+                detail: model.minPricePerSecond ? formatStudioCost(model.minPricePerSecond * seconds) ?? undefined : undefined,
+              }))}
+            />
+          ) : null}
+          {model && model.resolutions.length > 1 && effectiveResolution ? (
+            <StudioOptionChip
+              label="کیفیت"
+              value={effectiveResolution}
+              onValueChange={setResolution}
+              icon={<MonitorIcon className="size-3.5 opacity-70" />}
+              options={model.resolutions.map((value) => ({ value, label: value }))}
+            />
+          ) : null}
+          {model?.supportsAudio ? (
+            <button
+              type="button"
+              className={cn(studioPillClass, withAudio && "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary")}
+              aria-pressed={withAudio}
+              onClick={() => setWithAudio((value) => !value)}
+            >
+              {withAudio ? <Volume2Icon className="size-3.5" /> : <VolumeXIcon className="size-3.5" />}
+              {withAudio ? "با صدا" : "بی‌صدا"}
+            </button>
+          ) : null}
+        </>
+      }
+    />
+  );
 
-      <StudioGallery
+  return (
+    <>
+      <StudioFeed
         kind="video"
+        composer={composer}
+        onReuse={reuse}
+        onDropFiles={(files) => void chooseFrame(files[0])}
         empty={
-          <StudioEmptyHero
+          <StudioEmptyState
             icon={<FilmIcon />}
-            title="ایده را به ویدیو تبدیل کنید"
-            description="با Veo، Kling، Seedance و مدل‌های دیگر ویدیو بسازید؛ یا یک تصویر را به عنوان فریم آغازین بدهید."
-            suggestions={SUGGESTIONS}
-            onSuggestion={setPrompt}
+            title="اولین ویدیویتان را بسازید"
+            description="صحنه را توصیف کنید یا تصویری بدهید تا از آن شروع شود."
           />
         }
       />
-
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
+        <AlertDialogContent dir="rtl">
           <AlertDialogHeader>
-            <AlertDialogTitle>ساخت این ویدیو حدود {formatStudioCost(estimate)} هزینه دارد</AlertDialogTitle>
+            <AlertDialogTitle>این ویدیو حدود {formatStudioCost(estimate)} هزینه دارد</AlertDialogTitle>
             <AlertDialogDescription>
-              مبلغ از اعتبار OpenRouter شما کسر می‌شود. هزینه نهایی پس از ساخت در جزئیات ویدیو نمایش داده می‌شود.
+              مبلغ از اعتبار OpenRouter کسر می‌شود. هزینه نهایی پس از ساخت در جزئیات ویدیو نمایش داده می‌شود.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -347,6 +332,6 @@ export function VideoStudio() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </>
   );
 }

@@ -30,6 +30,12 @@ function validModelId(value: unknown): value is string {
   return typeof value === "string" && /^[\w.:/-]{1,200}$/.test(value);
 }
 
+function createdAt(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value * 1000
+    : null;
+}
+
 function bySortName<T extends { name: string }>(models: T[]) {
   return models.sort((a, b) => a.name.localeCompare(b.name, "en"));
 }
@@ -44,6 +50,8 @@ export function parseOpenRouterImageModels(payload: unknown): StudioImageModel[]
     if (item.id.startsWith("openrouter/")) return [];
     return [{
       id: item.id,
+      provider: "openrouter",
+      createdAt: createdAt(item.created),
       name: text(item.name, 120) || item.id,
       description: text(item.description),
       acceptsImageInput: strings(architecture.input_modalities).includes("image"),
@@ -88,6 +96,8 @@ export function parseOpenRouterVideoModels(payload: unknown): StudioVideoModel[]
     if (durations.length === 0) return [];
     return [{
       id: item.id,
+      provider: "openrouter",
+      createdAt: createdAt(item.created),
       name: text(item.name, 120) || item.id,
       description: text(item.description),
       durations: Array.from(new Set(durations)),
@@ -119,9 +129,11 @@ export function parseOpenRouterSpeechModels(payload: unknown): StudioSpeechModel
       id,
       name: text(item.name, 120) || id,
       provider: "openrouter",
+      createdAt: createdAt(item.created),
       voices: voicesFromIds(strings(item.supported_voices)),
       supportsInstructions:
         id.startsWith("google/") || id.startsWith("openai/"),
+      supportsSpeed: !id.startsWith("google/"),
     }];
   });
   return bySortName(models);
@@ -142,6 +154,7 @@ export function parseElevenLabsModels(
       provider: "elevenlabs",
       voices,
       supportsInstructions: false,
+      supportsSpeed: true,
     }];
   });
 }
@@ -167,4 +180,103 @@ export function parseElevenLabsVoices(payload: unknown): StudioVoice[] {
           : undefined,
     }];
   });
+}
+
+/** Gemini TTS prebuilt voices with their published character, in Persian. */
+export const GEMINI_TTS_VOICES: StudioVoice[] = [
+  ["Zephyr", "روشن"],
+  ["Puck", "شاد و پرانرژی"],
+  ["Charon", "آگاه و روشنگر"],
+  ["Kore", "محکم"],
+  ["Fenrir", "هیجان‌زده"],
+  ["Leda", "جوان"],
+  ["Orus", "محکم"],
+  ["Aoede", "سبک و روان"],
+  ["Callirrhoe", "راحت و آسوده"],
+  ["Autonoe", "روشن"],
+  ["Enceladus", "نفس‌دار"],
+  ["Iapetus", "شفاف"],
+  ["Umbriel", "راحت و آسوده"],
+  ["Algieba", "نرم"],
+  ["Despina", "نرم"],
+  ["Erinome", "شفاف"],
+  ["Algenib", "زبر و خش‌دار"],
+  ["Rasalgethi", "آگاه و روشنگر"],
+  ["Laomedeia", "شاد و پرانرژی"],
+  ["Achernar", "ملایم"],
+  ["Alnilam", "محکم"],
+  ["Schedar", "یکنواخت"],
+  ["Gacrux", "پخته"],
+  ["Pulcherrima", "رو به جلو"],
+  ["Achird", "دوستانه"],
+  ["Zubenelgenubi", "خودمانی"],
+  ["Vindemiatrix", "مهربان"],
+  ["Sadachbia", "سرزنده"],
+  ["Sadaltager", "دانا"],
+  ["Sulafat", "گرم"],
+].map(([id, description]) => ({ id, name: id, description }));
+
+/** Veo limits from the Gemini API docs; the models endpoint does not list them. */
+function veoCapabilities(id: string) {
+  if (id.startsWith("veo-2")) {
+    return { durations: [5, 6, 7, 8], resolutions: ["720p"], aspectRatios: ["16:9", "9:16"] };
+  }
+  return { durations: [4, 6, 8], resolutions: ["720p", "1080p"], aspectRatios: ["16:9", "9:16"] };
+}
+
+/**
+ * Splits Gemini API `GET /models` into Studio image (Imagen and Gemini
+ * image models), video (Veo), and speech (Gemini TTS) models.
+ */
+export function parseGoogleModels(payload: unknown): {
+  image: StudioImageModel[];
+  video: StudioVideoModel[];
+  speech: StudioSpeechModel[];
+} {
+  const image: StudioImageModel[] = [];
+  const video: StudioVideoModel[] = [];
+  const speech: StudioSpeechModel[] = [];
+  const models = isRecord(payload) && Array.isArray(payload.models) ? payload.models : [];
+  for (const item of models) {
+    if (!isRecord(item) || typeof item.name !== "string") continue;
+    const id = item.name.replace(/^models\//, "");
+    if (!validModelId(id)) continue;
+    const methods = strings(item.supportedGenerationMethods);
+    const name = text(item.displayName, 120) || id;
+    const description = text(item.description);
+    if (id.startsWith("imagen-") && methods.includes("predict")) {
+      image.push({ id, provider: "google", name, description, acceptsImageInput: false });
+    } else if (
+      id.includes("-image") &&
+      !id.includes("embedding") &&
+      methods.includes("generateContent")
+    ) {
+      image.push({ id, provider: "google", name, description, acceptsImageInput: true });
+    } else if (id.startsWith("veo-") && methods.includes("predictLongRunning")) {
+      video.push({
+        id,
+        provider: "google",
+        name,
+        description,
+        ...veoCapabilities(id),
+        supportsFirstFrame: true,
+        supportsAudio: false,
+        minPricePerSecond: null,
+      });
+    } else if (id.includes("-tts") && methods.includes("generateContent")) {
+      speech.push({
+        id,
+        provider: "google",
+        name,
+        voices: GEMINI_TTS_VOICES,
+        supportsInstructions: true,
+        supportsSpeed: false,
+      });
+    }
+  }
+  return {
+    image: bySortName(image),
+    video: bySortName(video),
+    speech: bySortName(speech),
+  };
 }

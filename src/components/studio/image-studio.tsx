@@ -1,24 +1,26 @@
 "use client";
 
-import { useStudio } from "@/components/studio/studio-context";
-import { StudioEmptyHero, StudioGallery } from "@/components/studio/studio-gallery";
 import {
-  StudioKeyNotice,
-  useOpenRouterKeyConfigured,
-} from "@/components/studio/studio-key-notice";
+  parseStudioModelKey,
+  studioModelKey,
+  useStudio,
+} from "@/components/studio/studio-context";
 import {
-  StudioModelPicker,
-  type StudioModelOption,
-} from "@/components/studio/studio-model-picker";
+  StudioAttachmentThumb,
+  StudioComposer,
+} from "@/components/studio/studio-composer";
 import {
-  AspectRatioGlyph,
+  AspectRatioPicker,
+  PresetPicker,
   StudioOptionChip,
-  StudioPromptBox,
-  StudioShortcutHint,
-} from "@/components/studio/studio-prompt-box";
+  studioPillClass,
+} from "@/components/studio/studio-controls";
+import { StudioEmptyState, StudioFeed } from "@/components/studio/studio-feed";
+import { StudioKeyNotice, useOpenRouterKeyConfigured } from "@/components/studio/studio-key-notice";
+import { StudioModelPicker } from "@/components/studio/studio-model-picker";
 import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useStudioCatalog } from "@/hooks/use-studio-catalog";
+import { useImageModelOptions } from "@/hooks/use-studio-model-options";
 import { readFileAsDataUrl } from "@/lib/studio/actions";
 import { studioMediaUrl } from "@/lib/studio/format";
 import {
@@ -26,33 +28,28 @@ import {
   loadStudioPreferences,
   saveStudioPreferences,
 } from "@/lib/studio/preferences";
+import { findPreset, IMAGE_STYLES } from "@/lib/studio/presets";
 import { STUDIO_LIMITS, type StudioItem } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
-import { CopyIcon, ImageIcon, ImagePlusIcon, XIcon } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { CopyIcon, ImageIcon, ImagePlusIcon, PlugIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-const ASPECT_RATIOS = ["1:1", "4:5", "3:4", "2:3", "9:16", "4:3", "3:2", "16:9", "21:9"];
-
-const SUGGESTIONS = [
-  "کوچه‌ای در یزد هنگام غروب، نور گرم و سایه‌های بلند",
-  "پوستر مینیمال یک فنجان چای با بخار، پس‌زمینه کرم",
-  "عکس محصول از ساعت مچی روی سنگ سیاه، نور استودیویی",
-  "Isometric cozy reading room, soft pastel colors, 3D render",
-];
+const ALL_RATIOS = ["1:1", "4:5", "3:4", "2:3", "9:16", "5:4", "4:3", "3:2", "16:9", "21:9"];
+const IMAGEN_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 
 type Reference =
   | { key: string; type: "item"; item: StudioItem }
   | { key: string; type: "data-url"; dataUrl: string };
 
 export function ImageStudio() {
-  const { draft, clearDraft } = useStudio();
+  const { draft, clearDraft, openConnections } = useStudio();
   const { catalog, isLoading, refresh } = useStudioCatalog();
-  const keyConfigured = useOpenRouterKeyConfigured();
+  const openRouterReady = useOpenRouterKeyConfigured();
   const preferences = useMemo(loadStudioPreferences, []);
   const [prompt, setPrompt] = useState("");
-  const [modelId, setModelId] = useState(
-    preferences.imageModelId ?? DEFAULT_STUDIO_PREFERENCES.imageModelId
+  const [modelKey, setModelKey] = useState(
+    preferences.imageModelKey ?? DEFAULT_STUDIO_PREFERENCES.imageModelKey
   );
   const [aspectRatio, setAspectRatio] = useState(
     preferences.imageAspectRatio ?? DEFAULT_STUDIO_PREFERENCES.imageAspectRatio
@@ -60,23 +57,31 @@ export function ImageStudio() {
   const [count, setCount] = useState(
     preferences.imageCount ?? DEFAULT_STUDIO_PREFERENCES.imageCount
   );
+  const [styleId, setStyleId] = useState(preferences.imageStyle ?? "none");
   const [references, setReferences] = useState<Reference[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const models = catalog?.image ?? [];
-  const selectedModel = models.find((model) => model.id === modelId) ?? null;
-  const acceptsImages = selectedModel?.acceptsImageInput ?? true;
+  const models = useMemo(() => catalog?.image ?? [], [catalog]);
+  const options = useImageModelOptions(models);
+  const model = models.find((candidate) => studioModelKey(candidate.provider, candidate.id) === modelKey) ?? null;
+  const acceptsImages = model?.acceptsImageInput ?? true;
+  const ratios = model?.provider === "google" && model.id.startsWith("imagen") ? IMAGEN_RATIOS : ALL_RATIOS;
+  const effectiveRatio = ratios.includes(aspectRatio) ? aspectRatio : "1:1";
+  const needsOpenRouter = (model?.provider ?? parseStudioModelKey(modelKey).provider) === "openrouter";
 
   useEffect(() => {
-    if (models.length > 0 && !selectedModel) setModelId(models[0].id);
-  }, [models, selectedModel]);
+    if (models.length === 0 || model) return;
+    const fallback = options.filter((option) => typeof option.rank === "number").sort((a, b) => a.rank! - b.rank!)[0] ?? options[0];
+    if (fallback) setModelKey(fallback.key);
+  }, [models, model, options]);
 
   useEffect(() => {
     if (draft?.tab !== "image") return;
     if (draft.prompt !== undefined) setPrompt(draft.prompt);
-    if (draft.modelId) setModelId(draft.modelId);
+    if (draft.modelKey) setModelKey(draft.modelKey);
+    if (draft.styleId) setStyleId(draft.styleId);
+    if (draft.aspectRatio) setAspectRatio(draft.aspectRatio);
     if (draft.referenceItem) {
       const item = draft.referenceItem;
       setReferences((current) =>
@@ -88,22 +93,12 @@ export function ImageStudio() {
     clearDraft();
   }, [draft, clearDraft]);
 
-  const options: StudioModelOption[] = useMemo(
-    () =>
-      models.map((model) => ({
-        key: model.id,
-        id: model.id,
-        name: model.name,
-        meta: model.acceptsImageInput ? "متن و تصویر مرجع" : "فقط متن",
-      })),
-    [models]
-  );
-
   async function addFiles(files: File[]) {
     const images = files.filter((file) => file.type.startsWith("image/"));
     const room = STUDIO_LIMITS.maxReferenceImages - references.length;
-    if (images.length === 0 || room <= 0) {
-      if (room <= 0) toast.info("حداکثر چهار تصویر مرجع.");
+    if (images.length === 0) return;
+    if (room <= 0) {
+      toast.info("حداکثر چهار تصویر مرجع می‌توانید اضافه کنید.");
       return;
     }
     const accepted: Reference[] = [];
@@ -113,11 +108,7 @@ export function ImageStudio() {
         continue;
       }
       try {
-        accepted.push({
-          key: crypto.randomUUID(),
-          type: "data-url",
-          dataUrl: await readFileAsDataUrl(file),
-        });
+        accepted.push({ key: crypto.randomUUID(), type: "data-url", dataUrl: await readFileAsDataUrl(file) });
       } catch {
         toast.error("خواندن تصویر ناموفق بود.");
       }
@@ -126,12 +117,16 @@ export function ImageStudio() {
   }
 
   async function submit() {
+    const { provider, modelId } = parseStudioModelKey(modelKey);
+    const style = findPreset(IMAGE_STYLES, styleId);
     setIsSubmitting(true);
     try {
       await window.desktop.studio.generateImages({
+        provider: provider === "google" ? "google" : "openrouter",
         modelId,
         prompt,
-        aspectRatio,
+        style: style.prompt ? { id: style.id, prompt: style.prompt } : undefined,
+        aspectRatio: effectiveRatio,
         count,
         references: acceptsImages
           ? references.map((reference) =>
@@ -141,8 +136,13 @@ export function ImageStudio() {
             )
           : [],
       });
-      saveStudioPreferences({ imageModelId: modelId, imageAspectRatio: aspectRatio, imageCount: count });
-      setPrompt("");
+      saveStudioPreferences({
+        imageModelKey: modelKey,
+        imageAspectRatio: effectiveRatio,
+        imageCount: count,
+        imageStyle: styleId,
+      });
+      // Keep the prompt so it is easy to iterate; references are one-shot.
       setReferences([]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "شروع ساخت ناموفق بود.");
@@ -151,150 +151,113 @@ export function ImageStudio() {
     }
   }
 
-  function handleDrop(event: DragEvent<HTMLDivElement>) {
-    event.preventDefault();
-    setIsDragging(false);
-    void addFiles(Array.from(event.dataTransfer.files));
+  function reuse(item: StudioItem) {
+    setPrompt(item.prompt);
+    setModelKey(studioModelKey(item.provider, item.modelId));
+    if (typeof item.params.style === "string") setStyleId(item.params.style);
+    else setStyleId("none");
+    if (typeof item.params.aspectRatio === "string") setAspectRatio(item.params.aspectRatio);
   }
 
-  const attachments =
-    references.length > 0 ? (
-      <div className="flex flex-wrap gap-2">
-        {references.map((reference) => (
-          <div
-            key={reference.key}
-            className={cn(
-              "group/ref relative size-16 overflow-hidden rounded-xl ring-1 ring-foreground/10",
-              !acceptsImages && "opacity-40 grayscale"
-            )}
-          >
-            <img
-              src={reference.type === "item" ? studioMediaUrl(reference.item) : reference.dataUrl}
-              alt="تصویر مرجع"
-              className="size-full object-cover"
-            />
-            <button
-              type="button"
-              aria-label="حذف تصویر مرجع"
-              className="absolute end-1 top-1 flex size-5 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover/ref:opacity-100 focus-visible:opacity-100"
-              onClick={() =>
-                setReferences((current) => current.filter((candidate) => candidate.key !== reference.key))
-              }
-            >
-              <XIcon className="size-3" />
-            </button>
+  const composer = (
+    <StudioComposer
+      value={prompt}
+      onValueChange={setPrompt}
+      onSubmit={() => void submit()}
+      placeholder="چه تصویری در ذهن دارید؟ فارسی یا انگلیسی بنویسید…"
+      maxLength={STUDIO_LIMITS.prompt}
+      canSubmit={Boolean(prompt.trim() && model && (!needsOpenRouter || openRouterReady !== false))}
+      isSubmitting={isSubmitting}
+      submitLabel={count > 1 ? `ساخت ${count.toLocaleString("fa-IR")} تصویر` : "ساخت تصویر"}
+      enhanceKind="image"
+      onPasteImages={(files) => void addFiles(files)}
+      notice={needsOpenRouter && openRouterReady === false ? <StudioKeyNotice /> : null}
+      footer={count > 1 ? `${count.toLocaleString("fa-IR")} تصویر در هر بار ساخت` : null}
+      attachments={
+        references.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {references.map((reference) => (
+              <StudioAttachmentThumb
+                key={reference.key}
+                src={reference.type === "item" ? studioMediaUrl(reference.item) : reference.dataUrl}
+                label="تصویر مرجع"
+                muted={!acceptsImages}
+                onRemove={() => setReferences((current) => current.filter((candidate) => candidate.key !== reference.key))}
+              />
+            ))}
+            <p className="text-[11px] leading-5 text-muted-foreground">
+              {acceptsImages ? "تصویر مرجع؛ بگویید چه چیزی تغییر کند." : "این مدل تصویر مرجع نمی‌پذیرد."}
+            </p>
           </div>
-        ))}
-        {!acceptsImages ? (
-          <p className="self-center text-[11px] text-muted-foreground">
-            این مدل تصویر مرجع نمی‌پذیرد.
-          </p>
-        ) : null}
-      </div>
-    ) : null;
+        ) : null
+      }
+      toolbar={
+        <>
+          <button
+            type="button"
+            className={cn(studioPillClass, "px-2")}
+            aria-label="افزودن تصویر مرجع"
+            title={acceptsImages ? "تصویر مرجع (کشیدن، چسباندن یا انتخاب)" : "این مدل تصویر مرجع نمی‌پذیرد"}
+            disabled={!acceptsImages || references.length >= STUDIO_LIMITS.maxReferenceImages}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <ImagePlusIcon className="size-4" />
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            multiple
+            className="sr-only"
+            onChange={(event) => {
+              if (event.target.files) void addFiles(Array.from(event.target.files));
+              event.target.value = "";
+            }}
+          />
+          <StudioModelPicker
+            options={options}
+            value={modelKey}
+            onValueChange={setModelKey}
+            isLoading={isLoading}
+            onRefresh={() => void refresh()}
+            footer={
+              <Button type="button" variant="ghost" size="sm" className="w-full justify-start" onClick={openConnections}>
+                <PlugIcon data-icon="inline-start" />
+                اتصال Google AI Studio و سرویس‌های دیگر
+              </Button>
+            }
+          />
+          <PresetPicker presets={IMAGE_STYLES} value={styleId} onValueChange={setStyleId} label="سبک" />
+          <AspectRatioPicker value={effectiveRatio} onValueChange={setAspectRatio} ratios={ratios} />
+          <StudioOptionChip
+            label="تعداد"
+            value={String(count)}
+            onValueChange={(value) => setCount(Number(value))}
+            icon={<CopyIcon className="size-3.5 opacity-70" />}
+            renderValue={(option) => option?.label.split(" ")[0]}
+            options={[1, 2, 3, 4].map((value) => ({
+              value: String(value),
+              label: `${value.toLocaleString("fa-IR")} تصویر`,
+            }))}
+          />
+        </>
+      }
+    />
+  );
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-6 sm:px-8">
-      <div
-        className={cn("flex flex-col gap-3 rounded-[1.75rem] transition-colors", isDragging && "bg-primary/5 ring-2 ring-primary/40 ring-offset-4 ring-offset-background")}
-        onDragEnter={(event) => {
-          if (Array.from(event.dataTransfer.types).includes("Files")) setIsDragging(true);
-        }}
-        onDragOver={(event) => event.preventDefault()}
-        onDragLeave={(event) => {
-          if (!(event.relatedTarget instanceof Node) || !event.currentTarget.contains(event.relatedTarget)) {
-            setIsDragging(false);
-          }
-        }}
-        onDrop={handleDrop}
-      >
-        {keyConfigured === false ? <StudioKeyNotice /> : null}
-        <StudioPromptBox
-          value={prompt}
-          onValueChange={setPrompt}
-          onSubmit={() => void submit()}
-          placeholder="تصویری که در ذهن دارید را توصیف کنید…"
-          maxLength={STUDIO_LIMITS.prompt}
-          canSubmit={Boolean(prompt.trim() && modelId && keyConfigured !== false)}
-          isSubmitting={isSubmitting}
-          submitLabel={count > 1 ? `ساخت ${count.toLocaleString("fa-IR")} تصویر` : "ساخت تصویر"}
-          attachments={attachments}
-          onPasteImages={(files) => void addFiles(files)}
-          hint={<StudioShortcutHint />}
-          toolbar={
-            <>
-              <StudioModelPicker
-                options={options}
-                value={modelId}
-                onValueChange={setModelId}
-                isLoading={isLoading}
-                onRefresh={() => void refresh()}
-              />
-              <StudioOptionChip
-                label="نسبت تصویر"
-                value={aspectRatio}
-                onValueChange={setAspectRatio}
-                icon={<AspectRatioGlyph ratio={aspectRatio} />}
-                options={ASPECT_RATIOS.map((ratio) => ({ value: ratio, label: ratio }))}
-              />
-              <StudioOptionChip
-                label="تعداد"
-                value={String(count)}
-                onValueChange={(value) => setCount(Number(value))}
-                icon={<CopyIcon className="size-3.5 opacity-70" />}
-                options={[1, 2, 3, 4].map((value) => ({
-                  value: String(value),
-                  label: `${value.toLocaleString("fa-IR")} تصویر`,
-                }))}
-              />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      className="rounded-full"
-                      aria-label="افزودن تصویر مرجع"
-                      disabled={!acceptsImages || references.length >= STUDIO_LIMITS.maxReferenceImages}
-                      onClick={() => fileInputRef.current?.click()}
-                    />
-                  }
-                >
-                  <ImagePlusIcon />
-                </TooltipTrigger>
-                <TooltipContent>
-                  {acceptsImages ? "تصویر مرجع (کشیدن، چسباندن یا انتخاب)" : "این مدل تصویر مرجع نمی‌پذیرد"}
-                </TooltipContent>
-              </Tooltip>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                multiple
-                className="sr-only"
-                onChange={(event) => {
-                  if (event.target.files) void addFiles(Array.from(event.target.files));
-                  event.target.value = "";
-                }}
-              />
-            </>
-          }
+    <StudioFeed
+      kind="image"
+      composer={composer}
+      onReuse={reuse}
+      onDropFiles={(files) => void addFiles(files)}
+      empty={
+        <StudioEmptyState
+          icon={<ImageIcon />}
+          title="اولین تصویرتان را بسازید"
+          description="فارسی یا انگلیسی بنویسید. برای ویرایش، تصویری را بکشید یا بچسبانید."
         />
-      </div>
-
-      <StudioGallery
-        kind="image"
-        empty={
-          <StudioEmptyHero
-            icon={<ImageIcon />}
-            title="هر چه در ذهن دارید، تصویر کنید"
-            description="از ده‌ها مدل تصویری OpenRouter استفاده کنید. برای ویرایش، تصویر مرجع را بکشید یا بچسبانید."
-            suggestions={SUGGESTIONS}
-            onSuggestion={setPrompt}
-          />
-        }
-      />
-    </div>
+      }
+    />
   );
 }

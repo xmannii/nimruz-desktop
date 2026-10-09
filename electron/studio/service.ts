@@ -4,11 +4,13 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { generateImage } from "ai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { generateImage, generateSpeech } from "ai";
 import { APP_NAME } from "@/lib/branding";
 import {
   parseElevenLabsModels,
   parseElevenLabsVoices,
+  parseGoogleModels,
   parseOpenRouterImageModels,
   parseOpenRouterSpeechModels,
   parseOpenRouterVideoModels,
@@ -20,11 +22,13 @@ import {
   type StudioImageRequest,
   type StudioItem,
   type StudioListOptions,
+  type StudioMediaProvider,
   type StudioModelCatalog,
   type StudioSpeechModel,
   type StudioSpeechRequest,
   type StudioTranscriptInput,
   type StudioTranscriptPatch,
+  type StudioProvider,
   type StudioVideoRequest,
 } from "@/lib/studio/types";
 import {
@@ -47,10 +51,13 @@ const ASPECT_RATIO = /^\d{1,2}:\d{1,2}$/;
 
 type FetchLike = typeof fetch;
 
+export type ProviderAuth = { apiKey: string; baseUrl: string };
+
 export type StudioServiceOptions = {
   store: StudioStore;
   mediaDirectory: string;
   getOpenRouterKey: () => string | null;
+  getGoogleAuth: () => ProviderAuth | null;
   getElevenLabsKey: () => string | null;
   onItemChange: (item: StudioItem) => void;
   onItemDelete: (id: string) => void;
@@ -82,6 +89,35 @@ function optionalAspectRatio(value: unknown) {
   return typeof value === "string" && ASPECT_RATIO.test(value)
     ? (value as `${number}:${number}`)
     : undefined;
+}
+
+/** Validates a preset and returns the text sent to the model. */
+function applyStyle(prompt: string, style: unknown) {
+  if (!style || typeof style !== "object") return { modelPrompt: prompt, params: {} };
+  const { id, prompt: fragment } = style as { id?: unknown; prompt?: unknown };
+  if (
+    typeof id !== "string" ||
+    !/^[\w-]{1,40}$/.test(id) ||
+    typeof fragment !== "string" ||
+    !fragment.trim()
+  ) {
+    return { modelPrompt: prompt, params: {} };
+  }
+  const text = fragment.trim().slice(0, 400);
+  return {
+    modelPrompt: `${prompt}\n\nStyle: ${text}`,
+    params: { style: id, stylePrompt: text },
+  };
+}
+
+function mediaProvider(value: unknown): StudioMediaProvider {
+  return value === "google" ? "google" : "openrouter";
+}
+
+function missingKeyMessage(provider: StudioProvider) {
+  if (provider === "google") return "کلید Google AI Studio تنظیم نشده است.";
+  if (provider === "elevenlabs") return "کلید ElevenLabs تنظیم نشده است.";
+  return "کلید OpenRouter تنظیم نشده است. آن را در تنظیمات وارد کنید.";
 }
 
 function errorMessage(error: unknown) {
@@ -198,6 +234,7 @@ export class StudioService {
   private catalog: StudioModelCatalog | null = null;
   private catalogRequest: Promise<StudioModelCatalog> | null = null;
   private elevenLabsModels: StudioSpeechModel[] | null = null;
+  private googleCatalog: ReturnType<typeof parseGoogleModels> | null = null;
 
   constructor(private readonly options: StudioServiceOptions) {
     this.store = options.store;
@@ -210,8 +247,12 @@ export class StudioService {
     await mkdir(this.mediaDirectory, { recursive: true });
     for (const item of this.store.listUnfinished()) {
       const jobId = typeof item.params.jobId === "string" ? item.params.jobId : null;
-      if (item.kind === "video" && jobId && this.options.getOpenRouterKey()) {
-        void this.runVideoJob(item.id, jobId);
+      if (
+        item.kind === "video" &&
+        jobId &&
+        (item.provider === "openrouter" || item.provider === "google") &&
+        this.runVideoJob(item.id, item.provider, jobId)
+      ) {
         continue;
       }
       this.patch(item.id, {
@@ -263,34 +304,52 @@ export class StudioService {
   // MARK: Catalog
 
   async getCatalog(force = false): Promise<StudioModelCatalog> {
-    if (
-      !force &&
-      this.catalog &&
-      Date.now() - this.catalog.fetchedAt < CATALOG_TTL_MS
-    ) {
-      return this.withElevenLabs(this.catalog);
+    if (force) {
+      this.googleCatalog = null;
+      this.elevenLabsModels = null;
     }
-    if (!this.catalogRequest) {
-      this.catalogRequest = this.fetchCatalog().finally(() => {
+    if (
+      force ||
+      !this.catalog ||
+      Date.now() - this.catalog.fetchedAt >= CATALOG_TTL_MS
+    ) {
+      this.catalogRequest ??= this.fetchCatalog().finally(() => {
         this.catalogRequest = null;
       });
+      try {
+        this.catalog = await this.catalogRequest;
+      } catch (error) {
+        if (!this.catalog) {
+          // OpenRouter being unreachable should not hide direct providers.
+          this.catalog = { image: [], video: [], speech: [], fetchedAt: 0 };
+          const fallback = await this.withConnections(this.catalog);
+          if (fallback.image.length + fallback.video.length + fallback.speech.length === 0) {
+            this.catalog = null;
+            throw new StudioError(errorMessage(error));
+          }
+          return fallback;
+        }
+      }
     }
-    try {
-      this.catalog = await this.catalogRequest;
-    } catch (error) {
-      if (!this.catalog) throw new StudioError(errorMessage(error));
-    }
-    if (force) this.elevenLabsModels = null;
-    return this.withElevenLabs(this.catalog!);
+    return this.withConnections(this.catalog!);
   }
 
-  invalidateElevenLabs() {
-    this.elevenLabsModels = null;
+  invalidateConnection(connection: "google" | "elevenlabs") {
+    if (connection === "google") this.googleCatalog = null;
+    else this.elevenLabsModels = null;
   }
 
-  private async withElevenLabs(catalog: StudioModelCatalog) {
-    const eleven = await this.loadElevenLabsModels().catch(() => []);
-    return { ...catalog, speech: [...eleven, ...catalog.speech] };
+  private async withConnections(catalog: StudioModelCatalog) {
+    const [google, eleven] = await Promise.all([
+      this.loadGoogleCatalog().catch(() => null),
+      this.loadElevenLabsModels().catch(() => []),
+    ]);
+    return {
+      ...catalog,
+      image: [...(google?.image ?? []), ...catalog.image],
+      video: [...(google?.video ?? []), ...catalog.video],
+      speech: [...(google?.speech ?? []), ...eleven, ...catalog.speech],
+    };
   }
 
   private async fetchCatalog(): Promise<StudioModelCatalog> {
@@ -311,6 +370,20 @@ export class StudioService {
       speech: parseOpenRouterSpeechModels(speech),
       fetchedAt: Date.now(),
     };
+  }
+
+  private async loadGoogleCatalog() {
+    const auth = this.options.getGoogleAuth();
+    if (!auth) return null;
+    if (this.googleCatalog) return this.googleCatalog;
+    const response = await ensureOk(
+      await this.fetch(`${auth.baseUrl}/models?pageSize=1000`, {
+        headers: { "x-goog-api-key": auth.apiKey },
+        signal: AbortSignal.timeout(20_000),
+      })
+    );
+    this.googleCatalog = parseGoogleModels(await response.json());
+    return this.googleCatalog;
   }
 
   private async loadElevenLabsModels(): Promise<StudioSpeechModel[]> {
@@ -339,9 +412,11 @@ export class StudioService {
   // MARK: Generation
 
   async generateImages(request: StudioImageRequest): Promise<StudioItem[]> {
-    const apiKey = this.requireOpenRouterKey();
+    const provider = mediaProvider(request.provider);
+    const auth = this.requireAuth(provider);
     const model = modelId(request.modelId);
     const prompt = trimmed(request.prompt, STUDIO_LIMITS.prompt, "متن درخواست");
+    const style = applyStyle(prompt, request.style);
     const aspectRatio = optionalAspectRatio(request.aspectRatio);
     const count = Math.min(
       Math.max(1, Math.trunc(request.count ?? 1)),
@@ -366,7 +441,7 @@ export class StudioService {
     const records = Array.from({ length: count }, (_, index) =>
       this.insert({
         kind: "image",
-        provider: "openrouter",
+        provider,
         modelId: model,
         prompt,
         parentId,
@@ -374,22 +449,35 @@ export class StudioService {
           aspectRatio: aspectRatio ?? null,
           batchId,
           batchIndex: index,
+          batchSize: count,
           referenceCount: referenceImages.length,
           referenceItemIds,
+          ...style.params,
         },
       })
     );
 
-    const openrouter = createOpenRouter({ apiKey, appName: APP_NAME });
+    const imageModel =
+      provider === "google"
+        ? createGoogleGenerativeAI({
+            apiKey: auth.apiKey,
+            baseURL: auth.baseUrl,
+            fetch: this.fetch,
+          }).image(model)
+        : createOpenRouter({
+            apiKey: auth.apiKey,
+            appName: APP_NAME,
+            fetch: this.fetch,
+          }).imageModel(model);
     for (const record of records) {
       void this.track(record.id, async (signal) => {
         this.patch(record.id, { status: "running" });
         const result = await generateImage({
-          model: openrouter.imageModel(model),
+          model: imageModel,
           prompt:
             referenceImages.length > 0
-              ? { text: prompt, images: referenceImages.map((image) => image.data) }
-              : prompt,
+              ? { text: style.modelPrompt, images: referenceImages.map((image) => image.data) }
+              : style.modelPrompt,
           n: 1,
           aspectRatio,
           abortSignal: signal,
@@ -405,9 +493,11 @@ export class StudioService {
   }
 
   async generateVideo(request: StudioVideoRequest): Promise<StudioItem> {
-    const apiKey = this.requireOpenRouterKey();
+    const provider = mediaProvider(request.provider);
+    const auth = this.requireAuth(provider);
     const model = modelId(request.modelId);
     const prompt = trimmed(request.prompt, STUDIO_LIMITS.prompt, "متن درخواست");
+    const style = applyStyle(prompt, request.style);
     const aspectRatio = optionalAspectRatio(request.aspectRatio);
     const resolution =
       typeof request.resolution === "string" && /^[\w]{2,8}$/.test(request.resolution)
@@ -425,7 +515,7 @@ export class StudioService {
 
     const record = this.insert({
       kind: "video",
-      provider: "openrouter",
+      provider,
       modelId: model,
       prompt,
       parentId,
@@ -436,122 +526,262 @@ export class StudioService {
         generateAudio: request.generateAudio ?? null,
         hasFirstFrame: Boolean(firstFrame),
         jobId: null,
+        ...style.params,
       },
     });
 
     void this.track(record.id, async (signal) => {
-      const response = await ensureOk(
-        await this.fetch(`${OPENROUTER_API}/videos`, {
-          method: "POST",
-          headers: this.openRouterHeaders(apiKey),
-          signal,
-          body: JSON.stringify({
-            model,
-            prompt,
-            ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
-            ...(resolution ? { resolution } : {}),
-            ...(duration ? { duration } : {}),
-            ...(typeof request.generateAudio === "boolean"
-              ? { generate_audio: request.generateAudio }
-              : {}),
-            ...(firstFrame
-              ? {
-                  frame_images: [{
-                    type: "image_url",
-                    image_url: { url: firstFrame.dataUrl },
-                    frame_type: "first_frame",
-                  }],
-                }
-              : {}),
-          }),
-        })
-      );
-      const submitted = (await response.json()) as { id?: unknown };
-      if (typeof submitted.id !== "string" || !/^[\w-]{1,200}$/.test(submitted.id)) {
-        throw new StudioError("پاسخ نامعتبر از سرویس ویدیو دریافت شد.");
-      }
+      const jobId =
+        provider === "google"
+          ? await this.submitGoogleVideo(auth, signal, {
+              model,
+              prompt: style.modelPrompt,
+              aspectRatio,
+              resolution,
+              duration,
+              firstFrame,
+            })
+          : await this.submitOpenRouterVideo(auth.apiKey, signal, {
+              model,
+              prompt: style.modelPrompt,
+              aspectRatio,
+              resolution,
+              duration,
+              generateAudio: request.generateAudio,
+              firstFrame,
+            });
       const current = this.store.get(record.id);
       this.patch(record.id, {
         status: "running",
-        params: { ...(current?.params ?? {}), jobId: submitted.id },
+        params: { ...(current?.params ?? {}), jobId },
       });
-      await this.pollVideo(record.id, submitted.id, apiKey, signal);
+      await this.pollVideo(record.id, provider, jobId, auth, signal);
     });
 
     return toPublicStudioItem(record);
   }
 
-  private runVideoJob(id: string, jobId: string) {
-    const apiKey = this.options.getOpenRouterKey();
-    if (!apiKey) return;
-    return this.track(id, (signal) => this.pollVideo(id, jobId, apiKey, signal));
+  private async submitOpenRouterVideo(
+    apiKey: string,
+    signal: AbortSignal,
+    input: {
+      model: string;
+      prompt: string;
+      aspectRatio?: string;
+      resolution?: string;
+      duration?: number;
+      generateAudio?: boolean;
+      firstFrame: { dataUrl: string } | null;
+    }
+  ) {
+    const response = await ensureOk(
+      await this.fetch(`${OPENROUTER_API}/videos`, {
+        method: "POST",
+        headers: this.openRouterHeaders(apiKey),
+        signal,
+        body: JSON.stringify({
+          model: input.model,
+          prompt: input.prompt,
+          ...(input.aspectRatio ? { aspect_ratio: input.aspectRatio } : {}),
+          ...(input.resolution ? { resolution: input.resolution } : {}),
+          ...(input.duration ? { duration: input.duration } : {}),
+          ...(typeof input.generateAudio === "boolean"
+            ? { generate_audio: input.generateAudio }
+            : {}),
+          ...(input.firstFrame
+            ? {
+                frame_images: [{
+                  type: "image_url",
+                  image_url: { url: input.firstFrame.dataUrl },
+                  frame_type: "first_frame",
+                }],
+              }
+            : {}),
+        }),
+      })
+    );
+    const submitted = (await response.json()) as { id?: unknown };
+    if (typeof submitted.id !== "string" || !/^[\w-]{1,200}$/.test(submitted.id)) {
+      throw new StudioError("پاسخ نامعتبر از سرویس ویدیو دریافت شد.");
+    }
+    return submitted.id;
+  }
+
+  private async submitGoogleVideo(
+    auth: ProviderAuth,
+    signal: AbortSignal,
+    input: {
+      model: string;
+      prompt: string;
+      aspectRatio?: string;
+      resolution?: string;
+      duration?: number;
+      firstFrame: { data: Uint8Array; dataUrl: string } | null;
+    }
+  ) {
+    const mimeType = input.firstFrame
+      ? IMAGE_DATA_URL.exec(input.firstFrame.dataUrl)?.[1] ?? "image/png"
+      : null;
+    const response = await ensureOk(
+      await this.fetch(
+        `${auth.baseUrl}/models/${encodeURIComponent(input.model)}:predictLongRunning`,
+        {
+          method: "POST",
+          headers: { "x-goog-api-key": auth.apiKey, "Content-Type": "application/json" },
+          signal,
+          body: JSON.stringify({
+            instances: [{
+              prompt: input.prompt,
+              ...(input.firstFrame
+                ? {
+                    image: {
+                      bytesBase64Encoded: Buffer.from(input.firstFrame.data).toString("base64"),
+                      mimeType,
+                    },
+                  }
+                : {}),
+            }],
+            parameters: {
+              sampleCount: 1,
+              ...(input.aspectRatio ? { aspectRatio: input.aspectRatio } : {}),
+              ...(input.resolution ? { resolution: input.resolution } : {}),
+              ...(input.duration ? { durationSeconds: input.duration } : {}),
+            },
+          }),
+        }
+      )
+    );
+    const operation = (await response.json()) as { name?: unknown };
+    if (
+      typeof operation.name !== "string" ||
+      !/^[\w./-]{1,300}$/.test(operation.name) ||
+      operation.name.includes("..")
+    ) {
+      throw new StudioError("پاسخ نامعتبر از Google دریافت شد.");
+    }
+    return operation.name;
+  }
+
+  private runVideoJob(id: string, provider: StudioMediaProvider, jobId: string) {
+    const auth = this.authFor(provider);
+    if (!auth) return false;
+    void this.track(id, (signal) => this.pollVideo(id, provider, jobId, auth, signal));
+    return true;
   }
 
   private async pollVideo(
     id: string,
+    provider: StudioMediaProvider,
     jobId: string,
-    apiKey: string,
+    auth: ProviderAuth,
     signal: AbortSignal
   ) {
     const startedAt = Date.now();
-    const headers = this.openRouterHeaders(apiKey);
     while (Date.now() - startedAt < VIDEO_MAX_POLL_MS) {
       await delay(this.options.videoPollIntervalMs ?? VIDEO_POLL_INTERVAL_MS, signal);
-      const response = await ensureOk(
-        await this.fetch(`${OPENROUTER_API}/videos/${encodeURIComponent(jobId)}`, {
-          headers,
-          signal,
-        })
+      const result =
+        provider === "google"
+          ? await this.pollGoogleVideo(jobId, auth, signal)
+          : await this.pollOpenRouterVideo(jobId, auth.apiKey, signal);
+      if (!result) continue;
+      const download = await ensureOk(
+        await this.fetch(result.url, { headers: result.headers, signal })
       );
-      const poll = (await response.json()) as {
-        status?: unknown;
-        unsigned_urls?: unknown;
-        usage?: { cost?: unknown };
-        error?: unknown;
-      };
-      if (poll.status === "completed") {
-        const url = Array.isArray(poll.unsigned_urls) ? poll.unsigned_urls[0] : null;
-        if (typeof url !== "string" || !url.startsWith(`${OPENROUTER_API}/`)) {
-          throw new StudioError("آدرس دریافت ویدیو نامعتبر است.");
-        }
-        const download = await ensureOk(await this.fetch(url, { headers, signal }));
-        const mimeType = download.headers.get("content-type")?.split(";")[0] || "video/mp4";
-        const cost = Number(poll.usage?.cost);
-        await this.saveMedia(
-          id,
-          await readLimited(download),
-          mimeType.startsWith("video/") ? mimeType : "video/mp4",
-          Number.isFinite(cost) ? { cost } : {}
-        );
-        return;
-      }
-      if (
-        typeof poll.status === "string" &&
-        ["failed", "dead", "cancelled", "expired"].includes(poll.status)
-      ) {
-        throw new StudioError(
-          typeof poll.error === "string" && poll.error
-            ? poll.error.slice(0, 500)
-            : "ساخت ویدیو ناموفق بود."
-        );
-      }
+      const mimeType = download.headers.get("content-type")?.split(";")[0] || "video/mp4";
+      await this.saveMedia(
+        id,
+        await readLimited(download),
+        mimeType.startsWith("video/") ? mimeType : "video/mp4",
+        result.cost !== null ? { cost: result.cost } : {}
+      );
+      return;
     }
     throw new StudioError("ساخت ویدیو بیش از حد طول کشید.");
   }
 
-  async generateSpeech(request: StudioSpeechRequest): Promise<StudioItem> {
-    const provider = request.provider === "elevenlabs" ? "elevenlabs" : "openrouter";
-    const apiKey =
-      provider === "elevenlabs"
-        ? this.options.getElevenLabsKey()
-        : this.options.getOpenRouterKey();
-    if (!apiKey) {
+  /** Returns the download once complete, null while still running. */
+  private async pollOpenRouterVideo(jobId: string, apiKey: string, signal: AbortSignal) {
+    const headers = this.openRouterHeaders(apiKey);
+    const response = await ensureOk(
+      await this.fetch(`${OPENROUTER_API}/videos/${encodeURIComponent(jobId)}`, {
+        headers,
+        signal,
+      })
+    );
+    const poll = (await response.json()) as {
+      status?: unknown;
+      unsigned_urls?: unknown;
+      usage?: { cost?: unknown };
+      error?: unknown;
+    };
+    if (poll.status === "completed") {
+      const url = Array.isArray(poll.unsigned_urls) ? poll.unsigned_urls[0] : null;
+      if (typeof url !== "string" || !url.startsWith(`${OPENROUTER_API}/`)) {
+        throw new StudioError("آدرس دریافت ویدیو نامعتبر است.");
+      }
+      const cost = Number(poll.usage?.cost);
+      return { url, headers, cost: Number.isFinite(cost) ? cost : null };
+    }
+    if (
+      typeof poll.status === "string" &&
+      ["failed", "dead", "cancelled", "expired"].includes(poll.status)
+    ) {
       throw new StudioError(
-        provider === "elevenlabs"
-          ? "کلید ElevenLabs تنظیم نشده است."
-          : "کلید OpenRouter تنظیم نشده است. آن را در تنظیمات وارد کنید."
+        typeof poll.error === "string" && poll.error
+          ? poll.error.slice(0, 500)
+          : "ساخت ویدیو ناموفق بود."
       );
     }
+    return null;
+  }
+
+  private async pollGoogleVideo(operation: string, auth: ProviderAuth, signal: AbortSignal) {
+    const headers = { "x-goog-api-key": auth.apiKey };
+    const response = await ensureOk(
+      await this.fetch(`${auth.baseUrl}/${operation}`, { headers, signal })
+    );
+    const poll = (await response.json()) as {
+      done?: unknown;
+      error?: { message?: unknown };
+      response?: {
+        generateVideoResponse?: {
+          generatedSamples?: Array<{ video?: { uri?: unknown } }>;
+          raiMediaFilteredReasons?: unknown;
+        };
+      };
+    };
+    if (poll.done !== true) return null;
+    if (poll.error) {
+      throw new StudioError(
+        typeof poll.error.message === "string"
+          ? poll.error.message.slice(0, 500)
+          : "ساخت ویدیو ناموفق بود."
+      );
+    }
+    const generated = poll.response?.generateVideoResponse;
+    const uri = generated?.generatedSamples?.[0]?.video?.uri;
+    if (typeof uri !== "string") {
+      const filtered = generated?.raiMediaFilteredReasons;
+      throw new StudioError(
+        Array.isArray(filtered) && typeof filtered[0] === "string"
+          ? `Google این ویدیو را به دلیل سیاست محتوا نساخت: ${filtered[0].slice(0, 300)}`
+          : "Google ویدیویی برنگرداند."
+      );
+    }
+    if (new URL(uri).origin !== new URL(auth.baseUrl).origin) {
+      throw new StudioError("آدرس دریافت ویدیو نامعتبر است.");
+    }
+    return { url: uri, headers, cost: null };
+  }
+
+  async generateSpeech(request: StudioSpeechRequest): Promise<StudioItem> {
+    const provider =
+      request.provider === "elevenlabs" || request.provider === "google"
+        ? request.provider
+        : "openrouter";
+    const auth = this.authFor(provider);
+    if (!auth) throw new StudioError(missingKeyMessage(provider));
+    const apiKey = auth.apiKey;
     const model = modelId(request.modelId);
     const input = trimmed(request.input, STUDIO_LIMITS.speechInput, "متن");
     const voice =
@@ -566,7 +796,10 @@ export class StudioService {
         ? request.instructions.trim().slice(0, 1_000)
         : "";
     const speed =
-      typeof request.speed === "number" && request.speed >= 0.5 && request.speed <= 2
+      provider !== "google" &&
+      typeof request.speed === "number" &&
+      request.speed >= 0.5 &&
+      request.speed <= 2
         ? request.speed
         : undefined;
 
@@ -585,6 +818,26 @@ export class StudioService {
 
     void this.track(record.id, async (signal) => {
       this.patch(record.id, { status: "running" });
+      if (provider === "google") {
+        const result = await generateSpeech({
+          model: createGoogleGenerativeAI({
+            apiKey,
+            baseURL: auth.baseUrl,
+            fetch: this.fetch,
+          }).speech(model),
+          text: input,
+          voice: voice || undefined,
+          instructions: instructions || undefined,
+          abortSignal: signal,
+          maxRetries: 1,
+        });
+        await this.saveMedia(
+          record.id,
+          Buffer.from(result.audio.uint8Array),
+          result.audio.mediaType || "audio/wav"
+        );
+        return;
+      }
       const response =
         provider === "elevenlabs"
           ? await this.fetch(
@@ -743,12 +996,23 @@ export class StudioService {
 
   // MARK: Internals
 
-  private requireOpenRouterKey() {
-    const key = this.options.getOpenRouterKey();
-    if (!key) {
-      throw new StudioError("کلید OpenRouter تنظیم نشده است. آن را در تنظیمات وارد کنید.");
-    }
-    return key;
+  private authFor(provider: StudioProvider): ProviderAuth | null {
+    if (provider === "google") return this.options.getGoogleAuth();
+    const apiKey =
+      provider === "elevenlabs"
+        ? this.options.getElevenLabsKey()
+        : provider === "openrouter"
+          ? this.options.getOpenRouterKey()
+          : null;
+    return apiKey
+      ? { apiKey, baseUrl: provider === "elevenlabs" ? ELEVENLABS_API : OPENROUTER_API }
+      : null;
+  }
+
+  private requireAuth(provider: StudioProvider): ProviderAuth {
+    const auth = this.authFor(provider);
+    if (!auth) throw new StudioError(missingKeyMessage(provider));
+    return auth;
   }
 
   private openRouterHeaders(apiKey: string) {

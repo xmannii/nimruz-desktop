@@ -15,6 +15,8 @@ import {
 import { resolveStaticPath } from "./static-path";
 import { handleSpeechCorrectionRequest } from "./speech-correction";
 import type { SpeechCorrectionRequest } from "@/lib/speech/correction";
+import { handleStudioEnhanceRequest } from "./studio/enhance";
+import type { StudioEnhanceRequest } from "@/lib/studio/types";
 
 const MAX_REQUEST_BYTES = 10 * 1024 * 1024;
 
@@ -195,6 +197,7 @@ export function startServer(
       if (
         (url === "/api/chat/title" ||
           url === "/api/speech/correct" ||
+          url === "/api/studio/enhance" ||
           url.startsWith("/api/chat") ||
           url.startsWith("/api/agent")) &&
         req.method === "POST"
@@ -221,6 +224,34 @@ export function startServer(
             error: error instanceof Error ? error.message : "Unknown error",
           })
         );
+      }
+      return;
+    }
+
+    if (url === "/api/studio/enhance" && req.method === "POST") {
+      const abortController = new AbortController();
+      const abort = () => {
+        if (!res.writableEnded) abortController.abort();
+      };
+      req.once("aborted", abort);
+      res.once("close", abort);
+      try {
+        const body = await readJsonBody<StudioEnhanceRequest>(req);
+        await pipeWebResponse(
+          await handleStudioEnhanceRequest(body, agentDeps, abortController.signal),
+          res
+        );
+      } catch (error) {
+        if (res.headersSent || res.destroyed) return;
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: error instanceof Error ? error.message : "Unknown error",
+          })
+        );
+      } finally {
+        req.removeListener("aborted", abort);
+        res.removeListener("close", abort);
       }
       return;
     }

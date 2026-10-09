@@ -178,3 +178,46 @@ export function groupStudioItemsByDate(
     items: groupItems,
   }));
 }
+
+export type StudioRun = { key: string; createdAt: number; items: StudioItem[] };
+
+/**
+ * Turns newest-first items into oldest-first runs: one run per request, so
+ * a 4-image batch reads as a single row in the feed.
+ */
+export function groupStudioRuns(items: StudioItem[]): StudioRun[] {
+  const runs = new Map<string, StudioRun>();
+  for (const item of items) {
+    const batchId = typeof item.params.batchId === "string" ? item.params.batchId : null;
+    const key = batchId ?? item.id;
+    const run = runs.get(key);
+    if (run) {
+      run.items.push(item);
+      run.createdAt = Math.min(run.createdAt, item.createdAt);
+    } else {
+      runs.set(key, { key, createdAt: item.createdAt, items: [item] });
+    }
+  }
+  const batchIndex = (item: StudioItem) =>
+    typeof item.params.batchIndex === "number" ? item.params.batchIndex : 0;
+  return Array.from(runs.values())
+    .map((run) => ({ ...run, items: run.items.sort((a, b) => batchIndex(a) - batchIndex(b)) }))
+    .sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/** Label for a day divider, e.g. "امروز" or "۱۷ مهر". */
+export function formatDayLabel(timestamp: number, now = Date.now()) {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  if (timestamp >= start.getTime()) return "امروز";
+  if (timestamp >= start.getTime() - 86_400_000) return "دیروز";
+  return new Intl.DateTimeFormat("fa-IR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(timestamp);
+}
+
+export function isSameDay(a: number, b: number) {
+  return new Date(a).toDateString() === new Date(b).toDateString();
+}

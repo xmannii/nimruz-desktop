@@ -39,6 +39,10 @@ async function withStudio(
     store,
     mediaDirectory,
     getOpenRouterKey: () => "sk-or-test-key",
+    getGoogleAuth: () => ({
+      apiKey: "google-test-key",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
+    }),
     getElevenLabsKey: () => "eleven-test-key",
     onItemChange: (item) => changes.push(item),
     onItemDelete: () => undefined,
@@ -313,4 +317,216 @@ test("rejects invalid input before creating items", async () => {
     );
     assert.equal(store.list().length, 0);
   });
+});
+
+const GOOGLE_API = "https://generativelanguage.googleapis.com/v1beta";
+
+test("submits Veo jobs, polls the operation, and downloads with the key header", async () => {
+  let polls = 0;
+  await withStudio(
+    {
+      [`POST ${GOOGLE_API}/models/veo-3.1-fast-generate-preview:predictLongRunning`]: () =>
+        Response.json({ name: "models/veo-3.1-fast-generate-preview/operations/op-1" }),
+      [`GET ${GOOGLE_API}/models/veo-3.1-fast-generate-preview/operations/op-1`]: () => {
+        polls += 1;
+        return Response.json(
+          polls < 2
+            ? { name: "op-1", done: false }
+            : {
+                name: "op-1",
+                done: true,
+                response: {
+                  generateVideoResponse: {
+                    generatedSamples: [
+                      { video: { uri: `${GOOGLE_API}/files/abc:download?alt=media` } },
+                    ],
+                  },
+                },
+              }
+        );
+      },
+      [`GET ${GOOGLE_API}/files/abc:download`]: (request) => {
+        assert.equal(request.headers.get("x-goog-api-key"), "google-test-key");
+        return new Response(new Uint8Array([1, 1, 2, 3]), {
+          headers: { "Content-Type": "video/mp4" },
+        });
+      },
+    },
+    async ({ service, store, requests }) => {
+      const item = await service.generateVideo({
+        provider: "google",
+        modelId: "veo-3.1-fast-generate-preview",
+        prompt: "طلوع روی دماوند",
+        aspectRatio: "16:9",
+        resolution: "1080p",
+        duration: 8,
+        firstFrame: { type: "data-url", dataUrl: "data:image/jpeg;base64,/9j/4AAQ" },
+      });
+      await waitFor(() => store.get(item.id)?.status === "done");
+      const body = (await requests[0].json()) as {
+        instances: Array<{ prompt: string; image?: { mimeType: string } }>;
+        parameters: Record<string, unknown>;
+      };
+      assert.equal(requests[0].headers.get("x-goog-api-key"), "google-test-key");
+      assert.equal(body.instances[0].prompt, "طلوع روی دماوند");
+      assert.equal(body.instances[0].image?.mimeType, "image/jpeg");
+      assert.deepEqual(body.parameters, {
+        sampleCount: 1,
+        aspectRatio: "16:9",
+        resolution: "1080p",
+        durationSeconds: 8,
+      });
+      const done = store.get(item.id)!;
+      assert.equal(done.provider, "google");
+      assert.equal(done.params.jobId, "models/veo-3.1-fast-generate-preview/operations/op-1");
+    }
+  );
+});
+
+test("explains Veo safety filtering", async () => {
+  await withStudio(
+    {
+      [`POST ${GOOGLE_API}/models/veo-3.1-generate-preview:predictLongRunning`]: () =>
+        Response.json({ name: "models/veo-3.1-generate-preview/operations/op-2" }),
+      [`GET ${GOOGLE_API}/models/veo-3.1-generate-preview/operations/op-2`]: () =>
+        Response.json({
+          done: true,
+          response: { generateVideoResponse: { raiMediaFilteredReasons: ["Unsafe content"] } },
+        }),
+    },
+    async ({ service, store }) => {
+      const item = await service.generateVideo({
+        provider: "google",
+        modelId: "veo-3.1-generate-preview",
+        prompt: "x",
+      });
+      await waitFor(() => store.get(item.id)?.status === "failed");
+      assert.match(store.get(item.id)?.error ?? "", /سیاست محتوا/);
+    }
+  );
+});
+
+test("synthesizes Gemini TTS as WAV", async () => {
+  const pcm = Buffer.alloc(48, 1).toString("base64");
+  await withStudio(
+    {
+      [`POST ${GOOGLE_API}/models/gemini-3.1-flash-tts-preview:generateContent`]: () =>
+        Response.json({
+          candidates: [
+            {
+              content: {
+                parts: [{ inlineData: { mimeType: "audio/L16;codec=pcm;rate=24000", data: pcm } }],
+              },
+            },
+          ],
+        }),
+    },
+    async ({ service, store, requests }) => {
+      const item = await service.generateSpeech({
+        provider: "google",
+        modelId: "gemini-3.1-flash-tts-preview",
+        voice: "Kore",
+        input: "سلام",
+        instructions: "گرم و آرام",
+        speed: 1.5,
+      });
+      await waitFor(() => store.get(item.id)?.status !== "running" && store.get(item.id)?.status !== "pending");
+      assert.equal(store.get(item.id)?.error, null);
+      const body = JSON.stringify(await requests[0].json());
+      assert.match(body, /Kore/);
+      assert.match(body, /گرم و آرام/);
+      const done = store.get(item.id)!;
+      assert.equal(done.mimeType, "audio/wav");
+      assert.equal(done.params.speed, null);
+    }
+  );
+});
+
+test("lists Google models alongside OpenRouter in the catalog", async () => {
+  await withStudio(
+    {
+      "GET https://openrouter.ai/api/v1/models": () => Response.json({ data: [] }),
+      "GET https://openrouter.ai/api/v1/videos/models": () => Response.json({ data: [] }),
+      [`GET ${GOOGLE_API}/models`]: () =>
+        Response.json({
+          models: [
+            { name: "models/imagen-4.0-generate-001", supportedGenerationMethods: ["predict"] },
+            { name: "models/veo-3.1-generate-preview", supportedGenerationMethods: ["predictLongRunning"] },
+          ],
+        }),
+      "GET https://api.elevenlabs.io/v1/models": () => Response.json([]),
+      "GET https://api.elevenlabs.io/v2/voices": () => Response.json({ voices: [] }),
+    },
+    async ({ service }) => {
+      const catalog = await service.getCatalog();
+      assert.deepEqual(catalog.image.map((model) => [model.provider, model.id]), [
+        ["google", "imagen-4.0-generate-001"],
+      ]);
+      assert.deepEqual(catalog.video.map((model) => model.provider), ["google"]);
+    }
+  );
+});
+
+test("generates Imagen images through the Gemini API", async () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64");
+  await withStudio(
+    {
+      [`POST ${GOOGLE_API}/models/imagen-4.0-generate-001:predict`]: () =>
+        Response.json({ predictions: [{ bytesBase64Encoded: png }] }),
+    },
+    async ({ service, store, requests }) => {
+      const [item] = await service.generateImages({
+        provider: "google",
+        modelId: "imagen-4.0-generate-001",
+        prompt: "کوچه‌ای در یزد",
+        aspectRatio: "16:9",
+        style: { id: "miniature", prompt: "Persian miniature painting" },
+      });
+      await waitFor(() => store.get(item.id)?.status === "done");
+      assert.equal(requests[0].headers.get("x-goog-api-key"), "google-test-key");
+      const sent = JSON.stringify(await requests[0].json());
+      assert.match(sent, /16:9/);
+      assert.match(sent, /Style: Persian miniature painting/);
+      const done = store.get(item.id)!;
+      assert.equal(done.provider, "google");
+      // History keeps the person's own words; the preset lives in params.
+      assert.equal(done.prompt, "کوچه‌ای در یزد");
+      assert.equal(done.params.style, "miniature");
+    }
+  );
+});
+
+test("repairs Studio tables on databases stamped with a newer version", async () => {
+  const { DatabaseSync } = await import("node:sqlite");
+  const directory = await mkdtemp(path.join(os.tmpdir(), "nimruz-studio-skew-"));
+  const file = path.join(directory, "skewed.sqlite3");
+  try {
+    // First open builds the full schema, then simulate an unmerged build
+    // that bumped user_version and an early draft without search_text.
+    new AppDatabase(file).close();
+    const raw = new DatabaseSync(file);
+    raw.exec("DROP TABLE studio_items; PRAGMA user_version = 13;");
+    raw.exec(`CREATE TABLE studio_items (
+      id TEXT PRIMARY KEY, kind TEXT NOT NULL, status TEXT NOT NULL, title TEXT NOT NULL,
+      prompt TEXT NOT NULL DEFAULT '', provider TEXT NOT NULL, model_id TEXT NOT NULL,
+      params_json TEXT NOT NULL DEFAULT '{}', mime_type TEXT, storage_path TEXT, text TEXT,
+      corrected_text TEXT, error TEXT, cost REAL, duration_seconds REAL, parent_id TEXT,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)`);
+    raw.close();
+
+    const database = new AppDatabase(file);
+    const store = new StudioStore(database.database);
+    assert.deepEqual(store.list({ query: "x" }), []);
+    assert.deepEqual(store.listUnfinished(), []);
+    database.close();
+
+    const missing = new DatabaseSync(file);
+    missing.exec("DROP TABLE studio_items");
+    missing.close();
+    const reopened = new AppDatabase(file);
+    assert.deepEqual(new StudioStore(reopened.database).listUnfinished(), []);
+    reopened.close();
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

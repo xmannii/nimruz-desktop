@@ -35,7 +35,8 @@ import type {
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
 import type {
-  StudioElevenLabsStatus,
+  StudioConnectionId,
+  StudioConnections,
   StudioImageRequest,
   StudioItem,
   StudioListOptions,
@@ -283,10 +284,10 @@ export type DesktopAPI = {
     ) => Promise<StudioItem | null>;
     saveAs: (id: string) => Promise<boolean>;
     reveal: (id: string) => Promise<void>;
-    elevenLabs: {
-      getStatus: () => Promise<StudioElevenLabsStatus>;
-      setKey: (key: string) => Promise<StudioElevenLabsStatus>;
-      clearKey: () => Promise<StudioElevenLabsStatus>;
+    connections: {
+      getStatus: () => Promise<StudioConnections>;
+      setKey: (id: StudioConnectionId, key: string) => Promise<StudioConnections>;
+      clearKey: (id: StudioConnectionId) => Promise<StudioConnections>;
     };
     onItemChange: (callback: (item: StudioItem) => void) => () => void;
     onItemDelete: (callback: (id: string) => void) => () => void;

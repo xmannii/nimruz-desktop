@@ -24,6 +24,9 @@ export type StudioModelOption = {
   group?: string;
   meta?: string;
   badge?: string;
+  /** Position in the curated "recommended" list, if featured. */
+  rank?: number | null;
+  isNew?: boolean;
 };
 
 function VendorMark({ name, className }: { name: string; className?: string }) {
@@ -74,6 +77,10 @@ export function StudioModelPicker({
         )
       : options;
     const map = new Map<string, StudioModelOption[]>();
+    const featured = filtered
+      .filter((option) => typeof option.rank === "number")
+      .sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
+    if (!needle && featured.length > 0) map.set("پیشنهادی", featured);
     for (const option of filtered) {
       const group = option.group ?? modelVendor(option.id);
       const bucket = map.get(group);
@@ -168,14 +175,17 @@ export function StudioModelPicker({
             ) : (
               groups.map(({ group, items }) => (
                 <section key={group} className="mb-1">
-                  <div className="px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <div
+                    dir={group === "پیشنهادی" ? "rtl" : undefined}
+                    className="px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                  >
                     {group}
                   </div>
                   {items.map((option) => {
                     const isSelected = option.key === value;
                     return (
                       <button
-                        key={option.key}
+                        key={`${group}:${option.key}`}
                         type="button"
                         className={cn(
                           "flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-start transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none",
@@ -189,6 +199,11 @@ export function StudioModelPicker({
                             <span className="truncate text-xs font-medium">
                               {shortModelName(option.name)}
                             </span>
+                            {option.isNew ? (
+                              <span className="shrink-0 rounded-full bg-emerald-500/12 px-1.5 py-px text-[9px] font-medium text-emerald-600 dark:text-emerald-400">
+                                جدید
+                              </span>
+                            ) : null}
                             {option.badge ? (
                               <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-px text-[9px] font-medium text-primary">
                                 {option.badge}

@@ -4,10 +4,13 @@ const STORAGE_KEY = "nimruz.studio.preferences.v1";
 
 export type StudioPreferences = {
   lastTab?: StudioTab;
-  imageModelId?: string;
+  view?: "feed" | "grid";
+  imageModelKey?: string;
   imageAspectRatio?: string;
   imageCount?: number;
-  videoModelId?: string;
+  videoModelKey?: string;
+  videoCamera?: string;
+  imageStyle?: string;
   videoAspectRatio?: string;
   videoResolution?: string;
   videoDuration?: number;
@@ -17,13 +20,14 @@ export type StudioPreferences = {
   speechSpeed?: number;
 };
 
+/** Defaults favour the newest broadly capable models with good Persian support. */
 export const DEFAULT_STUDIO_PREFERENCES: Required<
-  Pick<StudioPreferences, "imageModelId" | "imageAspectRatio" | "imageCount" | "videoModelId" | "speechModelKey">
+  Pick<StudioPreferences, "imageModelKey" | "imageAspectRatio" | "imageCount" | "videoModelKey" | "speechModelKey">
 > = {
-  imageModelId: "google/gemini-3.1-flash-image",
+  imageModelKey: "openrouter::google/gemini-nano-banana-2.1",
   imageAspectRatio: "1:1",
-  imageCount: 1,
-  videoModelId: "google/veo-3.1-fast",
+  imageCount: 2,
+  videoModelKey: "openrouter::bytedance/seedance-2.5",
   speechModelKey: "openrouter::google/gemini-3.8-flash-tts",
 };
 

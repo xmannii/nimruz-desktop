@@ -5,30 +5,36 @@ function stringParam(item: StudioItem, key: string) {
   return typeof value === "string" && value ? value : undefined;
 }
 
-/**
- * Re-runs a failed or interrupted generation with its saved settings and
- * removes the old attempt so history keeps a single entry per request.
- */
-export async function retryStudioItem(item: StudioItem) {
+function mediaProvider(item: StudioItem) {
+  return item.provider === "google" ? ("google" as const) : ("openrouter" as const);
+}
+
+function styleOf(item: StudioItem) {
+  const id = stringParam(item, "style");
+  const prompt = stringParam(item, "stylePrompt");
+  return id && prompt ? { id, prompt } : undefined;
+}
+
+/** Re-sends the same request as a new generation (keeps the original). */
+export async function regenerateStudioItem(item: StudioItem, count = 1) {
   if (item.kind === "image") {
-    const referenceIds = Array.isArray(item.params.referenceItemIds)
-      ? item.params.referenceItemIds.filter(
-          (id): id is string => typeof id === "string"
-        )
-      : [];
     await window.desktop.studio.generateImages({
+      provider: mediaProvider(item),
       modelId: item.modelId,
       prompt: item.prompt,
+      style: styleOf(item),
       aspectRatio: stringParam(item, "aspectRatio"),
-      count: 1,
-      references: referenceIds.map((itemId) => ({ type: "item", itemId })),
+      count,
+      references: referenceIds(item).map((itemId) => ({ type: "item" as const, itemId })),
     });
   } else if (item.kind === "video") {
     const duration = item.params.duration;
     const generateAudio = item.params.generateAudio;
     await window.desktop.studio.generateVideo({
+      provider: mediaProvider(item),
       modelId: item.modelId,
       prompt: item.prompt,
+      style: styleOf(item),
       aspectRatio: stringParam(item, "aspectRatio"),
       resolution: stringParam(item, "resolution"),
       duration: typeof duration === "number" ? duration : undefined,
@@ -38,16 +44,32 @@ export async function retryStudioItem(item: StudioItem) {
   } else if (item.kind === "speech") {
     const speed = item.params.speed;
     await window.desktop.studio.generateSpeech({
-      provider: item.provider === "elevenlabs" ? "elevenlabs" : "openrouter",
+      provider:
+        item.provider === "elevenlabs" || item.provider === "google"
+          ? item.provider
+          : "openrouter",
       modelId: item.modelId,
       voice: stringParam(item, "voice") ?? "",
       input: item.text ?? item.prompt,
       instructions: stringParam(item, "instructions"),
       speed: typeof speed === "number" ? speed : undefined,
     });
-  } else {
-    return;
   }
+}
+
+function referenceIds(item: StudioItem) {
+  return Array.isArray(item.params.referenceItemIds)
+    ? item.params.referenceItemIds.filter((id): id is string => typeof id === "string")
+    : [];
+}
+
+/**
+ * Re-runs a failed or interrupted generation with its saved settings and
+ * removes the old attempt so history keeps a single entry per request.
+ */
+export async function retryStudioItem(item: StudioItem) {
+  if (item.kind === "transcript") return;
+  await regenerateStudioItem(item);
   await window.desktop.studio.delete(item.id);
 }
 

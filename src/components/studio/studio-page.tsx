@@ -2,10 +2,12 @@
 
 import { ImageStudio } from "@/components/studio/image-studio";
 import { SpeechStudio } from "@/components/studio/speech-studio";
+import { StudioConnectionsDialog } from "@/components/studio/studio-connections-dialog";
 import {
   StudioContextProvider,
   type StudioContextValue,
   type StudioDraft,
+  type StudioView,
 } from "@/components/studio/studio-context";
 import { StudioHistorySheet } from "@/components/studio/studio-history-sheet";
 import { StudioItemViewer } from "@/components/studio/studio-item-viewer";
@@ -13,14 +15,16 @@ import { TranscribeStudio } from "@/components/studio/transcribe-studio";
 import { VideoStudio } from "@/components/studio/video-studio";
 import { useSpeech } from "@/components/speech/speech-provider";
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   isStudioItemBusy,
+  STUDIO_KIND_LABELS,
   STUDIO_TAB_LABELS,
   STUDIO_TABS,
   studioKindTab,
   type StudioTab,
 } from "@/lib/studio/format";
-import { saveStudioPreferences } from "@/lib/studio/preferences";
+import { loadStudioPreferences, saveStudioPreferences } from "@/lib/studio/preferences";
 import type { StudioItem } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "@tanstack/react-router";
@@ -30,9 +34,12 @@ import {
   FilmIcon,
   HistoryIcon,
   ImageIcon,
-  SparklesIcon,
+  LayoutGridIcon,
+  PlugIcon,
+  RowsIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from "react";
+import { toast } from "sonner";
 
 const TAB_ICONS: Record<StudioTab, typeof ImageIcon> = {
   image: ImageIcon,
@@ -41,41 +48,68 @@ const TAB_ICONS: Record<StudioTab, typeof ImageIcon> = {
   transcribe: FileAudioIcon,
 };
 
-const TAB_COMPONENTS: Record<StudioTab, () => React.JSX.Element> = {
+const TAB_COMPONENTS: Record<StudioTab, () => JSX.Element> = {
   image: ImageStudio,
   video: VideoStudio,
   speech: SpeechStudio,
   transcribe: TranscribeStudio,
 };
 
-/** Tabs with work still running, so users can see progress elsewhere. */
-function useBusyTabs() {
+/**
+ * Tracks running work per tab and announces finished generations that
+ * happened outside the tab you are looking at.
+ */
+function useStudioActivity(tab: StudioTab, onOpen: (item: StudioItem) => void) {
   const [busy, setBusy] = useState<Map<string, StudioTab>>(new Map());
+  const tabRef = useRef(tab);
+  const openRef = useRef(onOpen);
   const { hasBusyItems, isLiveRecording } = useSpeech();
+  tabRef.current = tab;
+  openRef.current = onOpen;
 
   useEffect(() => {
-    const track = (item: StudioItem) =>
+    const running = new Set<string>();
+    const track = (item: StudioItem) => {
+      const wasRunning = running.has(item.id);
+      if (isStudioItemBusy(item)) running.add(item.id);
+      else running.delete(item.id);
+
+      if (wasRunning && !isStudioItemBusy(item) && item.kind !== "transcript") {
+        const itemTab = studioKindTab(item.kind);
+        const away = itemTab !== tabRef.current || document.visibilityState === "hidden";
+        if (item.status === "done" && away) {
+          toast.success(`${STUDIO_KIND_LABELS[item.kind]} آماده شد`, {
+            description: item.title,
+            action: { label: "مشاهده", onClick: () => openRef.current(item) },
+          });
+        } else if (item.status === "failed" && away) {
+          toast.error(`ساخت ${STUDIO_KIND_LABELS[item.kind]} ناموفق بود`, { description: item.error ?? undefined });
+        }
+      }
+
       setBusy((current) => {
+        const isBusy = isStudioItemBusy(item);
+        if (isBusy === current.has(item.id)) return current;
         const next = new Map(current);
-        if (isStudioItemBusy(item)) next.set(item.id, studioKindTab(item.kind));
+        if (isBusy) next.set(item.id, studioKindTab(item.kind));
         else next.delete(item.id);
-        return next.size === current.size && next.get(item.id) === current.get(item.id)
-          ? current
-          : next;
+        return next;
       });
+    };
     void window.desktop.studio
       .list({ limit: 100 })
       .then((items) => items.forEach(track))
       .catch(() => undefined);
     const offChange = window.desktop.studio.onItemChange(track);
-    const offDelete = window.desktop.studio.onItemDelete((id) =>
+    const offDelete = window.desktop.studio.onItemDelete((id) => {
+      running.delete(id);
       setBusy((current) => {
         if (!current.has(id)) return current;
         const next = new Map(current);
         next.delete(id);
         return next;
-      })
-    );
+      });
+    });
     return () => {
       offChange();
       offDelete();
@@ -92,32 +126,50 @@ function useBusyTabs() {
 export function StudioPage({ tab }: { tab: StudioTab }) {
   const navigate = useNavigate();
   const [visited, setVisited] = useState<Set<StudioTab>>(() => new Set([tab]));
-  const [viewerItem, setViewerItem] = useState<StudioItem | null>(null);
+  const [viewer, setViewer] = useState<{ item: StudioItem; siblings: StudioItem[] } | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [connectionsOpen, setConnectionsOpen] = useState(false);
   const [draft, setDraft] = useState<StudioDraft | null>(null);
-  const busyTabs = useBusyTabs();
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const [view, setViewState] = useState<StudioView>(() => loadStudioPreferences().view ?? "feed");
+
+  const openItem = useCallback((item: StudioItem, siblings?: StudioItem[]) => {
+    setViewer({ item, siblings: siblings ?? [item] });
+  }, []);
+
+  const busyTabs = useStudioActivity(tab, openItem);
 
   useEffect(() => {
     setVisited((current) => (current.has(tab) ? current : new Set(current).add(tab)));
-    scrollRef.current?.scrollTo({ top: 0 });
     saveStudioPreferences({ lastTab: tab });
   }, [tab]);
 
   // Keep the open viewer in sync with background progress and edits.
+  const viewerId = viewer?.item.id;
   useEffect(() => {
-    if (!viewerItem) return;
+    if (!viewerId) return;
     const offChange = window.desktop.studio.onItemChange((item) => {
-      if (item.id === viewerItem.id) setViewerItem(item);
+      setViewer((current) =>
+        current
+          ? {
+              item: current.item.id === item.id ? item : current.item,
+              siblings: current.siblings.map((sibling) => (sibling.id === item.id ? item : sibling)),
+            }
+          : current
+      );
     });
     const offDelete = window.desktop.studio.onItemDelete((id) => {
-      if (id === viewerItem.id) setViewerItem(null);
+      setViewer((current) => {
+        if (!current) return current;
+        const siblings = current.siblings.filter((sibling) => sibling.id !== id);
+        if (current.item.id !== id) return { ...current, siblings };
+        return null;
+      });
     });
     return () => {
       offChange();
       offDelete();
     };
-  }, [viewerItem]);
+  }, [viewerId]);
 
   const setTab = useCallback(
     (next: StudioTab) => {
@@ -136,31 +188,25 @@ export function StudioPage({ tab }: { tab: StudioTab }) {
 
   const clearDraft = useCallback(() => setDraft(null), []);
 
+  const setView = useCallback((next: StudioView) => {
+    setViewState(next);
+    saveStudioPreferences({ view: next });
+  }, []);
+
+  const openConnections = useCallback(() => setConnectionsOpen(true), []);
+
   const contextValue = useMemo<StudioContextValue>(
-    () => ({ tab, setTab, openItem: setViewerItem, draft, sendDraft, clearDraft }),
-    [tab, setTab, draft, sendDraft, clearDraft]
+    () => ({ tab, setTab, openItem, draft, sendDraft, clearDraft, view, setView, openConnections }),
+    [tab, setTab, openItem, draft, sendDraft, clearDraft, view, setView, openConnections]
   );
+
+  const showViewToggle = tab === "image" || tab === "video";
 
   return (
     <StudioContextProvider value={contextValue}>
       <div dir="rtl" className="flex h-full min-h-0 flex-col bg-background">
-        <header className="flex shrink-0 items-center gap-3 border-b border-border/60 px-4 py-2.5 sm:px-6">
-          <div className="flex min-w-0 items-center gap-2.5">
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/25 via-primary/10 to-transparent text-primary ring-1 ring-primary/15">
-              <SparklesIcon className="size-4" />
-            </span>
-            <div className="hidden min-w-0 sm:block">
-              <h1 className="text-sm font-semibold leading-5">استودیو</h1>
-              <p className="truncate text-[11px] text-muted-foreground">
-                ساخت تصویر، ویدیو و صدا؛ رونویسی گفتار
-              </p>
-            </div>
-          </div>
-
-          <nav
-            aria-label="بخش‌های استودیو"
-            className="mx-auto flex items-center gap-0.5 rounded-full bg-muted p-1"
-          >
+        <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 sm:px-4">
+          <nav aria-label="بخش‌های استودیو" className="flex items-center gap-0.5">
             {STUDIO_TABS.map((value) => {
               const Icon = TAB_ICONS[value];
               const active = value === tab;
@@ -170,41 +216,63 @@ export function StudioPage({ tab }: { tab: StudioTab }) {
                   type="button"
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "relative inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-muted-foreground transition-all hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
-                    active && "bg-background text-foreground shadow-sm dark:bg-input/40"
+                    "relative inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                    active && "bg-muted font-medium text-foreground"
                   )}
                   onClick={() => setTab(value)}
                 >
                   <Icon className="size-4" />
                   <span className="hidden sm:inline">{STUDIO_TAB_LABELS[value]}</span>
                   {busyTabs.has(value) ? (
-                    <span
-                      className="absolute end-1.5 top-1.5 size-1.5 animate-pulse rounded-full bg-primary"
-                      aria-label="در حال پردازش"
-                    />
+                    <span className="size-1.5 rounded-full bg-primary" aria-label="در حال پردازش" />
                   ) : null}
                 </button>
               );
             })}
           </nav>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="shrink-0 rounded-full"
-            onClick={() => setHistoryOpen(true)}
-          >
-            <HistoryIcon data-icon="inline-start" />
-            <span className="hidden md:inline">تاریخچه</span>
-          </Button>
+          <div className="ms-auto flex items-center gap-1">
+            {showViewToggle ? (
+              <ToggleGroup
+                value={[view]}
+                onValueChange={(values) => {
+                  const next = values[0];
+                  if (next === "feed" || next === "grid") setView(next);
+                }}
+                size="sm"
+                spacing={0}
+                aria-label="نمای نمایش"
+              >
+                <ToggleGroupItem value="feed" aria-label="نمای فید" title="فید">
+                  <RowsIcon />
+                </ToggleGroupItem>
+                <ToggleGroupItem value="grid" aria-label="نمای گالری" title="گالری">
+                  <LayoutGridIcon />
+                </ToggleGroupItem>
+              </ToggleGroup>
+            ) : null}
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="سرویس‌ها و کلیدها"
+              title="سرویس‌ها"
+              onClick={openConnections}
+            >
+              <PlugIcon />
+            </Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setHistoryOpen(true)}>
+              <HistoryIcon data-icon="inline-start" />
+              <span className="hidden md:inline">تاریخچه</span>
+            </Button>
+          </div>
         </header>
 
-        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="relative min-h-0 flex-1">
           {STUDIO_TABS.filter((value) => visited.has(value)).map((value) => {
             const Component = TAB_COMPONENTS[value];
             return (
-              <div key={value} hidden={value !== tab}>
+              <div key={value} hidden={value !== tab} className="absolute inset-0">
                 <Component />
               </div>
             );
@@ -213,12 +281,15 @@ export function StudioPage({ tab }: { tab: StudioTab }) {
       </div>
 
       <StudioItemViewer
-        item={viewerItem}
+        item={viewer?.item ?? null}
+        siblings={viewer?.siblings ?? []}
+        onNavigate={(item) => setViewer((current) => (current ? { ...current, item } : current))}
         onOpenChange={(open) => {
-          if (!open) setViewerItem(null);
+          if (!open) setViewer(null);
         }}
       />
       <StudioHistorySheet open={historyOpen} onOpenChange={setHistoryOpen} />
+      <StudioConnectionsDialog open={connectionsOpen} onOpenChange={setConnectionsOpen} />
     </StudioContextProvider>
   );
 }

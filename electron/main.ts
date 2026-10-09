@@ -38,6 +38,7 @@ import { attachWindowStateEvents } from "./window-controls";
 import { TelegramService } from "./telegram/service";
 import { StudioService } from "./studio/service";
 import { StudioStore } from "./studio/store";
+import { createStudioConnections } from "./studio/connections";
 import { createTelegramNetwork } from "./telegram/network";
 import {
   TELEGRAM_CHAT_CHANNEL,
@@ -51,7 +52,6 @@ import {
 import { HOME_WORKSPACE_ID } from "@/lib/workspace";
 import { OPENROUTER_PROVIDER_ID } from "@/lib/models/catalog";
 import {
-  ELEVENLABS_CREDENTIAL_ID,
   STUDIO_ITEM_CHANNEL,
   STUDIO_ITEM_DELETED_CHANNEL,
   STUDIO_MEDIA_SCHEME,
@@ -454,11 +454,17 @@ app.whenReady().then(async () => {
       mainWindow.webContents.send(channel, payload);
     }
   };
+  const studioDatabase = database;
+  const studioConnections = createStudioConnections({
+    credentials,
+    listProviders: () => studioDatabase.listProviders(),
+  });
   studio = new StudioService({
     store: new StudioStore(database.database),
     mediaDirectory: path.join(userDataPath, "studio"),
     getOpenRouterKey: () => credentials.getKey(OPENROUTER_PROVIDER_ID),
-    getElevenLabsKey: () => credentials.getKey(ELEVENLABS_CREDENTIAL_ID),
+    getGoogleAuth: studioConnections.getGoogleAuth,
+    getElevenLabsKey: studioConnections.getElevenLabsKey,
     onItemChange: (item) => sendToMainWindow(STUDIO_ITEM_CHANNEL, item),
     onItemDelete: (id) => sendToMainWindow(STUDIO_ITEM_DELETED_CHANNEL, id),
   });
@@ -472,6 +478,7 @@ app.whenReady().then(async () => {
     database,
     credentials,
     studio,
+    studioConnections,
     codex,
     skills,
     workspaceFiles,

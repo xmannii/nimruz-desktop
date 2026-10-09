@@ -69,8 +69,11 @@ import {
 import { testMcpServerConnection } from "./agent/mcp";
 import type { TelegramService } from "./telegram/service";
 import type { StudioService } from "./studio/service";
+import type { createStudioConnections } from "./studio/connections";
 import {
-  ELEVENLABS_CREDENTIAL_ID,
+  STUDIO_CONNECTIONS,
+  STUDIO_CREDENTIAL_IDS,
+  type StudioConnectionId,
   type StudioImageRequest,
   type StudioListOptions,
   type StudioSpeechRequest,
@@ -153,6 +156,7 @@ export function registerIpcHandlers(options: {
   wakeWord: WakeWordService;
   telegram: TelegramService;
   studio: StudioService;
+  studioConnections: ReturnType<typeof createStudioConnections>;
   sessionToken: string;
   getMainWindow: () => import("electron").BrowserWindow | null;
   getCompanionWindow: () => import("electron").BrowserWindow | null;
@@ -170,6 +174,7 @@ export function registerIpcHandlers(options: {
     wakeWord,
     telegram,
     studio,
+    studioConnections,
     sessionToken,
     getMainWindow,
     getCompanionWindow,
@@ -345,19 +350,24 @@ export function registerIpcHandlers(options: {
     if (!source) throw new Error("فایلی برای نمایش وجود ندارد.");
     shell.showItemInFolder(source);
   });
-  handle("studio:elevenlabs:status", () => {
-    const status = credentials.getStatus(ELEVENLABS_CREDENTIAL_ID);
-    return { configured: status.configured, hint: status.hint };
+  function studioConnection(id: unknown): StudioConnectionId {
+    if (!(STUDIO_CONNECTIONS as readonly unknown[]).includes(id)) {
+      throw new Error("Invalid Studio connection.");
+    }
+    return id as StudioConnectionId;
+  }
+  handle("studio:connections:status", () => studioConnections.getStatus());
+  handle("studio:connections:set-key", (id: unknown, key: string) => {
+    const connection = studioConnection(id);
+    credentials.setKey(STUDIO_CREDENTIAL_IDS[connection], key);
+    studio.invalidateConnection(connection);
+    return studioConnections.getStatus();
   });
-  handle("studio:elevenlabs:set-key", (key: string) => {
-    const status = credentials.setKey(ELEVENLABS_CREDENTIAL_ID, key);
-    studio.invalidateElevenLabs();
-    return { configured: status.configured, hint: status.hint };
-  });
-  handle("studio:elevenlabs:clear-key", () => {
-    const status = credentials.clearKey(ELEVENLABS_CREDENTIAL_ID);
-    studio.invalidateElevenLabs();
-    return { configured: status.configured, hint: status.hint };
+  handle("studio:connections:clear-key", (id: unknown) => {
+    const connection = studioConnection(id);
+    credentials.clearKey(STUDIO_CREDENTIAL_IDS[connection]);
+    studio.invalidateConnection(connection);
+    return studioConnections.getStatus();
   });
 
   handle("codex:status", (refreshToken?: boolean) =>
