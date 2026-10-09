@@ -2,6 +2,7 @@
 
 import { useStudio, parseStudioModelKey, studioModelKey } from "@/components/studio/studio-context";
 import { StudioComposer } from "@/components/studio/studio-composer";
+import { StudioExpandableText } from "@/components/studio/studio-expandable-text";
 import { StudioOptionChip, studioPillClass } from "@/components/studio/studio-controls";
 import { StudioEmptyState } from "@/components/studio/studio-feed";
 import { StudioKeyNotice, useOpenRouterKeyConfigured } from "@/components/studio/studio-key-notice";
@@ -276,9 +277,7 @@ function SpeechRow({ item, onReuse }: { item: StudioItem; onReuse: (item: Studio
       )}
 
       <div className="min-w-0 flex-1">
-        <p dir="auto" className="line-clamp-2 text-[13.5px] leading-6 text-foreground/90" title={item.text ?? item.prompt}>
-          {item.text ?? item.prompt}
-        </p>
+        <StudioExpandableText text={item.text ?? item.prompt} />
         {failed ? (
           <p className="mt-0.5 line-clamp-1 text-[11px] text-destructive">{item.error ?? "ساخت صدا ناموفق بود."}</p>
         ) : (
