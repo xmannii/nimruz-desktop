@@ -119,7 +119,15 @@ function useStudioActivity(tab: StudioTab, onOpen: (item: StudioItem) => void) {
   }, [busy, hasBusyItems, isLiveRecording]);
 }
 
-export function StudioPage({ tab }: { tab: StudioTab }) {
+export function StudioPage({
+  tab,
+  itemId,
+  prompt,
+}: {
+  tab: StudioTab;
+  itemId?: string;
+  prompt?: string;
+}) {
   const navigate = useNavigate();
   const [visited, setVisited] = useState<Set<StudioTab>>(() => new Set([tab]));
   const [viewer, setViewer] = useState<{ item: StudioItem; siblings: StudioItem[] } | null>(null);
@@ -132,6 +140,30 @@ export function StudioPage({ tab }: { tab: StudioTab }) {
   }, []);
 
   const busyTabs = useStudioActivity(tab, openItem);
+
+  // Deep links: open an item or prefill a prompt, then drop the params so
+  // a refresh or back navigation does not repeat them.
+  useEffect(() => {
+    if (!itemId && !prompt) return;
+    if (itemId) {
+      void window.desktop.studio
+        .get(itemId)
+        .then((item) => {
+          if (item) setViewer({ item, siblings: [item] });
+        })
+        .catch(() => undefined);
+    }
+    if (prompt && tab !== "transcribe") {
+      setDraft(
+        tab === "speech"
+          ? { tab: "speech", text: prompt }
+          : tab === "video"
+            ? { tab: "video", prompt }
+            : { tab: "image", prompt }
+      );
+    }
+    void navigate({ to: "/studio", search: { tab }, replace: true });
+  }, [itemId, prompt, tab, navigate]);
 
   useEffect(() => {
     setVisited((current) => (current.has(tab) ? current : new Set(current).add(tab)));
