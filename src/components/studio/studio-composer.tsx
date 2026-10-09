@@ -17,8 +17,8 @@ import {
 import { toast } from "sonner";
 
 /**
- * Prompt dock shared by the image and video tabs. Enter generates and
- * Shift+Enter adds a line; "use again" on any result restores its prompt.
+ * Prompt dock shared by the Studio tabs. By default Enter generates and
+ * Shift+Enter adds a line; long-form scripts use Ctrl/⌘+Enter instead.
  */
 export function StudioComposer({
   value,
@@ -35,6 +35,8 @@ export function StudioComposer({
   notice,
   onPasteImages,
   enhanceKind,
+  submitOnEnter = true,
+  tall = false,
   className,
 }: {
   value: string;
@@ -50,9 +52,25 @@ export function StudioComposer({
   footer?: ReactNode;
   notice?: ReactNode;
   onPasteImages?: (files: File[]) => void;
-  enhanceKind?: "image" | "video";
+  /** "speech-tags" adds ElevenLabs audio tags instead of rewriting. */
+  enhanceKind?: "image" | "video" | "speech-tags";
+  submitOnEnter?: boolean;
+  tall?: boolean;
   className?: string;
 }) {
+  const maxHeight = tall ? 320 : 240;
+  const enhanceCopy =
+    enhanceKind === "speech-tags"
+      ? {
+          label: "افزودن حس با برچسب‌های صوتی",
+          tooltip: "برچسب‌هایی مثل [whispers] و [laughs] اضافه می‌شود؛ کلمات تغییر نمی‌کنند",
+          done: "برچسب‌های حس اضافه شد.",
+        }
+      : {
+          label: "بهبود متن با هوش مصنوعی",
+          tooltip: "بهبود و ترجمه درخواست به انگلیسی دقیق",
+          done: "متن درخواست بهبود یافت.",
+        };
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const enhanceAbort = useRef<AbortController | null>(null);
   const [isEnhancing, setIsEnhancing] = useState(false);
@@ -62,8 +80,8 @@ export function StudioComposer({
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 240)}px`;
-  }, [value]);
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
+  }, [value, maxHeight]);
 
   useEffect(() => () => enhanceAbort.current?.abort(), []);
 
@@ -85,7 +103,7 @@ export function StudioComposer({
         signal: controller.signal,
       });
       onValueChange(prompt);
-      toast.success("متن درخواست بهبود یافت.", {
+      toast.success(enhanceCopy.done, {
         action: { label: "بازگشت", onClick: () => onValueChange(original) },
       });
       textareaRef.current?.focus();
@@ -130,14 +148,19 @@ export function StudioComposer({
             placeholder={placeholder}
             aria-label={placeholder}
             readOnly={isEnhancing}
-            className="block max-h-60 min-h-[3.25rem] w-full resize-none bg-transparent px-4 pt-3.5 pb-1 pe-10 text-[15px] leading-7 outline-none placeholder:text-start placeholder:text-muted-foreground/60"
+            className={cn(
+              "block w-full resize-none bg-transparent px-4 pt-3.5 pb-1 pe-10 text-[15px] leading-7 outline-none placeholder:text-start placeholder:text-muted-foreground/60",
+              tall ? "max-h-80 min-h-[5.5rem]" : "max-h-60 min-h-[3.25rem]"
+            )}
             onChange={(event) => onValueChange(event.target.value)}
             onPaste={handlePaste}
             onKeyDown={(event) => {
               if (
                 event.key === "Enter" &&
-                !event.shiftKey &&
-                !event.nativeEvent.isComposing
+                !event.nativeEvent.isComposing &&
+                (submitOnEnter
+                  ? !event.shiftKey
+                  : event.metaKey || event.ctrlKey)
               ) {
                 event.preventDefault();
                 submit();
@@ -167,7 +190,7 @@ export function StudioComposer({
               className="size-9 rounded-full"
               disabled={!canSubmit || isSubmitting || isEnhancing}
               aria-label={submitLabel}
-              title={`${submitLabel} (Enter)`}
+              title={`${submitLabel} (${submitOnEnter ? "Enter" : "Ctrl/⌘ + Enter"})`}
             >
               {isSubmitting ? <Spinner /> : <ArrowUpIcon className="size-4.5" />}
             </Button>
@@ -180,7 +203,7 @@ export function StudioComposer({
                       variant="ghost"
                       size="icon-sm"
                       className="rounded-full text-muted-foreground hover:text-foreground"
-                      aria-label="بهبود متن با هوش مصنوعی"
+                      aria-label={enhanceCopy.label}
                       disabled={!value.trim() || !defaultModelRef || isEnhancing}
                       onClick={() => void enhance()}
                     />
@@ -190,8 +213,8 @@ export function StudioComposer({
                 </TooltipTrigger>
                 <TooltipContent>
                   {defaultModelRef
-                    ? "بهبود و ترجمه درخواست به انگلیسی دقیق"
-                    : "برای بهبود متن یک مدل گفتگو فعال کنید"}
+                    ? enhanceCopy.tooltip
+                    : "برای این کار یک مدل گفتگو فعال کنید"}
                 </TooltipContent>
               </Tooltip>
             ) : null}
@@ -201,7 +224,15 @@ export function StudioComposer({
       </form>
       <div className="flex min-h-4 items-center justify-between gap-3 px-3 text-[11px] text-muted-foreground/80">
         <span className="hidden sm:inline">
-          <kbd className="font-sans">Enter</kbd> ساخت · <kbd className="font-sans">Shift+Enter</kbd> خط جدید
+          {submitOnEnter ? (
+            <>
+              <kbd className="font-sans">Enter</kbd> ساخت · <kbd className="font-sans">Shift+Enter</kbd> خط جدید
+            </>
+          ) : (
+            <>
+              <kbd className="font-sans">Ctrl/⌘+Enter</kbd> ساخت
+            </>
+          )}
         </span>
         <span className="ms-auto">{footer}</span>
       </div>
