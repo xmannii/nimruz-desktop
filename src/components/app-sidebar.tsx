@@ -49,11 +49,12 @@ import type { LocalChat, LocalWorkspace } from "@/lib/chat/storage";
 import type { WorkspaceInput } from "@/hooks/use-workspaces";
 import { SettingsSidebarNav } from "@/components/settings/settings-nav";
 import { ChatSidebarTitle } from "@/components/chat/chat-sidebar-title";
+import { StudioSidebarNav } from "@/components/studio/studio-sidebar-nav";
 import { useSpeech } from "@/components/speech/speech-provider";
 import { HOME_WORKSPACE_ID, isHomeWorkspace } from "@/lib/workspace";
 import {
   ArrowRightIcon,
-  AudioLinesIcon,
+  WandSparklesIcon,
   CogIcon,
   FolderIcon,
   HistoryIcon,
@@ -86,10 +87,10 @@ type AppSidebarProps = {
   onPinChat: (id: string, pinned: boolean) => void;
   typingTitles?: Record<string, string>;
   onOpenSettings: () => void;
-  onOpenTranscription: () => void;
+  onOpenStudio: () => void;
   onBackToChat: () => void;
   settingsActive?: boolean;
-  transcriptionActive?: boolean;
+  studioActive?: boolean;
   memoryCount?: number;
 };
 
@@ -112,10 +113,10 @@ export function AppSidebar({
   onPinChat,
   typingTitles = {},
   onOpenSettings,
-  onOpenTranscription,
+  onOpenStudio,
   onBackToChat,
   settingsActive = false,
-  transcriptionActive = false,
+  studioActive = false,
   memoryCount = 0,
 }: AppSidebarProps) {
   const { isMobile, setOpenMobile, state } = useSidebar();
@@ -260,7 +261,7 @@ export function AppSidebar({
         collapsible="icon"
         className="!top-[var(--app-header-height)] !bottom-0 !h-auto border-l border-sidebar-border"
       >
-        {settingsActive ? null : (
+        {settingsActive || studioActive ? null : (
           <SidebarHeader
             dir="rtl"
             className="gap-2 border-b border-sidebar-border px-2.5 pt-3 pb-2.5 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2"
@@ -282,16 +283,16 @@ export function AppSidebar({
 
               <SidebarMenuItem>
                 <SidebarMenuButton
-                  tooltip={{ children: "رونویسی صوت", side: "left" }}
-                  isActive={transcriptionActive}
+                  tooltip={{ children: "استودیو", side: "left" }}
+                  isActive={studioActive}
                   className="h-8 text-[13px]"
                   onClick={() => {
-                    onOpenTranscription();
+                    onOpenStudio();
                     closeMobileSidebar();
                   }}
                 >
-                  <AudioLinesIcon />
-                  <span className="flex-1 text-start">رونویسی صوت</span>
+                  <WandSparklesIcon />
+                  <span className="flex-1 text-start">استودیو</span>
                   {hasBusyItems || isLiveRecording ? (
                     <LoaderCircleIcon
                       className="animate-spin"
@@ -325,6 +326,8 @@ export function AppSidebar({
         <SidebarContent dir="rtl" className="gap-0 overflow-hidden">
           {settingsActive ? (
             <SettingsSidebarNav memoryCount={memoryCount} />
+          ) : studioActive ? (
+            <StudioSidebarNav />
           ) : isIconMode ? (
             <ScrollArea className="min-h-0 flex-1 [&_[data-slot=scroll-area-viewport]]:overscroll-contain">
               <SidebarMenu className="gap-1 px-2 py-2">
@@ -509,7 +512,7 @@ export function AppSidebar({
         >
           <SidebarMenu className="gap-0.5">
             <SidebarMenuItem>
-              {settingsActive ? (
+              {settingsActive || studioActive ? (
                 <SidebarMenuButton
                   tooltip={{ children: "بازگشت به گفتگو", side: "left" }}
                   className="h-8 text-[13px]"
@@ -541,7 +544,7 @@ export function AppSidebar({
                 </SidebarMenuButton>
               )}
             </SidebarMenuItem>
-            {!settingsActive && chats.length > 0 ? (
+            {!settingsActive && !studioActive && chats.length > 0 ? (
               <SidebarMenuItem>
                 <DropdownMenu>
                   <DropdownMenuTrigger

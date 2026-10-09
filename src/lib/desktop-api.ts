@@ -34,6 +34,20 @@ import type {
 } from "@/lib/telegram";
 import type { SkillDocument, SkillSummary } from "@/lib/skills/types";
 import type { UpdateCheckResult } from "@/lib/updates";
+import type {
+  StudioConnectionId,
+  StudioConnections,
+  StudioImageRequest,
+  StudioItem,
+  StudioListOptions,
+  StudioModelCatalog,
+  StudioRemoteTranscriptionRequest,
+  StudioSpeechRequest,
+  StudioStats,
+  StudioTranscriptInput,
+  StudioTranscriptPatch,
+  StudioVideoRequest,
+} from "@/lib/studio/types";
 import type { Expert } from "@/lib/settings/experts";
 import type { SubagentModel } from "@/lib/settings/subagents";
 import type {
@@ -255,6 +269,32 @@ export type DesktopAPI = {
         callback: (activation: WakeWordActivation) => void
       ) => () => void;
     };
+  };
+  studio: {
+    list: (options?: StudioListOptions) => Promise<StudioItem[]>;
+    get: (id: string) => Promise<StudioItem | null>;
+    getStats: () => Promise<StudioStats>;
+    delete: (id: string) => Promise<void>;
+    cancel: (id: string) => Promise<void>;
+    getCatalog: (force?: boolean) => Promise<StudioModelCatalog>;
+    generateImages: (request: StudioImageRequest) => Promise<StudioItem[]>;
+    generateVideo: (request: StudioVideoRequest) => Promise<StudioItem>;
+    generateSpeech: (request: StudioSpeechRequest) => Promise<StudioItem>;
+    saveTranscript: (input: StudioTranscriptInput) => Promise<StudioItem>;
+    transcribeRemote: (request: StudioRemoteTranscriptionRequest) => Promise<StudioItem>;
+    updateTranscript: (
+      id: string,
+      patch: StudioTranscriptPatch
+    ) => Promise<StudioItem | null>;
+    saveAs: (id: string) => Promise<boolean>;
+    reveal: (id: string) => Promise<void>;
+    connections: {
+      getStatus: () => Promise<StudioConnections>;
+      setKey: (id: StudioConnectionId, key: string) => Promise<StudioConnections>;
+      clearKey: (id: StudioConnectionId) => Promise<StudioConnections>;
+    };
+    onItemChange: (callback: (item: StudioItem) => void) => () => void;
+    onItemDelete: (callback: (id: string) => void) => () => void;
   };
   providers: {
     listCatalog: () => Promise<ModelCatalogSnapshot>;

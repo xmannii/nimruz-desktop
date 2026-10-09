@@ -48,7 +48,7 @@ The important part is the boundary: Nimruz scopes tools to the selected workspac
 
 ## 🎙️ Persian voice-to-text
 
-Speak once and keep moving. Download a Shenava speech model, select it in **Settings → Speech**, and use the microphone in chat or the dedicated transcription page.
+Speak once and keep moving. Download a Shenava speech model, select it in **Settings → Speech**, and use the microphone in chat or **Studio → Transcription**.
 
 - Persian speech recognition runs locally on the device.
 - Say **“Hey Nimruz”** to start Shenava in the focused chat, or open the Companion microphone when Nimruz is running in the tray. After you speak, a short silence transcribes and sends the message.
@@ -56,6 +56,17 @@ Speak once and keep moving. Download a Shenava speech model, select it in **Sett
 - Keep raw and corrected text side by side, then export the result.
 - Use the same local transcription pipeline for Telegram voice notes.
 - Optional AI cleanup can improve punctuation, spacing, and readability with your selected model.
+
+## 🎨 Studio
+
+Images, video, speech, and transcription in one place, with a searchable history of everything you make.
+
+- **Images** — Nano Banana, GPT Image, Seedream, FLUX, Imagen, and more. Drop or paste a reference image to edit, pick a style preset (including Persian miniature), and browse results at their real aspect ratios.
+- **Video** — Seedance, Veo, Kling, FLUX 3, and more, from text or a starting image, with camera-move presets. Jobs keep running in the background and resume after a restart.
+- **Text to speech** — Gemini TTS and ElevenLabs v3/v4 with voice previews, tone, and speed. ✨ can add expressive audio tags such as `[whispers]`.
+- **Transcription** — private on-device Shenava, or Gemini via Google AI Studio for long audio. Send any transcript to text-to-speech in one click.
+- **Prompt help** — ✨ turns a rough Persian idea into a detailed English prompt with your chosen assistant model.
+- **Providers** — OpenRouter, plus direct Google AI Studio, Black Forest Labs, and ElevenLabs keys, stored encrypted on the device.
 
 ## 📲 Telegram assistant
 
@@ -135,7 +146,7 @@ Pre-built installers are published on every [GitHub Release](https://github.com/
 | --- | --- | --- |
 | **macOS** (Apple Silicon) | `.dmg` | [Latest release](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 | **Windows** | `.exe` (NSIS) | [Latest release](https://github.com/xmannii/nimruz-desktop/releases/latest) |
-| **Linux** | AppImage | Build locally with `pnpm dist` |
+| **Linux** (x64) | `.AppImage` | [Latest release](https://github.com/xmannii/nimruz-desktop/releases/latest) |
 
 The rolling [`dev-latest`](https://github.com/xmannii/nimruz-desktop/releases/tag/dev-latest) prerelease may include Telegram assistant changes before they reach a stable release.
 
@@ -156,6 +167,18 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 1. Download the latest `.exe` installer from [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest).
 2. Run the installer and follow the prompts.
 
+### Linux install
+
+1. Download the latest `.AppImage` from [Releases](https://github.com/xmannii/nimruz-desktop/releases/latest).
+2. Make it executable and run it:
+
+```bash
+chmod +x Nimruz-*.AppImage
+./Nimruz-*.AppImage
+```
+
+On Ubuntu 22.04 and newer, AppImages need FUSE 2 (`libfuse2`, or `libfuse2t64` on 24.04). Saved API keys are encrypted with your desktop keyring (GNOME Keyring or KWallet).
+
 ## Quick start
 
 1. Launch Nimruz and finish or skip the onboarding tour.
@@ -169,7 +192,7 @@ xattr -dr com.apple.quarantine /Applications/Nimruz.app
 
 ### Turn on voice input
 
-Open **Settings → Speech**, download a Shenava model, select it, and then use the microphone button in the chat composer. For longer recordings or files, open the **Transcribe** page.
+Open **Settings → Speech**, download a Shenava model, select it, and then use the microphone button in the chat composer. For longer recordings or files, open **Studio → Transcription**.
 
 To use hands-free activation, open **Settings → Companion → Hey Nimruz**, grant microphone access, and enable the wake phrase. Detection runs locally and keeps working while Nimruz is open or hidden in the system tray; fully quitting the app stops listening.
 

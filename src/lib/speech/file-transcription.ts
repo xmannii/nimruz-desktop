@@ -31,6 +31,28 @@ export function isSupportedAudioFile(file: AudioFileLike) {
   return Boolean(extension && AUDIO_EXTENSIONS.has(extension));
 }
 
+const AUDIO_MIME_BY_EXTENSION: Record<string, string> = {
+  aac: "audio/aac",
+  flac: "audio/flac",
+  m4a: "audio/mp4",
+  mp3: "audio/mpeg",
+  mp4: "audio/mp4",
+  oga: "audio/ogg",
+  ogg: "audio/ogg",
+  opus: "audio/ogg",
+  wav: "audio/wav",
+  webm: "audio/webm",
+};
+
+/** Browsers often leave File.type empty for m4a/opus; fall back to the name. */
+export function audioMimeTypeFor(file: AudioFileLike): string | null {
+  const type = file.type.split(";")[0].trim();
+  if (type.startsWith("audio/")) return type;
+  if (type === "video/mp4") return "audio/mp4";
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return (extension && AUDIO_MIME_BY_EXTENSION[extension]) || null;
+}
+
 export function splitPcmAtSilence(
   samples: Float32Array,
   sampleRate = SHENAVA_SAMPLE_RATE,

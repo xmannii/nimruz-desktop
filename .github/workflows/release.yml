@@ -1,6 +1,6 @@
 name: Release
 
-# Builds Windows + macOS installers and publishes a GitHub Release
+# Builds Windows, macOS and Linux installers and publishes a GitHub Release
 # whenever the version in package.json is bumped on main.
 on:
   push:
@@ -74,6 +74,10 @@ jobs:
             label: macOS
             artifact: macos
             glob: release/*.dmg
+          - os: ubuntu-latest
+            label: Linux
+            artifact: linux
+            glob: release/*.AppImage
     steps:
       - uses: actions/checkout@v4
 
@@ -120,6 +124,12 @@ jobs:
           name: macos
           path: artifacts/macos
 
+      - name: Download Linux installer
+        uses: actions/download-artifact@v4
+        with:
+          name: linux
+          path: artifacts/linux
+
       - name: Mirror latest installers to R2
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
@@ -142,6 +152,10 @@ jobs:
             --delete \
             --endpoint-url "$R2_ENDPOINT" \
             --no-progress
+          aws s3 sync artifacts/linux "s3://${R2_BUCKET}/nimruz-desktop/linux/" \
+            --delete \
+            --endpoint-url "$R2_ENDPOINT" \
+            --no-progress
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -153,5 +167,6 @@ jobs:
           files: |
             artifacts/windows/*
             artifacts/macos/*
+            artifacts/linux/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

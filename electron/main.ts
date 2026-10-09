@@ -4,6 +4,7 @@ import {
   dialog,
   nativeImage,
   Notification,
+  protocol,
   session,
   shell,
 } from "electron";
@@ -35,6 +36,9 @@ import {
 } from "./notifications/service";
 import { attachWindowStateEvents } from "./window-controls";
 import { TelegramService } from "./telegram/service";
+import { StudioService } from "./studio/service";
+import { StudioStore } from "./studio/store";
+import { createStudioConnections } from "./studio/connections";
 import { createTelegramNetwork } from "./telegram/network";
 import {
   TELEGRAM_CHAT_CHANNEL,
@@ -46,6 +50,12 @@ import {
   DATABASE_FILE,
 } from "@/lib/branding";
 import { HOME_WORKSPACE_ID } from "@/lib/workspace";
+import { OPENROUTER_PROVIDER_ID } from "@/lib/models/catalog";
+import {
+  STUDIO_ITEM_CHANNEL,
+  STUDIO_ITEM_DELETED_CHANNEL,
+  STUDIO_MEDIA_SCHEME,
+} from "@/lib/studio/types";
 import type { SkillDocument } from "@/lib/skills";
 import type { OpenFolderRequest } from "@/lib/desktop-api";
 import {
@@ -64,6 +74,14 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock(
   initialOpenFolderPath ? { openFolderPath: initialOpenFolderPath } : {}
 );
 if (!hasSingleInstanceLock) app.quit();
+
+// Studio media is streamed through a privileged scheme so <video> can seek.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: STUDIO_MEDIA_SCHEME,
+    privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true },
+  },
+]);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -97,6 +115,7 @@ let wakeWord: WakeWordService | null = null;
 let notificationService: DesktopNotificationService | null = null;
 let companion: CompanionController | null = null;
 let telegram: TelegramService | null = null;
+let studio: StudioService | null = null;
 let rendererUrl = "";
 const activeNotifications = new Set<Notification>();
 let isQuitting = false;
@@ -430,9 +449,37 @@ app.whenReady().then(async () => {
     },
   });
 
+  const sendToMainWindow = (channel: string, payload: unknown) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(channel, payload);
+    }
+  };
+  const studioDatabase = database;
+  const studioConnections = createStudioConnections({
+    credentials,
+    listProviders: () => studioDatabase.listProviders(),
+  });
+  studio = new StudioService({
+    store: new StudioStore(database.database),
+    mediaDirectory: path.join(userDataPath, "studio"),
+    getOpenRouterKey: () => credentials.getKey(OPENROUTER_PROVIDER_ID),
+    getGoogleAuth: studioConnections.getGoogleAuth,
+    getElevenLabsKey: studioConnections.getElevenLabsKey,
+    getBflKey: studioConnections.getBflKey,
+    onItemChange: (item) => sendToMainWindow(STUDIO_ITEM_CHANNEL, item),
+    onItemDelete: (id) => sendToMainWindow(STUDIO_ITEM_DELETED_CHANNEL, id),
+  });
+  const studioService = studio;
+  protocol.handle(STUDIO_MEDIA_SCHEME, (request) =>
+    studioService.handleMediaRequest(request)
+  );
+  await studio.initialize();
+
   registerIpcHandlers({
     database,
     credentials,
+    studio,
+    studioConnections,
     codex,
     skills,
     workspaceFiles,
@@ -506,6 +553,7 @@ app.on("before-quit", () => {
   wakeWord?.dispose();
   companion?.dispose();
   telegram?.dispose();
+  studio?.dispose();
   shenava?.cancelDownload();
   codex?.dispose();
   localServer?.close();
@@ -516,6 +564,7 @@ app.on("before-quit", () => {
   shenava = null;
   wakeWord = null;
   telegram = null;
+  studio = null;
   notificationService = null;
   activeNotifications.clear();
   companion = null;

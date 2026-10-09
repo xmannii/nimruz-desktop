@@ -25,6 +25,11 @@ import {
   TELEGRAM_CHAT_CHANNEL,
   TELEGRAM_STATUS_CHANNEL,
 } from "@/lib/telegram";
+import {
+  STUDIO_ITEM_CHANNEL,
+  STUDIO_ITEM_DELETED_CHANNEL,
+  type StudioItem,
+} from "@/lib/studio/types";
 
 const desktopApi: DesktopAPI = {
   platform: process.platform,
@@ -198,6 +203,50 @@ const desktopApi: DesktopAPI = {
       ipcRenderer.on("companion:toggle-microphone", handler);
       return () =>
         ipcRenderer.removeListener("companion:toggle-microphone", handler);
+    },
+  },
+  studio: {
+    list: (options) => ipcRenderer.invoke("studio:list", options),
+    get: (id) => ipcRenderer.invoke("studio:get", id),
+    getStats: () => ipcRenderer.invoke("studio:stats"),
+    delete: (id) => ipcRenderer.invoke("studio:delete", id),
+    cancel: (id) => ipcRenderer.invoke("studio:cancel", id),
+    getCatalog: (force) => ipcRenderer.invoke("studio:catalog", force),
+    generateImages: (request) =>
+      ipcRenderer.invoke("studio:generate-images", request),
+    generateVideo: (request) =>
+      ipcRenderer.invoke("studio:generate-video", request),
+    generateSpeech: (request) =>
+      ipcRenderer.invoke("studio:generate-speech", request),
+    saveTranscript: (input) =>
+      ipcRenderer.invoke("studio:save-transcript", input),
+    transcribeRemote: (request) =>
+      ipcRenderer.invoke("studio:transcribe-remote", request),
+    updateTranscript: (id, patch) =>
+      ipcRenderer.invoke("studio:update-transcript", id, patch),
+    saveAs: (id) => ipcRenderer.invoke("studio:save-as", id),
+    reveal: (id) => ipcRenderer.invoke("studio:reveal", id),
+    connections: {
+      getStatus: () => ipcRenderer.invoke("studio:connections:status"),
+      setKey: (id, key) =>
+        ipcRenderer.invoke("studio:connections:set-key", id, key),
+      clearKey: (id) => ipcRenderer.invoke("studio:connections:clear-key", id),
+    },
+    onItemChange: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, item: StudioItem) =>
+        callback(item);
+      ipcRenderer.on(STUDIO_ITEM_CHANNEL, handler);
+      return () => {
+        ipcRenderer.removeListener(STUDIO_ITEM_CHANNEL, handler);
+      };
+    },
+    onItemDelete: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, id: string) =>
+        callback(id);
+      ipcRenderer.on(STUDIO_ITEM_DELETED_CHANNEL, handler);
+      return () => {
+        ipcRenderer.removeListener(STUDIO_ITEM_DELETED_CHANNEL, handler);
+      };
     },
   },
   credentials: {

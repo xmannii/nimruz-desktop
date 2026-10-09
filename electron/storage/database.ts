@@ -20,10 +20,12 @@ import {
   createBuiltinOpenRouterProvider,
   createCodexModelConfig,
   OPENROUTER_PROVIDER_ID,
+  PROVIDER_KINDS,
   PROVIDER_LIMITS,
   type ModelConfig,
   type ModelCatalogSnapshot,
   type ProviderConfig,
+  type ProviderKind,
 } from "@/lib/models/catalog";
 import {
   sanitizeModelConfig,
@@ -222,14 +224,19 @@ function parseMcpServerIds(value: unknown): string[] | undefined {
   }
 }
 
+const PROVIDER_KIND_SET = new Set<string>(PROVIDER_KINDS);
+
+function mapProviderKind(value: unknown): ProviderKind {
+  return typeof value === "string" && PROVIDER_KIND_SET.has(value)
+    ? (value as ProviderKind)
+    : "openai-compatible";
+}
+
 function mapProviderRow(row: Record<string, unknown>): ProviderConfig {
   return {
     id: String(row.id),
     name: String(row.name),
-    kind:
-      row.kind === "openrouter" || row.kind === "codex"
-        ? row.kind
-        : "openai-compatible",
+    kind: mapProviderKind(row.kind),
     baseUrl: String(row.base_url),
     enabled: asBoolean(row.enabled),
     includeUsage: asBoolean(row.include_usage),
@@ -668,11 +675,58 @@ export class AppDatabase {
       });
     }
 
+    if (currentVersion < 11) {
+      this.transaction(() => {
+        this.ensureStudioSchema();
+        this.database.exec("PRAGMA user_version = 11");
+      });
+    }
+
+    // Studio tables are additive, so ensure them on every start. This also
+    // repairs databases already stamped with a newer user_version by an
+    // unmerged build, which would otherwise skip the migration above.
+    this.ensureStudioSchema();
+
     if (currentVersion >= 2) {
       this.ensureBuiltinCatalog();
     }
 
     this.ensureHomeWorkspace();
+  }
+
+  private ensureStudioSchema() {
+    this.database.exec(`
+      CREATE TABLE IF NOT EXISTS studio_items (
+        id TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        status TEXT NOT NULL,
+        title TEXT NOT NULL,
+        prompt TEXT NOT NULL DEFAULT '',
+        provider TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        params_json TEXT NOT NULL DEFAULT '{}',
+        mime_type TEXT,
+        storage_path TEXT,
+        text TEXT,
+        corrected_text TEXT,
+        error TEXT,
+        cost REAL,
+        duration_seconds REAL,
+        parent_id TEXT,
+        search_text TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS studio_items_created_idx
+        ON studio_items(created_at DESC);
+      CREATE INDEX IF NOT EXISTS studio_items_kind_created_idx
+        ON studio_items(kind, created_at DESC);
+    `);
+    if (!hasTableColumn(this.database, "studio_items", "search_text")) {
+      this.database.exec(
+        "ALTER TABLE studio_items ADD COLUMN search_text TEXT NOT NULL DEFAULT ''"
+      );
+    }
   }
 
   /** Ensures the built-in Home workspace always exists. */

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import type { LegacyDataSnapshot } from "@/lib/desktop-api";
 import type { LocalChat, LocalWorkspace } from "@/lib/chat/storage";
@@ -18,6 +19,8 @@ import {
   CODEX_BASE_URL,
   CODEX_PROVIDER_ID,
   groupEnabledModels,
+  OPENROUTER_PROVIDER_ID,
+  PROVIDER_KINDS,
 } from "@/lib/models/catalog";
 import {
   validateChatsPayload,
@@ -329,6 +332,74 @@ test("seeds OpenRouter and Codex providers and supports custom providers", async
   });
 });
 
+test("round-trips every provider kind through storage", async () => {
+  await withDatabase((database) => {
+    const baseUrls: Record<string, string> = {
+      openai: "https://api.openai.com/v1",
+      anthropic: "https://api.anthropic.com/v1",
+      google: "https://generativelanguage.googleapis.com/v1beta",
+      "openai-compatible": "http://localhost:1234/v1",
+    };
+
+    for (const kind of PROVIDER_KINDS) {
+      if (kind === "openrouter" || kind === "codex") {
+        const builtinId =
+          kind === "openrouter" ? OPENROUTER_PROVIDER_ID : CODEX_PROVIDER_ID;
+        assert.equal(database.getProvider(builtinId)?.kind, kind);
+        continue;
+      }
+
+      const id = `provider-${kind}`;
+      const saved = database.saveProvider({
+        id,
+        name: kind,
+        kind,
+        baseUrl: baseUrls[kind],
+        enabled: true,
+        authRequired: true,
+      });
+      assert.equal(saved.kind, kind);
+      assert.equal(database.getProvider(id)?.kind, kind);
+      assert.equal(
+        database.listProviders().find((provider) => provider.id === id)?.kind,
+        kind
+      );
+
+      // Updating without a kind keeps the stored kind instead of downgrading it.
+      const renamed = database.saveProvider({
+        id,
+        name: `${kind} renamed`,
+        baseUrl: baseUrls[kind],
+      });
+      assert.equal(renamed.kind, kind);
+    }
+  });
+});
+
+test("falls back to openai-compatible for unknown stored provider kinds", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "nimruz-db-"));
+  const file = path.join(directory, "test.sqlite3");
+  const database = new AppDatabase(file);
+  try {
+    database.saveProvider({
+      id: "legacy",
+      name: "Legacy",
+      kind: "openai",
+      baseUrl: "https://api.openai.com/v1",
+    });
+    const raw = new DatabaseSync(file);
+    raw.prepare("UPDATE providers SET kind = ? WHERE id = ?").run(
+      "mystery",
+      "legacy"
+    );
+    raw.close();
+    assert.equal(database.getProvider("legacy")?.kind, "openai-compatible");
+  } finally {
+    database.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("synchronizes the Codex model catalog atomically and preserves local preferences", async () => {
   await withDatabase((database) => {
     const initial = database.syncCodexModels([
@@ -499,7 +570,7 @@ test("deleting all chats also clears Codex thread mappings", async () => {
   });
 });
 
-test("migrates a version-2 database to the combined version-10 schema", async () => {
+test("migrates a version-2 database to the combined version-11 schema", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "nimruz-db-v2-"));
   const databasePath = path.join(directory, "test.sqlite3");
   let database = new AppDatabase(databasePath);
@@ -521,14 +592,14 @@ test("migrates a version-2 database to the combined version-10 schema", async ()
     });
     assert.equal(mapping.threadId, "migrated-thread");
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 10);
+    assert.equal(version?.user_version, 11);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test("migrates an official version-3 database to the combined version-10 schema", async () => {
+test("migrates an official version-3 database to the combined version-11 schema", async () => {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "nimruz-db-official-v3-")
   );
@@ -554,14 +625,14 @@ test("migrates an official version-3 database to the combined version-10 schema"
       "official-v3-thread"
     );
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 10);
+    assert.equal(version?.user_version, 11);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });
   }
 });
 
-test("migrates a Codex version-3 database to the combined version-10 schema", async () => {
+test("migrates a Codex version-3 database to the combined version-11 schema", async () => {
   const directory = await mkdtemp(
     path.join(os.tmpdir(), "nimruz-db-codex-v3-")
   );
@@ -587,7 +658,7 @@ test("migrates a Codex version-3 database to the combined version-10 schema", as
     assert.equal(database.loadChats()[0]?.pinned, true);
     assert.equal(database.loadChats()[0]?.pinnedAt, 10);
     const version = database.database.prepare("PRAGMA user_version").get();
-    assert.equal(version?.user_version, 10);
+    assert.equal(version?.user_version, 11);
   } finally {
     database.close();
     await rm(directory, { recursive: true, force: true });

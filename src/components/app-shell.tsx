@@ -23,6 +23,7 @@ import type { CompanionPromptRequest } from "@/lib/companion";
 import type { OpenFolderRequest } from "@/lib/desktop-api";
 import { playCompletionDing } from "@/lib/notifications/sound";
 import { hasCompletedOnboarding } from "@/lib/onboarding";
+import { loadStudioPreferences } from "@/lib/studio/preferences";
 import {
   seedLastSeenVersionIfNeeded,
   shouldShowWhatsNew,
@@ -61,8 +62,9 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
   );
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const isSettingsRoute = pathname.startsWith("/settings");
-  const isTranscriptionRoute = pathname.startsWith("/transcribe");
-  const isUtilityRoute = isSettingsRoute || isTranscriptionRoute;
+  const isStudioRoute =
+    pathname.startsWith("/studio") || pathname.startsWith("/transcribe");
+  const isUtilityRoute = isSettingsRoute || isStudioRoute;
 
   const {
     providers,
@@ -714,8 +716,11 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
     });
   }
 
-  function handleOpenTranscription() {
-    void navigate({ to: "/transcribe" });
+  function handleOpenStudio() {
+    void navigate({
+      to: "/studio",
+      search: { tab: loadStudioPreferences().lastTab ?? "image" },
+    });
   }
 
   function handleBackToChat() {
@@ -775,7 +780,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
             activeChatId={isUtilityRoute ? null : activeChatId}
             activeWorkspaceId={activeWorkspaceId}
             settingsActive={isSettingsRoute}
-            transcriptionActive={isTranscriptionRoute}
+            studioActive={isStudioRoute}
             memoryCount={memories.length}
             onNewChat={handleNewChat}
             onNewWorkspaceChat={handleNewWorkspaceChat}
@@ -790,7 +795,7 @@ export function AppShell({ children, initialChatId }: AppShellProps) {
             onPinChat={setChatPinned}
             typingTitles={typingTitles}
             onOpenSettings={handleOpenSettings}
-            onOpenTranscription={handleOpenTranscription}
+            onOpenStudio={handleOpenStudio}
             onBackToChat={handleBackToChat}
           />
         </div>

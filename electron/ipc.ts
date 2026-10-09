@@ -68,6 +68,20 @@ import {
 } from "./updates";
 import { testMcpServerConnection } from "./agent/mcp";
 import type { TelegramService } from "./telegram/service";
+import type { StudioService } from "./studio/service";
+import type { createStudioConnections } from "./studio/connections";
+import {
+  STUDIO_CONNECTIONS,
+  STUDIO_CREDENTIAL_IDS,
+  type StudioConnectionId,
+  type StudioImageRequest,
+  type StudioListOptions,
+  type StudioSpeechRequest,
+  type StudioRemoteTranscriptionRequest,
+  type StudioTranscriptInput,
+  type StudioTranscriptPatch,
+  type StudioVideoRequest,
+} from "@/lib/studio/types";
 
 const execFileAsync = promisify(execFile);
 const MAX_DIFF_CHARS = 120_000;
@@ -142,6 +156,8 @@ export function registerIpcHandlers(options: {
   shenava: ShenavaService;
   wakeWord: WakeWordService;
   telegram: TelegramService;
+  studio: StudioService;
+  studioConnections: ReturnType<typeof createStudioConnections>;
   sessionToken: string;
   getMainWindow: () => import("electron").BrowserWindow | null;
   getCompanionWindow: () => import("electron").BrowserWindow | null;
@@ -158,6 +174,8 @@ export function registerIpcHandlers(options: {
     shenava,
     wakeWord,
     telegram,
+    studio,
+    studioConnections,
     sessionToken,
     getMainWindow,
     getCompanionWindow,
@@ -288,6 +306,74 @@ export function registerIpcHandlers(options: {
   handle("credentials:test-openrouter", (key?: string) =>
     credentials.testOpenRouterKey(key)
   );
+
+  handle("studio:list", (options?: StudioListOptions) =>
+    studio.list(options && typeof options === "object" ? options : {})
+  );
+  handle("studio:get", (id: string) => studio.get(id));
+  handle("studio:stats", () => studio.stats());
+  handle("studio:delete", (id: string) => studio.delete(id));
+  handle("studio:cancel", (id: string) => studio.cancel(id));
+  handle("studio:catalog", (force?: boolean) => studio.getCatalog(force === true));
+  handle("studio:generate-images", (request: StudioImageRequest) =>
+    studio.generateImages(request)
+  );
+  handle("studio:generate-video", (request: StudioVideoRequest) =>
+    studio.generateVideo(request)
+  );
+  handle("studio:generate-speech", (request: StudioSpeechRequest) =>
+    studio.generateSpeech(request)
+  );
+  handle("studio:save-transcript", (input: StudioTranscriptInput) =>
+    studio.saveTranscript(input)
+  );
+  handle("studio:transcribe-remote", (request: StudioRemoteTranscriptionRequest) =>
+    studio.transcribeRemote(request)
+  );
+  handle(
+    "studio:update-transcript",
+    (id: string, patch: StudioTranscriptPatch) =>
+      studio.updateTranscript(id, patch)
+  );
+  handle("studio:save-as", async (id: string) => {
+    const source = studio.mediaPath(id);
+    const fileName = studio.suggestedFileName(id);
+    if (!source || !fileName) throw new Error("فایلی برای ذخیره وجود ندارد.");
+    const window = getMainWindow();
+    const options = {
+      defaultPath: path.join(app.getPath("downloads"), fileName),
+    };
+    const result = window
+      ? await dialog.showSaveDialog(window, options)
+      : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return false;
+    copyFileSync(source, result.filePath);
+    return true;
+  });
+  handle("studio:reveal", (id: string) => {
+    const source = studio.mediaPath(id);
+    if (!source) throw new Error("فایلی برای نمایش وجود ندارد.");
+    shell.showItemInFolder(source);
+  });
+  function studioConnection(id: unknown): StudioConnectionId {
+    if (!(STUDIO_CONNECTIONS as readonly unknown[]).includes(id)) {
+      throw new Error("Invalid Studio connection.");
+    }
+    return id as StudioConnectionId;
+  }
+  handle("studio:connections:status", () => studioConnections.getStatus());
+  handle("studio:connections:set-key", (id: unknown, key: string) => {
+    const connection = studioConnection(id);
+    credentials.setKey(STUDIO_CREDENTIAL_IDS[connection], key);
+    studio.invalidateConnection(connection);
+    return studioConnections.getStatus();
+  });
+  handle("studio:connections:clear-key", (id: unknown) => {
+    const connection = studioConnection(id);
+    credentials.clearKey(STUDIO_CREDENTIAL_IDS[connection]);
+    studio.invalidateConnection(connection);
+    return studioConnections.getStatus();
+  });
 
   handle("codex:status", (refreshToken?: boolean) =>
     codex.getAccountStatus(refreshToken === true)
