@@ -9,6 +9,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { StudioPixelField } from "@/components/studio/studio-pixel-field";
 import { Spinner } from "@/components/ui/spinner";
 import { copyText, regenerateStudioItem, retryStudioItem } from "@/lib/studio/actions";
 import { isStudioItemBusy, studioMediaUrl } from "@/lib/studio/format";
@@ -189,9 +190,11 @@ export function StudioMediaTile({
           </span>
         </button>
       ) : busy ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 p-3 text-center">
-          <Spinner className="size-4 text-muted-foreground" />
-          <span className="text-[11px] tabular-nums text-muted-foreground">{formatElapsed(elapsed)}</span>
+        <div className="absolute inset-0" role="status" aria-label="در حال ساخت">
+          <StudioPixelField />
+          <span className="absolute start-2 bottom-2 rounded-full bg-background/80 px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
+            {formatElapsed(elapsed)}
+          </span>
           <Button
             type="button"
             variant="ghost"
