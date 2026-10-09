@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useStudioItems } from "@/hooks/use-studio-items";
 import { groupStudioItemsByDate, parseAspectRatio } from "@/lib/studio/format";
-import { computeJustifiedRows } from "@/lib/studio/layout";
+import { computeJustifiedRows, pickTargetHeight } from "@/lib/studio/layout";
 import type { StudioItem, StudioKind } from "@/lib/studio/types";
 import { cn } from "@/lib/utils";
 import { ImageUpIcon } from "lucide-react";
@@ -45,6 +45,39 @@ function useElementWidth<T extends HTMLElement>() {
  * Rows of media at their real aspect ratios, scaled so every full row
  * spans the container (a "justified" photo layout).
  */
+function itemRatio(item: StudioItem, naturalRatios: Map<string, number>) {
+  return (
+    naturalRatios.get(item.id) ??
+    parseAspectRatio(item.params.aspectRatio) ??
+    (item.kind === "video" ? 16 / 9 : 1)
+  );
+}
+
+/**
+ * Row height for the whole feed, sized from the window width and the media's
+ * typical shape: about two landscape clips per row for video (one on narrow
+ * windows). Images get roughly equal area each (two or three square tiles'
+ * worth per row), so wide shots aren't shrunk and tall ones aren't huge.
+ */
+function feedTargetHeight(
+  kind: Extract<StudioKind, "image" | "video">,
+  items: StudioItem[],
+  naturalRatios: Map<string, number>,
+  width: number
+) {
+  const ratios = items.map((item) => itemRatio(item, naturalRatios));
+  if (kind === "video") {
+    return pickTargetHeight(ratios, width, { perRow: width < 560 ? 1 : 2, gap: GAP, minHeight: 180, maxHeight: 460 });
+  }
+  return pickTargetHeight(ratios, width, {
+    perRow: width < 900 ? 2 : 3,
+    gap: GAP,
+    minHeight: 220,
+    maxHeight: 560,
+    byArea: true,
+  });
+}
+
 function JustifiedGallery({
   items,
   siblings,
@@ -61,12 +94,7 @@ function JustifiedGallery({
   onNaturalRatio: (id: string, ratio: number) => void;
 }) {
   const rows = useMemo(() => {
-    const ratios = items.map(
-      (item) =>
-        naturalRatios.get(item.id) ??
-        parseAspectRatio(item.params.aspectRatio) ??
-        (item.kind === "video" ? 16 / 9 : 1)
-    );
+    const ratios = items.map((item) => itemRatio(item, naturalRatios));
     return computeJustifiedRows(ratios, width, { targetHeight, gap: GAP });
   }, [items, naturalRatios, width, targetHeight]);
 
@@ -116,7 +144,10 @@ export function StudioFeed({
   const [isDragging, setIsDragging] = useState(false);
   const [contentRef, contentWidth] = useElementWidth<HTMLDivElement>();
   const [naturalRatios, setNaturalRatios] = useState<Map<string, number>>(() => new Map());
-  const targetHeight = kind === "video" ? 190 : 210;
+  const targetHeight = useMemo(
+    () => feedTargetHeight(kind, items, naturalRatios, contentWidth),
+    [kind, items, naturalRatios, contentWidth]
+  );
 
   const rememberRatio = useCallback((id: string, ratio: number) => {
     setNaturalRatios((current) => {
@@ -152,7 +183,12 @@ export function StudioFeed({
     if (onDropFiles) onDropFiles(Array.from(event.dataTransfer.files));
   }
 
-  const gridClass = "grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-2";
+  const gridClass = cn(
+    "grid gap-2",
+    kind === "video"
+      ? "grid-cols-1 sm:grid-cols-2"
+      : "grid-cols-2 lg:grid-cols-3"
+  );
 
   return (
     <div
@@ -175,7 +211,7 @@ export function StudioFeed({
           <div ref={contentRef} className="flex w-full flex-1 flex-col">
             {isLoading && items.length === 0 ? (
               <div className={gridClass}>
-                {Array.from({ length: kind === "video" ? 3 : 6 }, (_, index) => (
+                {Array.from({ length: kind === "video" ? 4 : 6 }, (_, index) => (
                   <Skeleton
                     key={index}
                     className={cn("rounded-xl", kind === "video" ? "aspect-video" : "aspect-square")}

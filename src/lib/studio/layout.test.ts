@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { computeJustifiedRows } from "./layout";
+import { computeJustifiedRows, pickTargetHeight } from "./layout";
 
 const options = { targetHeight: 200, gap: 8 };
 
@@ -40,4 +40,29 @@ test("handles empty input and bad ratios", () => {
   assert.deepEqual(computeJustifiedRows([1], 0, options), []);
   const [row] = computeJustifiedRows([Number.NaN, 0], 2000, options);
   assert.equal(row.boxes[0].width, 200);
+});
+
+test("rows break where the height lands nearest the target", () => {
+  // Four 16:9 clips at 200px would be 1446px wide; three (1084px) is closer
+  // to 1100 than forcing four into a 151px-tall row.
+  const rows = computeJustifiedRows([16 / 9, 16 / 9, 16 / 9, 16 / 9], 1100, options);
+  assert.equal(rows[0].boxes.length, 3);
+  assert.ok(Math.abs(rows[0].height - 200) < 10);
+});
+
+test("pickTargetHeight fits the requested count of typical items per row", () => {
+  const landscape = pickTargetHeight([16 / 9, 16 / 9, 16 / 9], 1000, { perRow: 2, gap: 8, minHeight: 100, maxHeight: 600 });
+  assert.ok(Math.abs(landscape * (16 / 9) * 2 + 8 - 1000) < 0.5);
+  const portrait = pickTargetHeight([9 / 16], 1000, { perRow: 2, gap: 8, minHeight: 100, maxHeight: 460 });
+  assert.equal(portrait, 460);
+});
+
+test("pickTargetHeight byArea gives wide media fewer, larger tiles", () => {
+  const opts = { perRow: 3, gap: 8, minHeight: 100, maxHeight: 900, byArea: true };
+  const square = pickTargetHeight([1], 1100, opts);
+  const wide = pickTargetHeight([16 / 9], 1100, opts);
+  const tall = pickTargetHeight([9 / 16], 1100, opts);
+  // Same area per tile, different shapes.
+  assert.ok(Math.abs(wide * wide * (16 / 9) - square * square) < 1);
+  assert.ok(tall > square && square > wide);
 });
