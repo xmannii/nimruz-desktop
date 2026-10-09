@@ -208,6 +208,7 @@ const desktopApi: DesktopAPI = {
   studio: {
     list: (options) => ipcRenderer.invoke("studio:list", options),
     get: (id) => ipcRenderer.invoke("studio:get", id),
+    getStats: () => ipcRenderer.invoke("studio:stats"),
     delete: (id) => ipcRenderer.invoke("studio:delete", id),
     cancel: (id) => ipcRenderer.invoke("studio:cancel", id),
     getCatalog: (force) => ipcRenderer.invoke("studio:catalog", force),

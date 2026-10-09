@@ -205,3 +205,14 @@ export type StudioEnhanceRequest = {
 export function toMediaProvider(value: unknown): StudioMediaProvider {
   return value === "google" || value === "bfl" ? value : "openrouter";
 }
+
+export type StudioStats = {
+  /** Finished items per kind created since local midnight. */
+  today: Record<StudioKind, number>;
+  /** Finished items per kind, all time. */
+  total: Record<StudioKind, number>;
+  /** Provider-reported spend since the first of this month, in USD. */
+  monthCost: number;
+  /** Items this month with a known cost (the rest are unpriced). */
+  monthPricedCount: number;
+};

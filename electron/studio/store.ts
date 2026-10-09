@@ -9,6 +9,7 @@ import {
   type StudioKind,
   type StudioListOptions,
   type StudioProvider,
+  type StudioStats,
 } from "@/lib/studio/types";
 import { normalizeSearchText } from "@/lib/studio/search";
 
@@ -229,6 +230,43 @@ export class StudioStore {
       )
       .all()
       .map(mapRow);
+  }
+
+  /** Counts and spend for the Studio sidebar. */
+  stats(todayStart: number, monthStart: number): StudioStats {
+    const empty = () =>
+      Object.fromEntries(STUDIO_KINDS.map((kind) => [kind, 0])) as Record<StudioKind, number>;
+    const today = empty();
+    const total = empty();
+    const rows = this.database
+      .prepare(
+        `SELECT kind,
+                COUNT(*) AS total,
+                SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS today
+           FROM studio_items
+          WHERE status = 'done'
+          GROUP BY kind`
+      )
+      .all(todayStart);
+    for (const row of rows) {
+      const kind = row.kind as StudioKind;
+      if (!(STUDIO_KINDS as readonly string[]).includes(kind)) continue;
+      total[kind] = Number(row.total ?? 0);
+      today[kind] = Number(row.today ?? 0);
+    }
+    const cost = this.database
+      .prepare(
+        `SELECT COALESCE(SUM(cost), 0) AS spend, COUNT(cost) AS priced
+           FROM studio_items
+          WHERE created_at >= ? AND cost IS NOT NULL`
+      )
+      .get(monthStart);
+    return {
+      today,
+      total,
+      monthCost: Number(cost?.spend ?? 0),
+      monthPricedCount: Number(cost?.priced ?? 0),
+    };
   }
 
   delete(id: string) {

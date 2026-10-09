@@ -44,6 +44,13 @@ const TAB_ICONS: Record<StudioTab, typeof ImageIcon> = {
   transcribe: FileAudioIcon,
 };
 
+const TAB_DESCRIPTIONS: Record<StudioTab, string> = {
+  image: "ساخت و ویرایش تصویر با OpenRouter، Google و FLUX",
+  video: "متن یا تصویر را به ویدیو تبدیل کنید",
+  speech: "متن را با صدای طبیعی بخوانید",
+  transcribe: "تبدیل خصوصی گفتار به متن، روی همین دستگاه",
+};
+
 const TAB_COMPONENTS: Record<StudioTab, () => JSX.Element> = {
   image: ImageStudio,
   video: VideoStudio,
@@ -226,7 +233,18 @@ export function StudioPage({
     <StudioContextProvider value={contextValue}>
       <div dir="rtl" className="flex h-full min-h-0 flex-col bg-background">
         <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border/60 px-3 sm:px-4">
-          <nav aria-label="بخش‌های استودیو" className="flex items-center gap-0.5">
+          {/* The sidebar is the section switcher; this header names where you are. */}
+          <div className="hidden min-w-0 items-center gap-2.5 md:flex">
+            {(() => {
+              const Icon = TAB_ICONS[tab];
+              return <Icon className="size-4 shrink-0 text-muted-foreground" />;
+            })()}
+            <h1 className="shrink-0 text-sm font-medium">{STUDIO_TAB_LABELS[tab]}</h1>
+            <p className="truncate text-xs text-muted-foreground">{TAB_DESCRIPTIONS[tab]}</p>
+          </div>
+
+          {/* Narrow windows hide the sidebar, so keep compact tabs here. */}
+          <nav aria-label="بخش‌های استودیو" className="flex items-center gap-0.5 md:hidden">
             {STUDIO_TABS.map((value) => {
               const Icon = TAB_ICONS[value];
               const active = value === tab;
@@ -289,7 +307,11 @@ export function StudioPage({
           if (!open) setViewer(null);
         }}
       />
-      <StudioHistorySheet open={historyOpen} onOpenChange={setHistoryOpen} />
+      <StudioHistorySheet
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        onOpenItem={(item) => openItem(item)}
+      />
       <StudioConnectionsDialog open={connectionsOpen} onOpenChange={setConnectionsOpen} />
     </StudioContextProvider>
   );

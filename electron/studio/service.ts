@@ -282,6 +282,14 @@ export class StudioService {
     return this.store.list(options).map(toPublicStudioItem);
   }
 
+  stats(now = new Date()) {
+    const today = new Date(now);
+    today.setHours(0, 0, 0, 0);
+    const month = new Date(today);
+    month.setDate(1);
+    return this.store.stats(today.getTime(), month.getTime());
+  }
+
   get(id: string): StudioItem | null {
     const record = this.store.get(id);
     return record ? toPublicStudioItem(record) : null;

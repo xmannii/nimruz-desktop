@@ -149,7 +149,7 @@ export function StudioComposer({
             aria-label={placeholder}
             readOnly={isEnhancing}
             className={cn(
-              "block w-full resize-none bg-transparent px-4 pt-3.5 pb-1 pe-10 text-[15px] leading-7 outline-none placeholder:text-start placeholder:text-muted-foreground/60",
+              "block w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-[15px] leading-7 outline-none placeholder:text-start placeholder:text-muted-foreground/60",
               tall ? "max-h-80 min-h-[5.5rem]" : "max-h-60 min-h-[3.25rem]"
             )}
             onChange={(event) => onValueChange(event.target.value)}
@@ -167,19 +167,6 @@ export function StudioComposer({
               }
             }}
           />
-          {value && !isEnhancing ? (
-            <button
-              type="button"
-              aria-label="پاک کردن متن"
-              className="absolute end-3 top-3.5 flex size-6 items-center justify-center rounded-full text-muted-foreground/70 transition-colors hover:bg-muted hover:text-foreground"
-              onClick={() => {
-                onValueChange("");
-                textareaRef.current?.focus();
-              }}
-            >
-              <XIcon className="size-3.5" />
-            </button>
-          ) : null}
         </div>
         {/* RTL: send and enhance sit at the right (start); options at the left (end). */}
         <div className="flex items-end gap-2 px-2.5 pb-2.5 pt-1">
@@ -217,6 +204,22 @@ export function StudioComposer({
                     : "برای این کار یک مدل گفتگو فعال کنید"}
                 </TooltipContent>
               </Tooltip>
+            ) : null}
+            {value && !isEnhancing ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                className="rounded-full text-muted-foreground hover:text-foreground"
+                aria-label="پاک کردن متن"
+                title="پاک کردن متن"
+                onClick={() => {
+                  onValueChange("");
+                  textareaRef.current?.focus();
+                }}
+              >
+                <XIcon />
+              </Button>
             ) : null}
           </div>
           <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-1.5">{toolbar}</div>

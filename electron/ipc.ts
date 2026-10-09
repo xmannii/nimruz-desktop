@@ -310,6 +310,7 @@ export function registerIpcHandlers(options: {
     studio.list(options && typeof options === "object" ? options : {})
   );
   handle("studio:get", (id: string) => studio.get(id));
+  handle("studio:stats", () => studio.stats());
   handle("studio:delete", (id: string) => studio.delete(id));
   handle("studio:cancel", (id: string) => studio.cancel(id));
   handle("studio:catalog", (force?: boolean) => studio.getCatalog(force === true));

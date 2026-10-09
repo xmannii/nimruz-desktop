@@ -75,7 +75,7 @@ export function StudioPixelField({
           const band = Math.sin(((x + y) / span) * Math.PI * 2 - t * 1.6);
           const twinkle = Math.sin(t * (1.2 + seed * 2.4) + seed * 12);
           const intensity = Math.max(0, band * 0.55 + twinkle * 0.3 + 0.2);
-          const alpha = 0.035 + intensity * 0.16;
+          const alpha = 0.05 + intensity * 0.22;
           context!.fillStyle = `rgb(${color} / ${alpha.toFixed(3)})`;
           context!.fillRect(x * step + gap / 2, y * step + gap / 2, cell, cell);
         }
@@ -89,9 +89,11 @@ export function StudioPixelField({
 
     resize();
     draw(start + 400);
+    // Always repaint after a resize: the first measure can run before layout,
+    // and the loop below skips frames while the window is hidden.
     const resizeObserver = new ResizeObserver(() => {
       resize();
-      if (reduceMotion) draw(start + 400);
+      draw(reduceMotion ? start + 400 : performance.now());
     });
     resizeObserver.observe(canvas);
     const visibility = new IntersectionObserver(([entry]) => {

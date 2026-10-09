@@ -1,6 +1,5 @@
 "use client";
 
-import { useStudio } from "@/components/studio/studio-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -64,11 +63,12 @@ function HistoryThumb({ item }: { item: StudioItem }) {
 export function StudioHistorySheet({
   open,
   onOpenChange,
+  onOpenItem,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenItem: (item: StudioItem) => void;
 }) {
-  const { openItem } = useStudio();
   const [kind, setKind] = useState<StudioKind | "all">("all");
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -157,7 +157,7 @@ export function StudioHistorySheet({
                       type="button"
                       className="flex w-full items-center gap-3 rounded-2xl p-2 text-start transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
                       onClick={() => {
-                        openItem(item);
+                        onOpenItem(item);
                         onOpenChange(false);
                       }}
                     >

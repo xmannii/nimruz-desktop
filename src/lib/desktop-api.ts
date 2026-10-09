@@ -42,6 +42,7 @@ import type {
   StudioListOptions,
   StudioModelCatalog,
   StudioSpeechRequest,
+  StudioStats,
   StudioTranscriptInput,
   StudioTranscriptPatch,
   StudioVideoRequest,
@@ -271,6 +272,7 @@ export type DesktopAPI = {
   studio: {
     list: (options?: StudioListOptions) => Promise<StudioItem[]>;
     get: (id: string) => Promise<StudioItem | null>;
+    getStats: () => Promise<StudioStats>;
     delete: (id: string) => Promise<void>;
     cancel: (id: string) => Promise<void>;
     getCatalog: (force?: boolean) => Promise<StudioModelCatalog>;

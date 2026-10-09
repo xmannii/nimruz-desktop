@@ -586,3 +586,27 @@ test("refuses BFL polling URLs outside bfl.ai", async () => {
     }
   );
 });
+
+test("summarises today's output and this month's spend", async () => {
+  await withStudio({}, async ({ store, service }) => {
+    const now = new Date(2026, 9, 15, 12);
+    const base = {
+      title: "x", prompt: "x", provider: "openrouter" as const, modelId: "a/b", params: {},
+      mimeType: null, hasMedia: false, storagePath: null, text: null, correctedText: null,
+      error: null, durationSeconds: null, parentId: null,
+    };
+    const at = (date: Date) => ({ createdAt: date.getTime(), updatedAt: date.getTime() });
+    store.insert({ ...base, ...at(now), id: "a", kind: "image", status: "done", cost: 0.04 });
+    store.insert({ ...base, ...at(now), id: "b", kind: "video", status: "done", cost: 1.2 });
+    store.insert({ ...base, ...at(now), id: "c", kind: "image", status: "failed", cost: null });
+    store.insert({ ...base, ...at(new Date(2026, 9, 3)), id: "d", kind: "image", status: "done", cost: null });
+    store.insert({ ...base, ...at(new Date(2026, 8, 20)), id: "e", kind: "video", status: "done", cost: 5 });
+    const stats = service.stats(now);
+    assert.equal(stats.today.image, 1);
+    assert.equal(stats.today.video, 1);
+    assert.equal(stats.total.image, 2);
+    assert.equal(stats.total.video, 2);
+    assert.ok(Math.abs(stats.monthCost - 1.24) < 1e-9);
+    assert.equal(stats.monthPricedCount, 2);
+  });
+});
