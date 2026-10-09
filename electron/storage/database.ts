@@ -20,10 +20,12 @@ import {
   createBuiltinOpenRouterProvider,
   createCodexModelConfig,
   OPENROUTER_PROVIDER_ID,
+  PROVIDER_KINDS,
   PROVIDER_LIMITS,
   type ModelConfig,
   type ModelCatalogSnapshot,
   type ProviderConfig,
+  type ProviderKind,
 } from "@/lib/models/catalog";
 import {
   sanitizeModelConfig,
@@ -222,14 +224,19 @@ function parseMcpServerIds(value: unknown): string[] | undefined {
   }
 }
 
+const PROVIDER_KIND_SET = new Set<string>(PROVIDER_KINDS);
+
+function mapProviderKind(value: unknown): ProviderKind {
+  return typeof value === "string" && PROVIDER_KIND_SET.has(value)
+    ? (value as ProviderKind)
+    : "openai-compatible";
+}
+
 function mapProviderRow(row: Record<string, unknown>): ProviderConfig {
   return {
     id: String(row.id),
     name: String(row.name),
-    kind:
-      row.kind === "openrouter" || row.kind === "codex"
-        ? row.kind
-        : "openai-compatible",
+    kind: mapProviderKind(row.kind),
     baseUrl: String(row.base_url),
     enabled: asBoolean(row.enabled),
     includeUsage: asBoolean(row.include_usage),
